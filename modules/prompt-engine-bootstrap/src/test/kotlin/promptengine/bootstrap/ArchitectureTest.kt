@@ -82,7 +82,11 @@ class ArchitectureTest {
                 "com.fasterxml.jackson..",
                 "jakarta.persistence..",
                 "org.slf4j..",
-            ).and(DescribedPredicate.not(JavaClass.Predicates.resideInAPackage("org.springframework.transaction.annotation..")))
+            ).and(
+                DescribedPredicate.not(
+                    JavaClass.Predicates.resideInAPackage("org.springframework.transaction.annotation.."),
+                ),
+            )
 
         noClasses()
             .that().resideInAPackage("promptengine.application..")
