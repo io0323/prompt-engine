@@ -154,7 +154,11 @@ include(
 | P10 | Evaluation + Audit + Monitoring | 非同期評価Subscriber、Audit追記、Metrics/Trace | イベント発火→評価記録→監査検索がE2Eで通る |
 | P11 | 仕上げ | Helm/Dockerfile、README、prompt-regression、負荷確認 | p99目標（設計書NFR-002/003）をローカル計測で確認 |
 
-**M1の非対象**: Experiment Engine、Search Engine本実装（Fallbackのみ）、Review/Approvalワークフロー UI、実APAP接続。これらは M2 で追加。
+**M1の非対象**: Experiment Engine、Search Engine本実装（Fallbackのみ）、
+Review/Approvalワークフロー（ReviewCase Aggregate および UI を含む）、実APAP接続。これらは M2 で追加。
+そのためM1のPrompt Aggregateは submitForReview/approve/reject の状態遷移自体は実行するが、
+対応するDomain Event（PromptReviewRequested/PromptApproved/PromptRejected、設計書§14）は
+ReviewCase Aggregateが発火元であり、M1の間は発行されない（ADR-0004）。
 
 ---
 
