@@ -92,11 +92,21 @@ class ArchitectureTest {
     }
 
     @Test
-    fun `prompt-engine-core と prompt-engine-infrastructure は domain のInterfaceを実装する側であり逆方向の依存を作らない`() {
+    fun `prompt-engine-core と prompt-engine-infrastructure は application interfaces bootstrap に依存しない`() {
+        // domainがcore/infrastructureに依存しないこと（規約3前半、Interfaceを実装する側の関係）は
+        // Test1（domainは他モジュールに依存しない）が既に検証しているため、ここでは重複させない。
+        // 規約3の「逆方向の依存を作らない」は、Test1（domain→engine/infrastructureの禁止）と
+        // 本テスト（engine/infrastructure→application/interfaces/bootstrapの禁止）の組で
+        // 過不足なく表現される。engine/infrastructureがdomainに依存すること自体は
+        // 実装する側として必須であり禁止対象ではない。
         noClasses()
-            .that().resideInAPackage("promptengine.domain..")
+            .that().resideInAnyPackage("promptengine.engine..", "promptengine.infrastructure..")
             .should().dependOnClassesThat()
-            .resideInAnyPackage("promptengine.engine..", "promptengine.infrastructure..")
+            .resideInAnyPackage(
+                "promptengine.application..",
+                "promptengine.interfaces..",
+                "promptengine.bootstrap..",
+            )
             .allowEmptyShould(true)
             .check(importedClasses)
     }
