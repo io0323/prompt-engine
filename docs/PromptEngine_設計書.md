@@ -225,7 +225,7 @@ Promptがアプリケーションコード内に散在すると、(a) 変更に�
 | Draft→InReview | submitForReview | prompt:write | Validation合格 |
 | InReview→Draft | reject / withdraw | prompt:review | - |
 | InReview→Approved | approve | prompt:approve | 必要承認数充足（既定1、設定可） |
-| Approved→Published | publish | prompt:publish | 依存先が全てPublished |
+| Approved→Published | publish | prompt:publish | 依存先が全てPublished（他Versionが現在Publishedの場合、そのVersionを自動的にDeprecatedへ遷移させるアトミック操作。ADR-0005） |
 | Published→Published | rollback(過去Versionを再Publish) | prompt:publish | 対象Versionが存在 |
 | Published→Deprecated | deprecate | prompt:publish | 代替Version推奨設定 |
 | Deprecated→Archived | archive | prompt:admin | 参照クライアントゼロ確認 or 強制フラグ |
@@ -335,6 +335,7 @@ Model Profile（APAPのモデルメタデータを参照して構成）: `{ maxC
 - Diff: AST構造Diff + テキストDiffの両方を提供。
 - Rollback: 過去VersionをそのままPublishedへ再昇格（新Version採番はしない。PromptRolledBackイベントで記録）。
 - 実行時参照: クライアントは `latest`（Published最新）/ 固定Version / エイリアス（`stable`,`canary` 等）で参照。
+- 誤って `deprecate` したVersionの復帰は、専用の遷移を設けず既存の `rollback` で行う（ADR-0005）。
 
 ## 2.14 Repository仕様
 
@@ -1045,7 +1046,6 @@ InReview --> Approved : approve\n[必要承認数充足]
 Approved --> Published : publish\n[依存先が全Published]
 Published --> Published : rollback\n(過去Version再昇格)
 Published --> Deprecated : deprecate
-Deprecated --> Published : reactivate(管理者)
 Deprecated --> Archived : archive\n[参照ゼロ or 強制]
 Draft --> Archived : discard
 Archived --> [*]
@@ -1423,10 +1423,12 @@ prompt_aliases }o--|| prompt_versions
 | PromptVersionCreated | Prompt Aggregate | Search Indexer, Audit, Dependency Manager | 依存グラフ更新 |
 | PromptUpdated | Prompt Aggregate | Search Indexer, Audit | メタデータ変更反映 |
 | PromptReviewRequested | ReviewCase | 通知Subscriber, Audit | レビュー担当への通知 |
+| PromptWithdrawn | Prompt Aggregate | 通知Subscriber, Audit | 著者によるレビュー取り下げの記録（ADR-0004） |
 | PromptApproved / PromptRejected | ReviewCase | 通知, Audit | 承認記録 |
 | PromptPublished | Prompt Aggregate | Cache Invalidator, Search Indexer, Audit, 通知 | 配信切替・キャッシュ無効化 |
 | PromptRolledBack | Prompt Aggregate | Cache Invalidator, Audit, 通知 | 障害復旧記録 |
-| PromptDeprecated / PromptArchived | Prompt Aggregate | Search Indexer, Cache Invalidator, Audit | 廃止管理 |
+| PromptDeprecated / PromptArchived | Prompt Aggregate | Search Indexer, Cache Invalidator, Audit | 廃止管理（PromptDeprecatedの`reason`が`SUPERSEDED`の場合はpublishによる自動遷移、`MANUAL`の場合は手動deprecate。ADR-0005） |
+| PromptDiscarded | Prompt Aggregate | Audit | Draft破棄の記録（ADR-0004） |
 | PromptCompiled | Compiler | Prompt Cache | Compile結果キャッシュ |
 | PromptValidated / PromptValidationFailed | Validation Engine | Monitoring, Audit | 品質傾向監視 |
 | PromptOptimized | Optimization Engine | Audit | 最適化内容の追跡 |

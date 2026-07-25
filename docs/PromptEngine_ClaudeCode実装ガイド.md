@@ -528,7 +528,9 @@ TDD で進めてください。テストを先に書き、私に見せてから�
 4. LifecycleState を State パターンで表現（設計書§3.5）
 5. Domain Event: 設計書§14 の Prompt 関連イベント（Created/VersionCreated/Published/
    RolledBack/Deprecated/Archived 等）を data class で定義。共通封筒フィールドを持つ基底型を用意
-6. Repository Interface（PromptRepository / TemplateRepository / FragmentRepository）
+6. Repository Interface（PromptRepository）
+   - TemplateRepository / FragmentRepository は、対応するTemplate/Fragment Aggregateを
+     実装するフェーズ（P3以降）に移す。P1時点ではPrompt Aggregateのみが存在するため。
 
 不変条件のテストは §4.3 の表を必ず全部カバーしてください。
 特に「Published は同時に1Version」「Published内容はImmutable」を落とさないこと。
