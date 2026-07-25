@@ -64,9 +64,22 @@ jobs:
       - name: Check for Gradle wrapper
         id: gradlew
         run: echo "exists=$( [ -f ./gradlew ] && echo true || echo false )" >> "$GITHUB_OUTPUT"
+      - name: Determine available test tasks
+        id: tasks
+        if: steps.gradlew.outputs.exists == 'true'
+        run: |
+          has_task() { ./gradlew help --task "$1" > /dev/null 2>&1; }
+          echo "integration_test=$(has_task integrationTest && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          echo "jacoco_verify=$(has_task jacocoTestCoverageVerification && echo true || echo false)" >> "$GITHUB_OUTPUT"
       - name: Unit + Integration (Testcontainers)
         if: steps.gradlew.outputs.exists == 'true'
-        run: ./gradlew test integrationTest jacocoTestCoverageVerification --no-daemon
+        # integrationTest（P2〜）/ jacocoTestCoverageVerification（未導入）は
+        # タスクが存在する場合のみ実行に加える。
+        run: |
+          tasks="test"
+          [ "${{ steps.tasks.outputs.integration_test }}" = "true" ] && tasks="$tasks integrationTest"
+          [ "${{ steps.tasks.outputs.jacoco_verify }}" = "true" ] && tasks="$tasks jacocoTestCoverageVerification"
+          ./gradlew $tasks --no-daemon
       - name: Skip (Gradle not yet initialized — P0 pending)
         if: steps.gradlew.outputs.exists == 'false'
         run: echo "::notice::./gradlew not found. Skipping until P0 (repository init) is complete."
