@@ -15,7 +15,7 @@ jobs:
       matrix:
         language: ['java-kotlin']
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Check for Gradle build files
         id: gradle_check
         run: echo "exists=$( [ -f ./gradlew ] && echo true || echo false )" >> "$GITHUB_OUTPUT"
