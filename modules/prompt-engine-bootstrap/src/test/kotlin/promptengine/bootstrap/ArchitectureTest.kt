@@ -32,6 +32,8 @@ class ArchitectureTest {
                 "promptengine.infrastructure..",
                 "promptengine.interfaces..",
                 "promptengine.bootstrap..",
+                "promptengine.pluginapi..",
+                "promptengine.testkit..",
                 "org.springframework..",
                 "com.fasterxml.jackson..",
                 "jakarta.persistence..",
@@ -52,6 +54,8 @@ class ArchitectureTest {
                 "promptengine.infrastructure..",
                 "promptengine.interfaces..",
                 "promptengine.bootstrap..",
+                "promptengine.pluginapi..",
+                "promptengine.testkit..",
             )
             .allowEmptyShould(true)
             .check(importedClasses)
@@ -72,7 +76,14 @@ class ArchitectureTest {
         noClasses()
             .that().resideInAPackage("promptengine.interfaces..")
             .should().dependOnClassesThat()
-            .resideInAnyPackage("promptengine.infrastructure..", "promptengine.engine..")
+            .resideInAnyPackage(
+                "promptengine.infrastructure..",
+                "promptengine.engine..",
+                "promptengine.domain..",
+                "promptengine.pluginapi..",
+                "promptengine.testkit..",
+                "promptengine.bootstrap..",
+            )
             .allowEmptyShould(true)
             .check(importedClasses)
     }
@@ -87,7 +98,7 @@ class ArchitectureTest {
     }
 
     @Test
-    fun `Plugin実装は prompt-engine-plugin-api と prompt-engine-domain の公開型のみを参照する`() {
+    fun `prompt-engine-plugin-api モジュール自体は domain 以外のモジュールに依存しない`() {
         noClasses()
             .that().resideInAPackage("promptengine.pluginapi..")
             .should().dependOnClassesThat()
