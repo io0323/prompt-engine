@@ -1,59 +1,53 @@
 {
   "permissions": {
     "allow": [
-      "Bash(gh auth *)",
-      "Bash(git -C /Users/io/projects/GitHub/engine/prompt-engine mv)",
-      "Bash(git init *)",
-      "Bash(git remote *)",
-      "Bash(curl -fsSL https://www.apache.org/licenses/LICENSE-2.0.txt -o /private/tmp/claude-501/-Users-io-projects-GitHub-engine-prompt-engine/8df1e6c3-60e1-47d3-9719-4f55ac487bda/scratchpad/LICENSE-2.0.txt)",
-      "Bash(git add *)",
-      "Bash(git commit *)",
-      "Bash(git push *)",
-      "Bash(gh repo *)",
-      "Bash(gh pr *)",
-      "Bash(git fetch *)",
-      "Bash(git checkout *)",
-      "Bash(git branch *)",
-      "Bash(gh run *)",
-      "Bash(git merge *)",
-      "Bash(python3 -c ' *)",
-      "Bash(java -version)",
-      "Bash(curl -sI https://services.gradle.org/distributions/gradle-8.11-bin.zip --max-time 8)",
-      "Bash(/usr/libexec/java_home -V)",
-      "Read(//Library/Java/JavaVirtualMachines/**)",
-      "Read(//usr/local/opt/**)",
-      "Bash(brew list *)",
-      "Bash(gradle -v)",
-      "Bash(git pull *)",
-      "Bash(gradle wrapper *)",
-      "Bash(timeout 180 gradle wrapper --gradle-version 8.11.1 --distribution-type bin)",
-      "Bash(gradle --stop)",
-      "Bash(mkdir -p /private/tmp/claude-501/-Users-io-projects-GitHub-engine-prompt-engine/8df1e6c3-60e1-47d3-9719-4f55ac487bda/scratchpad/wrapper-gen)",
-      "Bash(touch settings.gradle.kts)",
-      "Bash(cp /private/tmp/claude-501/-Users-io-projects-GitHub-engine-prompt-engine/8df1e6c3-60e1-47d3-9719-4f55ac487bda/scratchpad/wrapper-gen/gradle/wrapper/gradle-wrapper.properties gradle/wrapper/gradle-wrapper.properties)",
-      "Bash(chmod +x gradlew)",
-      "Bash(read -r d)",
-      "Bash(touch __TRACKED_VAR__/.gitkeep)",
-      "Bash(./gradlew build *)",
-      "Bash(curl -s \"https://search.maven.org/solrsearch/select?q=g:io.gitlab.arturbosch.detekt+AND+a:detekt-gradle-plugin&core=gav&rows=20&wt=json\")",
-      "Bash(curl -s \"https://repo1.maven.org/maven2/io/gitlab/arturbosch/detekt/detekt-parser/1.23.8/detekt-parser-1.23.8.pom\")",
-      "Bash(sed -i '' 's/detekt = \"1.23.7\"/detekt = \"1.23.8\"/' gradle/libs.versions.toml)",
-      "Bash(sed -i '' 's/detekt-gradle-plugin:1.23.7/detekt-gradle-plugin:1.23.8/' buildSrc/build.gradle.kts)",
-      "Bash(sed -i '' 's/kotlin = \"2.1.0\"/kotlin = \"2.0.21\"/' gradle/libs.versions.toml)",
-      "Bash(sed -i '' 's/kotlin-gradle-plugin:2.1.0/kotlin-gradle-plugin:2.0.21/' buildSrc/build.gradle.kts)",
-      "Bash(sed -i '' 's/kotlin-allopen:2.1.0/kotlin-allopen:2.0.21/' buildSrc/build.gradle.kts)",
-      "Bash(./gradlew ktlintFormat)",
-      "Bash(tee /tmp/build_output.log)",
-      "Read(//tmp/**)",
-      "Bash(grep -A 15 \"What went wrong\" /tmp/build_output.log)",
-      "Read(//private/tmp/**)",
-      "Bash(tee /tmp/build_output2.log)",
-      "Bash(./gradlew clean *)",
-      "Bash(tee /tmp/build_output3.log)",
+      "Bash(./gradlew *)",
+      "Bash(git status)", "Bash(git diff *)", "Bash(git log *)",
+      "Bash(git add *)", "Bash(git commit *)", "Bash(git pull *)", "Bash(git fetch *)",
       "Bash(git check-ignore *)",
-      "Bash(git commit -m ' *)",
-      "Bash(gh pr create --repo io0323/prompt-engine --base main --head feat/p0-project-skeleton --title 'feat\\(p0\\): scaffold Gradle multi-module skeleton' --body ' *)",
-      "Bash(git commit -m 'fix\\(ci\\): only run integrationTest/jacocoTestCoverageVerification if the tasks exist *)"
+      "Bash(gh auth status)", "Bash(gh pr view *)", "Bash(gh pr list *)",
+      "Bash(docker compose *)",
+      "Bash(gradle -v)", "Bash(gradle --stop)", "Bash(java -version)"
+    ],
+    "deny": [
+      "Bash(git push --force*)",
+      "Bash(git push * --force*)",
+      "Bash(rm -rf *)",
+      "Bash(git reset --hard *)",
+      "Bash(git clean -f*)",
+      "Bash(git restore *)",
+      "Bash(git branch -D *)", "Bash(git branch --delete --force *)",
+      "Bash(git checkout -- *)", "Bash(git checkout .)",
+      "Bash(git remote remove *)", "Bash(git remote set-url *)",
+      "Bash(gh repo delete *)", "Bash(gh repo edit * --visibility *)",
+      "Bash(gh pr merge * --admin*)",
+      "Bash(python3 -c *)", "Bash(python -c *)", "Bash(node -e *)", "Bash(ruby -e *)", "Bash(perl -e *)",
+      "Read(./**/.env*)",
+      "Read(./**/secrets/**)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "if": "Edit(*.kt)",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/ktlint-format.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "if": "Write(*.kt)",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/ktlint-format.sh"
+          }
+        ]
+      }
     ]
   }
 }
