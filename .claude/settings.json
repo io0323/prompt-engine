@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(gh auth *)",
+      "Bash(git -C /Users/io/projects/GitHub/engine/prompt-engine mv)",
+      "Bash(git init *)",
+      "Bash(git remote *)",
+      "Bash(curl -fsSL https://www.apache.org/licenses/LICENSE-2.0.txt -o /private/tmp/claude-501/-Users-io-projects-GitHub-engine-prompt-engine/8df1e6c3-60e1-47d3-9719-4f55ac487bda/scratchpad/LICENSE-2.0.txt)",
+      "Bash(git add *)"
+    ]
+  }
+}
