@@ -16,10 +16,19 @@ jobs:
         language: ['java-kotlin']
     steps:
       - uses: actions/checkout@v4
+      - name: Check for Gradle build files
+        id: gradle_check
+        run: echo "exists=$( [ -f ./gradlew ] && echo true || echo false )" >> "$GITHUB_OUTPUT"
       - uses: github/codeql-action/init@v4
+        if: steps.gradle_check.outputs.exists == 'true'
         with:
           languages: ${{ matrix.language }}
       - uses: github/codeql-action/autobuild@v4
+        if: steps.gradle_check.outputs.exists == 'true'
       - uses: github/codeql-action/analyze@v4
+        if: steps.gradle_check.outputs.exists == 'true'
         with:
           category: '/language:${{ matrix.language }}'
+      - name: Skip (Gradle not yet initialized — P0 pending)
+        if: steps.gradle_check.outputs.exists == 'false'
+        run: echo "::notice::./gradlew not found. Skipping CodeQL analysis until P0 (repository init) is complete."
