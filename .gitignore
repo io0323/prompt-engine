@@ -15,6 +15,10 @@ build/
 *.iws
 out/
 
+# VS Code (Java extension build output / local editor settings)
+.vscode/
+bin/
+
 # macOS
 .DS_Store
 .AppleDouble
@@ -28,6 +32,7 @@ local.properties
 
 # Claude Code local settings
 .claude/settings.local.json
+.claude/scheduled_tasks.lock
 
 # Logs
 *.log

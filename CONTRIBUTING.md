@@ -1,5 +1,14 @@
 # Contributing
 
+## 初回セットアップ
+
+クローン後、最初に1回だけ実行してください。`.kt` を含むコミット時に `ktlintCheck` を
+自動実行する pre-commit フックが有効になります。
+
+```bash
+git config core.hooksPath .githooks
+```
+
 ## 作業の進め方
 
 着手前に、対応する [設計書](docs/PromptEngine_設計書.md) の節と既存コードを読んでください。設計書と実装が
@@ -44,3 +53,12 @@ chore(ci): add CodeQL workflow
 
 新規のpublicな振る舞いには必ずテストを書いてください。テストなしのPRは出しません。詳細な規約は
 [CLAUDE.md](CLAUDE.md) のテスト規約を参照してください。
+
+## `.claude/settings.json` を変更するツール・スキルの利用について
+
+`.claude/settings.json` はチーム共有のcuratedファイルです。許可リストを自動生成・自動追記する
+類のツールやAIエージェントのスキル（例: セッション履歴から許可コマンドを推測して追記するもの）を
+使う場合は、生成された `git diff` を必ず自分の目でレビューしてからコミットしてください。
+セッション固有の使い捨てパスや過度に広いワイルドカードが紛れ込みやすく、レビューを省くと
+リポジトリの権限設定が汚染されます。セッション中限りの承認は `.claude/settings.local.json`
+（gitignore対象）に留め、共有ファイルには入れないでください。

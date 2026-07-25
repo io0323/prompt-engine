@@ -34,6 +34,15 @@ P0（リポジトリ初期化）着手中。Gradleマルチモジュールの骨
 - JDK 21（`./gradlew` の Java Toolchain 自動プロビジョニングを使う場合は不要。ネットワーク経由で自動取得される）
 - Docker / Docker Compose（ローカル依存サービス起動用）
 
+### Git hooksの有効化
+
+クローン後、最初に1回だけ実行してください。ステージ済みファイルに `.kt` が含まれる
+コミット時に `ktlintCheck` を自動実行する pre-commit フックが有効になります。
+
+```bash
+git config core.hooksPath .githooks
+```
+
 ### ローカル依存サービスの起動
 
 ```bash

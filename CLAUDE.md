@@ -80,3 +80,8 @@ docker compose up -d            # ローカル依存（PostgreSQL/Redis/Kafka/Op
 2. 変更方針を箇条書きで示し、承認を得てから実装に入る（大きな変更の場合）。
 3. 実装 → テスト → `./gradlew build ktlintFormat detekt test` が通ることを確認 → 報告。
 4. 不明点は推測で埋めずに質問する。特にドメインルールの解釈は必ず確認する。
+
+## Claude Code設定
+`.claude/settings.json` はチーム共有のcuratedファイル（レビューを経てコミットする）。
+セッション中に「今後確認しない」で承認した内容は `.claude/settings.local.json`（gitignore対象）に置き、
+settings.json を自動追記の対象にしない。

@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# ステージ済みファイルに .kt が含まれる場合のみ ktlintCheck を実行する。
+# ktlintFormat は実行しない（ステージ済み内容を書き換えてしまうため）。
+set -euo pipefail
+
+repo_root="$(git rev-parse --show-toplevel)"
+cd "$repo_root"
+
+staged_files="$(git diff --cached --name-only --diff-filter=ACMR)"
+
+if ! grep -q '\.kt$' <<< "$staged_files"; then
+  exit 0
+fi
+
+if ! ./gradlew ktlintCheck; then
+  echo "" >&2
+  echo "ktlintCheck に失敗しました。./gradlew ktlintFormat を実行してから再度コミットしてください。" >&2
+  exit 1
+fi

@@ -1,12 +1,29 @@
 {
   "permissions": {
     "allow": [
-      "Bash(gh auth *)",
-      "Bash(git -C /Users/io/projects/GitHub/engine/prompt-engine mv)",
-      "Bash(git init *)",
-      "Bash(git remote *)",
-      "Bash(curl -fsSL https://www.apache.org/licenses/LICENSE-2.0.txt -o /private/tmp/claude-501/-Users-io-projects-GitHub-engine-prompt-engine/8df1e6c3-60e1-47d3-9719-4f55ac487bda/scratchpad/LICENSE-2.0.txt)",
-      "Bash(git add *)"
+      "Bash(./gradlew *)",
+      "Bash(git status)", "Bash(git diff *)", "Bash(git log *)",
+      "Bash(git add *)", "Bash(git commit *)", "Bash(git pull *)", "Bash(git fetch *)",
+      "Bash(git check-ignore *)",
+      "Bash(gh auth status)", "Bash(gh pr view *)", "Bash(gh pr list *)",
+      "Bash(docker compose *)",
+      "Bash(gradle -v)", "Bash(gradle --stop)", "Bash(java -version)"
+    ],
+    "deny": [
+      "Bash(git push --force*)",
+      "Bash(git push * --force*)",
+      "Bash(rm -rf *)",
+      "Bash(git reset --hard *)",
+      "Bash(git clean -f*)",
+      "Bash(git restore *)",
+      "Bash(git branch -D *)", "Bash(git branch --delete --force *)",
+      "Bash(git checkout -- *)", "Bash(git checkout .)",
+      "Bash(git remote remove *)", "Bash(git remote set-url *)",
+      "Bash(gh repo delete *)", "Bash(gh repo edit * --visibility *)",
+      "Bash(gh pr merge * --admin*)",
+      "Bash(python3 -c *)", "Bash(python -c *)", "Bash(node -e *)", "Bash(ruby -e *)", "Bash(perl -e *)",
+      "Read(./**/.env*)",
+      "Read(./**/secrets/**)"
     ]
   }
 }

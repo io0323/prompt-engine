@@ -6,8 +6,10 @@ import com.tngtech.archunit.core.importer.ClassFileImporter
 import com.tngtech.archunit.core.importer.ImportOption
 import com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes
 import com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses
+import io.kotest.matchers.collections.shouldNotBeEmpty
 import org.junit.jupiter.api.Test
 import org.springframework.context.annotation.Configuration
+import java.io.File
 
 /**
  * CLAUDE.md「モジュール依存の絶対規約」6項目をルール化する。
@@ -31,6 +33,15 @@ import org.springframework.context.annotation.Configuration
  * 直下の「plugin-api モジュール自体の依存」テストは、`prompt-engine-plugin-api` モジュール
  * 自身のソースが他レイヤに依存していないかを見る別の検証であり、規約6の検証はあくまで
  * 上記の `promptengine.plugin..` 向けテストが担う。
+ *
+ * 注意（P3での配線が必須なことについて）:
+ * `importedClasses` は本モジュール（prompt-engine-bootstrap）のtestランタイムクラスパスを
+ * スキャンする。`plugins/` 配下のサブプロジェクトは `settings.gradle.kts` によりGradleプロジェクト
+ * としては認識されるが、それだけでは本テストの対象クラスパスには乗らない。P3で最初の
+ * Plugin実装を追加する際は、`modules/prompt-engine-bootstrap/build.gradle.kts` の
+ * dependencies に `testImplementation(project(":plugins:<name>"))` を必ず追加すること。
+ * 配線を忘れた場合に気づけるよう、末尾の
+ * 「plugins配下にサブプロジェクトが存在するなら...」テストがガードする。
  */
 class ArchitectureTest {
     private val importedClasses =
@@ -174,5 +185,42 @@ class ArchitectureTest {
             )
             .allowEmptyShould(true)
             .check(importedClasses)
+    }
+
+    /**
+     * 上記「Plugin実装は...」テストは importedClasses（bootstrapのtestランタイムクラスパス）
+     * を対象にしており、これは plugins/ 配下のサブプロジェクトが bootstrap の build.gradle.kts に
+     * testImplementation 等で配線されて初めて promptengine.plugin.. を含む。配線を忘れると
+     * 検証対象0件のまま allowEmptyShould(true) で恒久的に素通りしてしまい、規約6が
+     * 実質検証されない状態に気づけない。plugins/ 配下に実サブプロジェクトが存在するのに
+     * promptengine.plugin.. が0件なら、配線漏れとして検知する。
+     */
+    @Test
+    fun `plugins配下にサブプロジェクトが存在するなら promptengine plugin 配下のクラスが1件以上importされている`() {
+        val pluginSubprojectDirs = findPluginSubprojectDirs()
+        if (pluginSubprojectDirs.isEmpty()) {
+            // P0〜P2: plugins/ 配下にサブプロジェクトが未追加のため、このガード自体が対象外。
+            return
+        }
+
+        val pluginClasses = importedClasses.that(JavaClass.Predicates.resideInAPackage("promptengine.plugin.."))
+        pluginClasses.toList().shouldNotBeEmpty()
+    }
+
+    /**
+     * settings.gradle.kts を上方探索してリポジトリルートを特定する。
+     * このリポジトリが他リポジトリの composite build（includeBuild）に取り込まれた場合、
+     * 取り込み先にも settings.gradle.kts があると誤ったルートを解決しうる点に注意。
+     */
+    private fun findPluginSubprojectDirs(): List<File> {
+        val repoRoot =
+            generateSequence(File(System.getProperty("user.dir")).absoluteFile) { it.parentFile }
+                .firstOrNull { File(it, "settings.gradle.kts").exists() }
+                ?: error("settings.gradle.kts が見つからずリポジトリルートを特定できません")
+        val pluginsDir = File(repoRoot, "plugins")
+        if (!pluginsDir.exists()) return emptyList()
+        return pluginsDir.listFiles { file -> file.isDirectory }
+            ?.filter { File(it, "build.gradle.kts").exists() || File(it, "build.gradle").exists() }
+            ?: emptyList()
     }
 }
