@@ -1,0 +1,21 @@
+package promptengine.domain.prompt
+
+import java.security.MessageDigest
+
+/**
+ * PromptVersionが保持するDSLソースとそのSHA-256ハッシュ（設計書§4.4）。
+ */
+data class PromptContent(val source: String) {
+    init {
+        require(source.isNotBlank()) { "source must not be blank" }
+    }
+
+    val contentHash: String = sha256(source)
+
+    private companion object {
+        fun sha256(input: String): String {
+            val digest = MessageDigest.getInstance("SHA-256").digest(input.toByteArray(Charsets.UTF_8))
+            return digest.joinToString(separator = "") { byte -> "%02x".format(byte) }
+        }
+    }
+}
