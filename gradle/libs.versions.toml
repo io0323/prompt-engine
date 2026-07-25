@@ -1,0 +1,51 @@
+[versions]
+kotlin = "2.0.21"
+spring-boot = "3.4.1"
+spring-dependency-management = "1.1.7"
+ktlint-gradle = "12.1.2"
+detekt = "1.23.8"
+archunit = "1.3.0"
+junit = "5.11.4"
+kotest = "5.9.1"
+mockk = "1.13.13"
+testcontainers = "1.20.4"
+flyway = "10.20.1"
+
+[libraries]
+kotlin-reflect = { module = "org.jetbrains.kotlin:kotlin-reflect", version.ref = "kotlin" }
+
+spring-boot-starter-web = { module = "org.springframework.boot:spring-boot-starter-web" }
+spring-boot-starter-actuator = { module = "org.springframework.boot:spring-boot-starter-actuator" }
+spring-boot-starter-test = { module = "org.springframework.boot:spring-boot-starter-test" }
+spring-boot-starter-data-jdbc = { module = "org.springframework.boot:spring-boot-starter-data-jdbc" }
+
+junit-bom = { module = "org.junit:junit-bom", version.ref = "junit" }
+junit-jupiter = { module = "org.junit.jupiter:junit-jupiter" }
+junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher" }
+
+kotest-runner-junit5 = { module = "io.kotest:kotest-runner-junit5", version.ref = "kotest" }
+kotest-assertions-core = { module = "io.kotest:kotest-assertions-core", version.ref = "kotest" }
+
+mockk = { module = "io.mockk:mockk", version.ref = "mockk" }
+
+archunit-junit5 = { module = "com.tngtech.archunit:archunit-junit5", version.ref = "archunit" }
+
+testcontainers-bom = { module = "org.testcontainers:testcontainers-bom", version.ref = "testcontainers" }
+testcontainers-junit-jupiter = { module = "org.testcontainers:junit-jupiter" }
+testcontainers-postgresql = { module = "org.testcontainers:postgresql" }
+
+flyway-core = { module = "org.flywaydb:flyway-core", version.ref = "flyway" }
+flyway-postgresql = { module = "org.flywaydb:flyway-database-postgresql", version.ref = "flyway" }
+
+# 注意: 以下の [plugins] エントリはドキュメント目的で定義しているが、モジュールの build.gradle.kts から
+# alias(libs.plugins.*) では参照しない。buildSrc（kotlin-dsl）が Kotlin Gradle Plugin を暗黙提供しており、
+# 同一プラグインIDを明示versionで再解決しようとすると衝突するため、実際の適用は buildSrc の規約プラグイン
+# （promptengine.kotlin-conventions / promptengine.spring-boot-conventions）内で行い、
+# バージョンは buildSrc/build.gradle.kts 側で手動管理している。ここでは参照用の一覧として保持する。
+[plugins]
+kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
+kotlin-spring = { id = "org.jetbrains.kotlin.plugin.spring", version.ref = "kotlin" }
+spring-boot = { id = "org.springframework.boot", version.ref = "spring-boot" }
+spring-dependency-management = { id = "io.spring.dependency-management", version.ref = "spring-dependency-management" }
+ktlint = { id = "org.jlleitschuh.gradle.ktlint", version.ref = "ktlint-gradle" }
+detekt = { id = "io.gitlab.arturbosch.detekt", version.ref = "detekt" }

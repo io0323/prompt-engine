@@ -1,0 +1,9 @@
+build:
+  maxIssues: 0
+
+performance:
+  SpreadOperator:
+    active: false
+    # Spring Boot の runApplication<T>(vararg args: String) は spread 演算子でしか
+    # 配列を渡せない（他に公開APIが無い）。アプリ起動時に1回だけ呼ばれる箇所であり、
+    # 性能上の懸念も実質ない。

@@ -1,0 +1,9 @@
+spring:
+  application:
+    name: prompt-engine
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
