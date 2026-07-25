@@ -25,29 +25,5 @@
       "Read(./**/.env*)",
       "Read(./**/secrets/**)"
     ]
-  },
-  "hooks": {
-    "PostToolUse": [
-      {
-        "matcher": "Edit",
-        "hooks": [
-          {
-            "type": "command",
-            "if": "Edit(*.kt)",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/ktlint-format.sh"
-          }
-        ]
-      },
-      {
-        "matcher": "Write",
-        "hooks": [
-          {
-            "type": "command",
-            "if": "Write(*.kt)",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/ktlint-format.sh"
-          }
-        ]
-      }
-    ]
   }
 }
