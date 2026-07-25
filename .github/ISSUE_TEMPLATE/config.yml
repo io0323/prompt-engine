@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 設計書に関する質問
+    url: https://github.com/io0323/prompt-engine/blob/main/docs/PromptEngine_設計書.md
+    about: 実装前に、まず設計書の該当節を確認してください。

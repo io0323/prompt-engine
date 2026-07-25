@@ -1,0 +1,7 @@
+*                                   @io0323
+/modules/prompt-engine-domain/      @io0323
+/modules/prompt-engine-plugin-api/  @io0323   # 後方互換必須、変更は必ずアーキ承認
+/api/openapi.yaml                   @io0323
+/docs/adr/                          @io0323
+/.github/                           @io0323
+/deploy/                            @io0323

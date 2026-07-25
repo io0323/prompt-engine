@@ -1,0 +1,75 @@
+name: CI
+on:
+  pull_request:
+  push: { branches: [main] }
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '21' }
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Check for Gradle wrapper
+        id: gradlew
+        run: echo "exists=$( [ -f ./gradlew ] && echo true || echo false )" >> "$GITHUB_OUTPUT"
+      - name: Build
+        if: steps.gradlew.outputs.exists == 'true'
+        run: ./gradlew assemble --no-daemon
+      - name: Skip (Gradle not yet initialized — P0 pending)
+        if: steps.gradlew.outputs.exists == 'false'
+        run: echo "::notice::./gradlew not found. Skipping until P0 (repository init) is complete."
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '21' }
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Check for Gradle wrapper
+        id: gradlew
+        run: echo "exists=$( [ -f ./gradlew ] && echo true || echo false )" >> "$GITHUB_OUTPUT"
+      - name: Lint
+        if: steps.gradlew.outputs.exists == 'true'
+        run: ./gradlew ktlintCheck detekt --no-daemon
+      - name: Skip (Gradle not yet initialized — P0 pending)
+        if: steps.gradlew.outputs.exists == 'false'
+        run: echo "::notice::./gradlew not found. Skipping until P0 (repository init) is complete."
+  arch-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '21' }
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Check for Gradle wrapper
+        id: gradlew
+        run: echo "exists=$( [ -f ./gradlew ] && echo true || echo false )" >> "$GITHUB_OUTPUT"
+      - name: Clean Architecture制約検証
+        if: steps.gradlew.outputs.exists == 'true'
+        run: ./gradlew :modules:prompt-engine-bootstrap:test --tests '*ArchitectureTest' --no-daemon
+      - name: Skip (Gradle not yet initialized — P0 pending)
+        if: steps.gradlew.outputs.exists == 'false'
+        run: echo "::notice::./gradlew not found. Skipping until P0 (repository init) is complete."
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '21' }
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Check for Gradle wrapper
+        id: gradlew
+        run: echo "exists=$( [ -f ./gradlew ] && echo true || echo false )" >> "$GITHUB_OUTPUT"
+      - name: Unit + Integration (Testcontainers)
+        if: steps.gradlew.outputs.exists == 'true'
+        run: ./gradlew test integrationTest jacocoTestCoverageVerification --no-daemon
+      - name: Skip (Gradle not yet initialized — P0 pending)
+        if: steps.gradlew.outputs.exists == 'false'
+        run: echo "::notice::./gradlew not found. Skipping until P0 (repository init) is complete."
+      - uses: actions/upload-artifact@v4
+        if: always() && steps.gradlew.outputs.exists == 'true'
+        with: { name: test-reports, path: '**/build/reports/**' }
