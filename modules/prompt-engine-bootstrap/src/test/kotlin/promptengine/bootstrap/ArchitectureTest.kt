@@ -14,6 +14,21 @@ import org.springframework.context.annotation.Configuration
  * （archRule.failOnEmptyShould=true）では検証対象0件のルールは失敗扱いになる。
  * そのため各ルールに allowEmptyShould(true) を付与している。P1以降で実クラスが
  * 追加された時点から、これらのルールが実効的な検証として機能し始める。
+ *
+ * 注意（プラグイン実装の検証について）:
+ * CLAUDE.mdの規約6「Plugin実装は prompt-engine-plugin-api と prompt-engine-domain の
+ * 公開型のみを参照する」が指す「Plugin実装」は、plugins ディレクトリ配下（tokenizer-approx 等、
+ * P3以降で追加されるGradleサブプロジェクト）のコードを指す。そのパッケージ命名は
+ * docs/adr/0003-plugin-package-naming.md で `promptengine.plugin.<category>.<name>` と
+ * 確定した。本クラスの `Plugin実装（promptengine.plugin..）は...` テストが規約6の検証に
+ * あたる。P0時点では plugins ディレクトリ配下にサブプロジェクトが存在せず検証対象が
+ * 0件のため allowEmptyShould(true) を付与しているが、P3で最初のPlugin実装が追加された
+ * 時点から実効的な検証として機能し始める。
+ * 「公開型のみ」の粒度（パッケージではなく型の可視性）はArchUnitではなくKotlinの
+ * internal可視性が担保する。役割分担の詳細はADR-0003を参照。
+ * 直下の「plugin-api モジュール自体の依存」テストは、`prompt-engine-plugin-api` モジュール
+ * 自身のソースが他レイヤに依存していないかを見る別の検証であり、規約6の検証はあくまで
+ * 上記の `promptengine.plugin..` 向けテストが担う。
  */
 class ArchitectureTest {
     private val importedClasses =
@@ -107,6 +122,25 @@ class ArchitectureTest {
                 "promptengine.engine..",
                 "promptengine.infrastructure..",
                 "promptengine.interfaces..",
+                "promptengine.bootstrap..",
+            )
+            .allowEmptyShould(true)
+            .check(importedClasses)
+    }
+
+    @Test
+    fun `Plugin実装は promptengine plugin-api と domain 以外のモジュールに依存しない`() {
+        // パッケージ命名（promptengine.plugin.カテゴリ.名前）は docs/adr/0003-plugin-package-naming.md
+        // で確定。P0時点では plugins ディレクトリ配下にサブプロジェクトが存在せず検証対象0件のため
+        // allowEmptyShould(true)。P3で最初のPlugin実装が追加された時点から実効化される。
+        noClasses()
+            .that().resideInAPackage("promptengine.plugin..")
+            .should().dependOnClassesThat()
+            .resideInAnyPackage(
+                "promptengine.application..",
+                "promptengine.interfaces..",
+                "promptengine.infrastructure..",
+                "promptengine.engine..",
                 "promptengine.bootstrap..",
             )
             .allowEmptyShould(true)

@@ -34,6 +34,8 @@ Javaパッケージルートは `promptengine`。
   Repository実装に直接触れない。
 - 具象クラスのDI結線は `prompt-engine-bootstrap` のConfigurationクラスでのみ行う。
 - Plugin実装は `prompt-engine-plugin-api` と `prompt-engine-domain` の公開型のみを参照する。
+  パッケージは `promptengine.plugin.<category>.<name>`（例: `promptengine.plugin.tokenizer.approx`）。
+  `promptengine.plugin` 直下に直接クラスを置くことは禁止（詳細は `docs/adr/0003-plugin-package-naming.md`）。
 
 ## コーディング規約
 - コンストラクタインジェクションのみ。`@Autowired` フィールド注入は禁止。
