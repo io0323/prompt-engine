@@ -25,7 +25,37 @@ Promptがアプリケーションコード内に散在すると、変更にデ�
 
 ## 現在のステータス
 
-設計完了・実装未着手。
+P0（リポジトリ初期化）着手中。Gradleマルチモジュールの骨格を構築済み。
+
+## セットアップ
+
+### 必要なツール
+
+- JDK 21（`./gradlew` の Java Toolchain 自動プロビジョニングを使う場合は不要。ネットワーク経由で自動取得される）
+- Docker / Docker Compose（ローカル依存サービス起動用）
+
+### ローカル依存サービスの起動
+
+```bash
+docker compose up -d   # PostgreSQL 16 / Redis 7 / Redpanda / OpenSearch
+```
+
+### ビルド・テスト
+
+```bash
+./gradlew build                 # 全モジュールビルド
+./gradlew test                  # 単体テスト
+./gradlew integrationTest       # Testcontainers統合テスト（P2以降）
+./gradlew ktlintFormat detekt   # フォーマット + 静的解析
+```
+
+### アプリケーションの起動
+
+```bash
+./gradlew :modules:prompt-engine-bootstrap:bootRun
+```
+
+起動後、`http://localhost:8080/actuator/health` でヘルスチェックを確認できます。
 
 ## 実装フェーズ一覧（M1）
 
