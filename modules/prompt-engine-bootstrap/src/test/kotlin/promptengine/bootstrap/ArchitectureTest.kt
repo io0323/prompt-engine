@@ -1,5 +1,7 @@
 package promptengine.bootstrap
 
+import com.tngtech.archunit.base.DescribedPredicate
+import com.tngtech.archunit.core.domain.JavaClass
 import com.tngtech.archunit.core.importer.ClassFileImporter
 import com.tngtech.archunit.core.importer.ImportOption
 import com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes
@@ -61,10 +63,8 @@ class ArchitectureTest {
 
     @Test
     fun `prompt-engine-application は prompt-engine-domain のみに依存する`() {
-        noClasses()
-            .that().resideInAPackage("promptengine.application..")
-            .should().dependOnClassesThat()
-            .resideInAnyPackage(
+        val forbiddenModules =
+            JavaClass.Predicates.resideInAnyPackage(
                 "promptengine.engine..",
                 "promptengine.infrastructure..",
                 "promptengine.interfaces..",
@@ -72,6 +72,21 @@ class ArchitectureTest {
                 "promptengine.pluginapi..",
                 "promptengine.testkit..",
             )
+        // トランザクション境界の宣言はApplication層の責務（設計書§2.3 Pipeline Orchestrator /
+        // Command Handlerの責務にトランザクション境界の制御を含む）であるため、
+        // org.springframework.transaction.annotation.. のみを唯一の例外として許可する。
+        // それ以外のSpring / Jackson / JPA / SLF4Jへの依存は禁止する。
+        val forbiddenFrameworks =
+            JavaClass.Predicates.resideInAnyPackage(
+                "org.springframework..",
+                "com.fasterxml.jackson..",
+                "jakarta.persistence..",
+                "org.slf4j..",
+            ).and(DescribedPredicate.not(JavaClass.Predicates.resideInAPackage("org.springframework.transaction.annotation..")))
+
+        noClasses()
+            .that().resideInAPackage("promptengine.application..")
+            .should().dependOnClassesThat(forbiddenModules.or(forbiddenFrameworks))
             .allowEmptyShould(true)
             .check(importedClasses)
     }

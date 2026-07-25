@@ -47,6 +47,7 @@ Javaパッケージルートは `promptengine`。
 - ログは構造化（key=value）。**Secret / sensitive=true の変数値は絶対に出力しない**。
   マスク処理は `SensitiveValue` 型に閉じ込め、`toString()` は常に `"***"` を返す。
 - 公開APIのKDocは必須。内部実装のコメントは「なぜ」だけ書く。「何を」はコードで表す。
+- `prompt-engine-application` は `org.springframework.transaction.annotation..`（トランザクション境界）を唯一の例外として、Spring / Jackson / JPA / SLF4J への依存を禁止する（ArchUnitで機械強制）。
 
 ## テスト規約
 - 新規のpublicな振る舞いには必ずテストを書く。テストなしのPRは出さない。
