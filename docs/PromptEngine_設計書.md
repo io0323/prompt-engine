@@ -355,7 +355,9 @@ Model Profile（APAPのモデルメタデータを参照して構成）: `{ maxC
 
 # 3. 基本設計
 
-## 3.1 パッケージ構成
+## 3.1 パッケージ構成（論理構成）
+
+本節はレイヤ・責務の論理構成を示す。物理的なリポジトリ配置（Gradleモジュール分割）は §3.2 を参照。
 
 ```
 promptengine
@@ -387,16 +389,33 @@ promptengine
     └── observability  … OTel Exporter / Audit Store
 ```
 
-## 3.2 ディレクトリ構成（リポジトリルート）
+## 3.2 ディレクトリ構成（リポジトリルート・物理構成）
+
+本節はリポジトリ上の物理配置を示す。§3.1の論理レイヤは、単一のソースツリーではなく
+Gradleマルチモジュール構成（`modules/*`）として物理的に分割する（詳細は
+`docs/PEP_ClaudeCode実装ガイド.md` §1.2、モジュール依存の制約はCLAUDE.md「モジュール
+依存の絶対規約」および `prompt-engine-bootstrap` の `ArchitectureTest` を参照）。
 
 ```
-/docs            設計書・ADR・DSL仕様
-/api             OpenAPI定義 / protobuf
-/src/promptengine/...     §3.1のパッケージ
-/plugins         標準Plugin（tokenizer, validator, evaluator, formatter）
+/docs                          設計書・ADR・DSL仕様
+/api                           OpenAPI定義 / protobuf
+/modules
+├── prompt-engine-domain          … §3.1 domain（promptengine.domain、他モジュールに依存しない）
+├── prompt-engine-application     … §3.1 application（promptengine.application、domainのみに依存）
+├── prompt-engine-core            … §3.1 engine（promptengine.engine。内部コンポーネント名は Prompt Core）
+├── prompt-engine-infrastructure  … §3.1 infrastructure（promptengine.infrastructure）
+├── prompt-engine-interface       … §3.1 interface（promptengine.interfaces。予約語回避のため複数形。docs/adr/0001参照）
+├── prompt-engine-plugin-api      … Plugin SPI（promptengine.pluginapi。外部公開・後方互換必須）
+├── prompt-engine-bootstrap       … Spring Boot Application / DI束ね（promptengine.bootstrap。具象クラスの結線はここのみ）
+└── prompt-engine-testkit         … テスト用Fixture / Fake実装（promptengine.testkit）
+/plugins                        標準Plugin実装（Gradleサブプロジェクト。パッケージ命名は docs/adr/0003 参照）
+├── tokenizer-approx              … 既定Tokenizer（promptengine.plugin.tokenizer.approx）
+├── validator-policy              … PII / 禁止語 Rule（promptengine.plugin.validator.policy）
+├── formatter-json                … JSON Structured Output（promptengine.plugin.formatter.json）
+└── execution-fake                … M1用 Fake APAP Adapter（promptengine.plugin.execution.fake）
 /sdk             クライアントSDK（多言語）
 /deploy          Kubernetesマニフェスト / Helm
-/tests           unit / integration / contract / prompt-regression
+/tests           integration / contract / prompt-regression（モジュール単体テストは各 modules/*/src/test）
 ```
 
 ## 3.3 主要クラス
