@@ -40,4 +40,20 @@ class VariableDefinitionTest {
             VariableDefinition(name = "", type = VariableType.STRING)
         }
     }
+
+    @Test
+    fun `sensitive=trueかつdefault指定ありだとIllegalArgumentExceptionを投げる`() {
+        shouldThrow<IllegalArgumentException> {
+            VariableDefinition(name = "apiKeyRef", type = VariableType.STRING, sensitive = true, default = "leaked")
+        }
+    }
+
+    @Test
+    fun `sensitive=trueでもdefaultがnullなら生成できる`() {
+        val definition =
+            VariableDefinition(name = "apiKeyRef", type = VariableType.STRING, sensitive = true, default = null)
+
+        definition.sensitive shouldBe true
+        definition.default shouldBe null
+    }
 }
