@@ -84,6 +84,8 @@ CREATE TABLE variable_defs (
     sensitive BOOLEAN NOT NULL
 );
 
+CREATE INDEX idx_variable_defs_version_id ON variable_defs (version_id);
+
 CREATE TABLE dependencies (
     dependency_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     from_version_id UUID NOT NULL REFERENCES prompt_versions (version_id),

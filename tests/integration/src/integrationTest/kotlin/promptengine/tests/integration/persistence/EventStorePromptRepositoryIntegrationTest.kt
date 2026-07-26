@@ -4,7 +4,6 @@ import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
 import io.kotest.assertions.throwables.shouldThrow
-import io.kotest.matchers.longs.shouldBeGreaterThan
 import io.kotest.matchers.shouldBe
 import org.flywaydb.core.Flyway
 import org.junit.jupiter.api.AfterAll
@@ -18,6 +17,7 @@ import org.springframework.transaction.support.TransactionTemplate
 import org.testcontainers.containers.PostgreSQLContainer
 import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
+import promptengine.domain.context.ContextRequirement
 import promptengine.domain.event.EventContext
 import promptengine.domain.prompt.LifecycleState
 import promptengine.domain.prompt.NewPromptVersion
@@ -25,6 +25,8 @@ import promptengine.domain.prompt.Prompt
 import promptengine.domain.prompt.PromptContent
 import promptengine.domain.prompt.PromptKey
 import promptengine.domain.shared.SemVer
+import promptengine.domain.variable.VariableDefinition
+import promptengine.domain.variable.VariableType
 import promptengine.infrastructure.persistence.EventStorePromptRepository
 import promptengine.infrastructure.persistence.VersionConflictException
 import java.time.Instant
@@ -81,18 +83,41 @@ class EventStorePromptRepositoryIntegrationTest {
         val key = uniqueKey()
         val v1 = SemVer(0, 1, 0)
         val v2 = SemVer(0, 2, 0)
+        val variables =
+            listOf(
+                VariableDefinition(
+                    name = "question",
+                    type = VariableType.STRING,
+                    required = true,
+                    default = "N/A",
+                    constraints = listOf("maxLength:200"),
+                    sensitive = false,
+                ),
+                VariableDefinition(
+                    name = "apiKey",
+                    type = VariableType.STRING,
+                    required = false,
+                    default = "secret-default",
+                    constraints = emptyList(),
+                    sensitive = true,
+                ),
+            )
+        val contextRequirement =
+            ContextRequirement(scope = "user", required = listOf("userId"), optional = listOf("locale"))
 
-        // Draft
+        // Draft（variables/contextRequirementのround-tripも合わせて検証する）
         val (created, createdEvent) =
             Prompt.create(
                 key,
-                NewPromptVersion(v1, PromptContent("Answer: {{question}}")),
+                NewPromptVersion(v1, PromptContent("Answer: {{question}}"), variables, contextRequirement),
                 context,
             )
         repository.save(created, listOf(createdEvent))
         var reloaded = repository.findByKey(key)!!
         reloaded.versions.single().state shouldBe LifecycleState.Draft
         reloaded.versions.single().content shouldBe PromptContent("Answer: {{question}}")
+        reloaded.versions.single().variables shouldBe variables
+        reloaded.versions.single().contextRequirement shouldBe contextRequirement
 
         // InReview
         repository.save(reloaded.submitForReview(v1, validationPassed = true))
@@ -221,15 +246,19 @@ class EventStorePromptRepositoryIntegrationTest {
             repository.findByKey(key)!!.newVersion(NewPromptVersion(SemVer(0, 3, 0), PromptContent("body v3")), context)
         repository.save(withV3, listOf(v3Event))
 
+        // snapshotThreshold=2、イベントは3件（sequence 1,2,3）。しきい値判定は
+        // 「直近スナップショット以降のsequenceがthreshold以上進んだら保存」なので、
+        // sequence=2の時点で1件だけ保存され、sequence=3では(3-2=1<2)保存されない。
+        // count>0のような弱い検証だと、しきい値判定が壊れて毎回保存されるようになっても
+        // 検出できない。
         val promptId = findPromptId(key)
-        val snapshotCount =
-            jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM prompt_snapshots WHERE aggregate_id = :promptId",
+        val snapshotSequences =
+            jdbcTemplate.query(
+                "SELECT sequence FROM prompt_snapshots WHERE aggregate_id = :promptId ORDER BY sequence",
                 MapSqlParameterSource("promptId", promptId),
-                Long::class.java,
-            )!!
+            ) { rs, _ -> rs.getLong("sequence") }
 
-        snapshotCount shouldBeGreaterThan 0L
+        snapshotSequences shouldBe listOf(2L)
     }
 
     private fun findPromptId(key: PromptKey): UUID =

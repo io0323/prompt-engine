@@ -38,8 +38,11 @@ flyway-core = { module = "org.flywaydb:flyway-core", version.ref = "flyway" }
 flyway-postgresql = { module = "org.flywaydb:flyway-database-postgresql", version.ref = "flyway" }
 
 # postgresql / jackson-module-kotlin はバージョン未指定。infrastructure配下で
-# io.spring.dependency-management により spring-boot-dependencies BOMをimportし、
-# そのBOM管理下のバージョンで解決する（spring-boot-starter-* と同じ方針）。
+# Gradleネイティブの platform("org.springframework.boot:spring-boot-dependencies:...")
+# によりspring-boot-dependencies BOMをimportし、そのBOM管理下のバージョンで解決する
+# （spring-boot-starter-* と同じ方針）。io.spring.dependency-managementは、detekt等の
+# 無関係なConfigurationまでBOM制約下に置いてしまうため使わない（EventStorePromptRepository
+# 実装時のコミット参照）。
 postgresql = { module = "org.postgresql:postgresql" }
 jackson-module-kotlin = { module = "com.fasterxml.jackson.module:jackson-module-kotlin" }
 

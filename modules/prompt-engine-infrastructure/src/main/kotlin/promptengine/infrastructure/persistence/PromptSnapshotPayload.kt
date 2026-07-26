@@ -1,13 +1,14 @@
 package promptengine.infrastructure.persistence
 
-import promptengine.domain.context.ContextRequirement
 import promptengine.domain.prompt.Prompt
+import promptengine.domain.variable.VariableDefinition
 
 /**
  * `prompt_snapshots.state`（JSONB）に書き込むEvent Storeスナップショットの中身。
- * `Prompt`/`PromptVersion` を直接Jackson直列化せず、infrastructure専用のプレーンな
- * DTOに写す。監査・障害復旧用の代替復元経路であり通常のfindByKeyでは使わない
- * （ADR-0006）ため、逆変換（JSON→domain）は本フェーズでは実装しない。
+ * `Prompt`/`PromptVersion`（`ContextRequirement`等のVOを含む）を直接Jackson直列化せず、
+ * infrastructure専用のプレーンなDTOに写す。これにより、domain型のフィールド変更が
+ * スナップショットJSONスキーマを直接壊すことを防ぐ。監査・障害復旧用の代替復元経路であり
+ * 通常のfindByKeyでは使わない（ADR-0006）ため、逆変換（JSON→domain）は本フェーズでは実装しない。
  */
 internal data class PromptSnapshotPayload(
     val promptKey: String,
@@ -17,10 +18,21 @@ internal data class PromptSnapshotPayload(
         val semVer: String,
         val content: String,
         val variables: List<VariablePayload>,
-        val contextRequirement: ContextRequirement?,
+        val contextRequirement: ContextRequirementPayload?,
         val state: String,
     )
 
+    data class ContextRequirementPayload(
+        val scope: String,
+        val required: List<String>,
+        val optional: List<String>,
+    )
+
+    /**
+     * `sensitive=true` の変数は `default` をマスクする（CLAUDE.md「Secret / sensitive=true の
+     * 変数値は絶対に出力しない」）。スナップショットはDBに永続化される監査・復旧用データであり、
+     * 平文の秘匿値をJSONBに残さない。
+     */
     data class VariablePayload(
         val name: String,
         val type: String,
@@ -31,6 +43,8 @@ internal data class PromptSnapshotPayload(
     )
 
     companion object {
+        private const val MASKED_VALUE = "***"
+
         fun from(prompt: Prompt): PromptSnapshotPayload =
             PromptSnapshotPayload(
                 promptKey = prompt.key.value,
@@ -39,21 +53,24 @@ internal data class PromptSnapshotPayload(
                         VersionPayload(
                             semVer = version.semVer.toString(),
                             content = version.content.source,
-                            variables =
-                                version.variables.map { variable ->
-                                    VariablePayload(
-                                        name = variable.name,
-                                        type = variable.type.name,
-                                        required = variable.required,
-                                        default = variable.default,
-                                        constraints = variable.constraints,
-                                        sensitive = variable.sensitive,
-                                    )
+                            variables = version.variables.map { it.toPayload() },
+                            contextRequirement =
+                                version.contextRequirement?.let {
+                                    ContextRequirementPayload(it.scope, it.required, it.optional)
                                 },
-                            contextRequirement = version.contextRequirement,
                             state = version.state.toDbValue(),
                         )
                     },
+            )
+
+        private fun VariableDefinition.toPayload() =
+            VariablePayload(
+                name = name,
+                type = type.name,
+                required = required,
+                default = if (sensitive) MASKED_VALUE else default,
+                constraints = constraints,
+                sensitive = sensitive,
             )
     }
 }

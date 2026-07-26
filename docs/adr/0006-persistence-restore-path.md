@@ -100,7 +100,7 @@ Infrastructure層のEvent Store最適化用テーブルであり、上記の `Pr
 とは無関係。両者を "Snapshot" という同一語で呼ぶと混同するため、Event Store側は
 そのまま「スナップショット」、Domain側は「Memento」と呼び分ける）。
 
-```
+```plantuml
 entity prompt_snapshots {
   * snapshot_id : UUID <<PK>>
   --
@@ -144,7 +144,7 @@ Broker配信の実配線にはKafka互換クライアント設定・配信失敗
 レビュー可能な粒度を保てるため。`outbox` テーブルは
 `dispatched_at`（NULL＝未配信）を持たせ、配信処理を後から追加できる形にする。
 
-```
+```plantuml
 entity outbox {
   * outbox_id : UUID <<PK>>
   --

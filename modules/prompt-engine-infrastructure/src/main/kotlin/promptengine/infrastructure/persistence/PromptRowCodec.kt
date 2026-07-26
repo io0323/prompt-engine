@@ -7,7 +7,15 @@ import promptengine.domain.shared.SemVer
  * DB行の文字列表現とdomain型（[LifecycleState] / [SemVer]）の相互変換。
  * `internal`: `prompt-engine-infrastructure` モジュール内の永続化コードのみが使う。
  */
-internal fun LifecycleState.toDbValue(): String = this::class.simpleName ?: error("LifecycleState without simpleName")
+internal fun LifecycleState.toDbValue(): String =
+    when (this) {
+        LifecycleState.Draft -> "Draft"
+        LifecycleState.InReview -> "InReview"
+        LifecycleState.Approved -> "Approved"
+        LifecycleState.Published -> "Published"
+        LifecycleState.Deprecated -> "Deprecated"
+        LifecycleState.Archived -> "Archived"
+    }
 
 internal fun lifecycleStateFromDbValue(value: String): LifecycleState =
     when (value) {

@@ -4,7 +4,6 @@ import com.fasterxml.jackson.core.type.TypeReference
 import com.fasterxml.jackson.databind.ObjectMapper
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
-import org.springframework.stereotype.Repository
 import org.springframework.transaction.support.TransactionTemplate
 import promptengine.domain.context.ContextRequirement
 import promptengine.domain.prompt.LifecycleState
@@ -42,9 +41,12 @@ import java.util.UUID
  * 責務がまとまっているため、detektの関数数閾値をわずかに超える。テーブル単位で
  * クラスを分割すると1トランザクション内の処理の見通しがかえって悪くなるため、
  * 恣意的な分割は行わない。
+ *
+ * `@Repository`等のステレオタイプアノテーションは付与しない。具象クラスのDI結線は
+ * `prompt-engine-bootstrap` のConfigurationクラスの `@Bean` 定義でのみ行う
+ * （CLAUDE.md「具象クラスのDI結線は prompt-engine-bootstrap のConfigurationクラスでのみ行う」）。
  */
 @Suppress("TooManyFunctions")
-@Repository
 class EventStorePromptRepository(
     private val jdbcTemplate: NamedParameterJdbcTemplate,
     private val transactionTemplate: TransactionTemplate,
@@ -56,21 +58,42 @@ class EventStorePromptRepository(
         transactionTemplate.execute {
             val promptRow = findPromptRow(key) ?: return@execute null
 
-            val versionMementos =
+            data class VersionRow(
+                val versionId: UUID,
+                val semVer: String,
+                val content: String,
+                val status: String,
+                val contextRequirement: String?,
+            )
+
+            val versionRows =
                 jdbcTemplate.query(
                     """
                     SELECT version_id, version, content, status, context_requirement
-                    FROM prompt_versions WHERE prompt_id = :promptId ORDER BY created_at
+                    FROM prompt_versions WHERE prompt_id = :promptId ORDER BY created_at, version_id
                     """.trimIndent(),
                     MapSqlParameterSource("promptId", promptRow.promptId),
                 ) { rs, _ ->
-                    val versionId = rs.getObject("version_id", UUID::class.java)
+                    VersionRow(
+                        versionId = rs.getObject("version_id", UUID::class.java),
+                        semVer = rs.getString("version"),
+                        content = rs.getString("content"),
+                        status = rs.getString("status"),
+                        contextRequirement = rs.getString("context_requirement"),
+                    )
+                }
+
+            // Version数ぶんのN+1クエリを避けるため、variable_defsは全Versionまとめて1回で取得する。
+            val variablesByVersionId = loadVariablesByVersionIds(versionRows.map { it.versionId })
+
+            val versionMementos =
+                versionRows.map { row ->
                     PromptVersionMemento(
-                        semVer = parseSemVer(rs.getString("version")),
-                        content = PromptContent(rs.getString("content")),
-                        variables = loadVariables(versionId),
-                        contextRequirement = rs.getString("context_requirement")?.let { readContextRequirement(it) },
-                        state = lifecycleStateFromDbValue(rs.getString("status")),
+                        semVer = parseSemVer(row.semVer),
+                        content = PromptContent(row.content),
+                        variables = variablesByVersionId[row.versionId] ?: emptyList(),
+                        contextRequirement = row.contextRequirement?.let { readContextRequirement(it) },
+                        state = lifecycleStateFromDbValue(row.status),
                     )
                 }
 
@@ -86,7 +109,7 @@ class EventStorePromptRepository(
             val actor = events.firstOrNull()?.actor ?: DEFAULT_ACTOR
             val occurredAt = events.firstOrNull()?.occurredAt ?: Instant.now()
 
-            val promptId = upsertPrompt(prompt, actor, occurredAt)
+            val (promptId, newRowVersion) = upsertPrompt(prompt, actor, occurredAt)
             prompt.versions.forEach { version -> upsertVersion(promptId, version, actor, occurredAt) }
 
             if (events.isNotEmpty()) {
@@ -94,7 +117,7 @@ class EventStorePromptRepository(
                 maybeSnapshot(promptId, prompt)
             }
 
-            withRowVersion(prompt, prompt.rowVersion + 1)
+            withRowVersion(prompt, newRowVersion)
         } ?: error("save transaction returned null")
 
     /**
@@ -127,26 +150,28 @@ class EventStorePromptRepository(
         ) { rs, _ -> PromptRow(rs.getObject("prompt_id", UUID::class.java), rs.getLong("row_version")) }
             .firstOrNull()
 
-    private fun loadVariables(versionId: UUID): List<VariableDefinition> =
+    /** Version数ぶんのN+1クエリを避けるため、複数versionIdをまとめて1回のIN句で取得する。 */
+    private fun loadVariablesByVersionIds(versionIds: List<UUID>): Map<UUID, List<VariableDefinition>> =
         jdbcTemplate.query(
             """
-            SELECT name, type, required, default_value, constraints, sensitive
-            FROM variable_defs WHERE version_id = :versionId
+            SELECT version_id, name, type, required, default_value, constraints, sensitive
+            FROM variable_defs WHERE version_id IN (:versionIds)
             """.trimIndent(),
-            MapSqlParameterSource("versionId", versionId),
+            MapSqlParameterSource("versionIds", versionIds),
         ) { rs, _ ->
-            VariableDefinition(
-                name = rs.getString("name"),
-                type = VariableType.valueOf(rs.getString("type")),
-                required = rs.getBoolean("required"),
-                default = rs.getString("default_value")?.let { objectMapper.readValue(it, Any::class.java) },
-                constraints =
-                    rs.getString("constraints")?.let {
-                        objectMapper.readValue(it, object : TypeReference<List<String>>() {})
-                    } ?: emptyList(),
-                sensitive = rs.getBoolean("sensitive"),
-            )
-        }
+            rs.getObject("version_id", UUID::class.java) to
+                VariableDefinition(
+                    name = rs.getString("name"),
+                    type = VariableType.valueOf(rs.getString("type")),
+                    required = rs.getBoolean("required"),
+                    default = rs.getString("default_value")?.let { objectMapper.readValue(it, Any::class.java) },
+                    constraints =
+                        rs.getString("constraints")?.let {
+                            objectMapper.readValue(it, object : TypeReference<List<String>>() {})
+                        } ?: emptyList(),
+                    sensitive = rs.getBoolean("sensitive"),
+                )
+        }.groupBy({ it.first }, { it.second })
 
     private fun readContextRequirement(json: String): ContextRequirement =
         objectMapper.readValue(json, ContextRequirement::class.java)
@@ -163,11 +188,18 @@ class EventStorePromptRepository(
             else -> prompt.versions.last().state.toDbValue()
         }
 
+    /**
+     * `prompts` 行をupsertし、`(prompt_id, 保存後のrow_version)` を返す。
+     * INSERT時は `row_version=0` で作成するため `0` を、UPDATE時はDBが実際に
+     * インクリメントした値（`prompt.rowVersion + 1`）を返す ── `save` 側で
+     * 無条件に `prompt.rowVersion + 1` を仮定すると、INSERT直後は実際のDB値（`0`）と
+     * 食い違い、次のsave呼び出しが誤ってVERSION_CONFLICTになる。
+     */
     private fun upsertPrompt(
         prompt: Prompt,
         actor: String,
         occurredAt: Instant,
-    ): UUID {
+    ): Pair<UUID, Long> {
         val existing = findPromptRow(prompt.key)
         val state = projectedState(prompt)
 
@@ -187,7 +219,7 @@ class EventStorePromptRepository(
                     .addValue("createdAt", Timestamp.from(occurredAt))
                     .addValue("updatedAt", Timestamp.from(occurredAt)),
             )
-            return promptId
+            return promptId to INITIAL_ROW_VERSION
         }
 
         if (existing.rowVersion != prompt.rowVersion) {
@@ -211,7 +243,7 @@ class EventStorePromptRepository(
             val currentRowVersion = findPromptRow(prompt.key)?.rowVersion ?: existing.rowVersion
             throw VersionConflictException(prompt.key, prompt.rowVersion, currentRowVersion)
         }
-        return existing.promptId
+        return existing.promptId to (prompt.rowVersion + 1)
     }
 
     private fun upsertVersion(
@@ -296,7 +328,9 @@ class EventStorePromptRepository(
     ) {
         val baseSequence = currentMaxSequence(promptId)
         events.forEachIndexed { index, event ->
-            val eventId = UUID.randomUUID()
+            // event.eventIdはPrompt側で発行済み（例: Prompt.publish内のUUID.randomUUID()）。
+            // ここで新規採番すると、リトライ時に同一イベントが別IDで重複登録されうる。
+            val eventId = event.eventId
             jdbcTemplate.update(
                 """
                 INSERT INTO domain_events
@@ -358,5 +392,6 @@ class EventStorePromptRepository(
     private companion object {
         const val DEFAULT_ACTOR = "system"
         const val DEFAULT_SNAPSHOT_THRESHOLD = 50L
+        const val INITIAL_ROW_VERSION = 0L
     }
 }
