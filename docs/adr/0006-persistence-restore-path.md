@@ -79,6 +79,19 @@ Kotlinの `internal` 可視性はGradleモジュール単位（コンパイル�
   （`prompts`/`prompt_versions`テーブル）から `PromptMemento` を組み立てて
   `Prompt.restore` に渡す。
 
+### 補足: `copy()` の可視性
+
+Kotlin 2.0.20時点（本リポジトリは2.0.21採用）では、`data class` のコンストラクタを
+`internal`/`private` にしても、コンパイラが自動生成する `copy()` はデフォルトで
+**public のまま**という既知の非対称仕様がある（`copy(state = LifecycleState
+.Published)` のように呼べば、internal化したコンストラクタを素通りしてPublished状態
+の `PromptVersion` を作れてしまう）。この挙動をopt-inで閉じる
+`@ConsistentCopyVisibility` アノテーション（`kotlin.ConsistentCopyVisibility`、
+stdlib）が2.0.20で追加されており、これを `PromptVersion`/`Prompt` の両方に付与し、
+`copy()` の可視性をコンストラクタと一致させる（`internal` になる）。
+将来のKotlinバージョンでこれがデフォルト挙動になった際は本アノテーションは
+冗長になるが、削除する積極的理由がない限りそのまま残してよい。
+
 ### §12 ER図の拡張: `prompt_snapshots` テーブル追加
 
 §6.3 手順4「sequence が N 件を超えたらスナップショット保存」に対応するテーブルが
@@ -112,7 +125,9 @@ prompt_snapshots }o--|| prompts : aggregate_id
 - 設計書§2.14 に、Command側の復元がRDB投影経由であり、`prompt_snapshots` +
   `domain_events` によるイベントリプレイは監査・障害復旧用の代替経路である旨を注記
 - `prompt-engine-domain`:
-  - `PromptVersion` / `Prompt` のプライマリコンストラクタを `internal` に変更
+  - `PromptVersion` / `Prompt` のプライマリコンストラクタを `internal` に変更し、
+    両クラスに `@ConsistentCopyVisibility` を付与して `copy()` の可視性を
+    コンストラクタに一致させる
   - `PersistenceApi`（`@RequiresOptIn` マーカー）を追加
   - `PromptVersionMemento` / `PromptMemento` を追加
   - `Prompt.Companion.restore(memento: PromptMemento): Prompt` を追加
