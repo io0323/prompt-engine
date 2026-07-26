@@ -152,6 +152,31 @@ entity outbox {
 outbox }o--|| domain_events : event_id
 ```
 
+### `PromptRepository.save` にイベント引数を追加
+
+§3.4のInterface定義（疑似コード）は `save(prompt: Prompt): void // Aggregate単位・
+イベント追記` としており、saveが状態保存とイベント追記の両方を担う設計意図は
+読み取れるが、疑似コード（「言語非依存」と明記）はイベントをどう渡すかまでは
+規定していない。P1時点の実装（ADR-0004/0005）では `Prompt` の各操作メソッド
+（`publish`/`rollback`等）が発行イベントを `Pair<Prompt, List<PromptDomainEvent>>`
+として返し、`Prompt` 自身は発行済みイベントを保持しない。そのため
+`PromptRepository.save(prompt: Prompt): Prompt` のままでは、呼び出し側
+（Application層、未実装）が「状態保存」と「イベント追記」を1トランザクションで
+行う手段がない。
+
+`save` のシグネチャを `save(prompt: Prompt, events: List<PromptDomainEvent> =
+emptyList()): Prompt` に変更する。呼び出し側は `Prompt.publish(...)` 等が返す
+`Pair` をそのまま展開して渡す想定。これはP2で必要になった、
+復元経路以外のdomainインターフェース変更のため、実装前にユーザーに確認を取った
+（本ADR記載の通り）。
+
+### 実装クラス名: `EventStorePromptRepository`
+
+設計書§7（コンポーネント図）が `PromptRepository <|.. EventStorePromptRepository`
+と明記しているため、`prompt-engine-infrastructure` 側の実装クラス名は
+`promptengine.infrastructure.persistence.EventStorePromptRepository` とする
+（独自に`JdbcPromptRepository`等の別名を付けない）。
+
 ## 影響範囲
 
 - 設計書§12 のER図に `prompt_snapshots` / `outbox` エンティティと関連、
@@ -167,6 +192,8 @@ outbox }o--|| domain_events : event_id
   - `Prompt.Companion.restore(memento: PromptMemento): Prompt` を追加
 - `prompt-engine-bootstrap` の `ArchitectureTest` に、`PersistenceApi` への依存が
   `promptengine.infrastructure.persistence..` に限定されることを検証するルールを追加
+- `PromptRepository.save` のシグネチャに `events: List<PromptDomainEvent> =
+  emptyList()` を追加（復元経路以外の追加domain変更、ユーザー確認済み）
 
 ## 参照
 

@@ -351,6 +351,8 @@ Model Profile（APAPのモデルメタデータを参照して構成）: `{ maxC
 - Outbox: `domain_events` への追記と `outbox` テーブルへの追記はAggregate保存と
   同一トランザクションで行う。`outbox` からKafka互換Brokerへの実際の配信（ポーリング/
   プロデューサ）はP2の対象外とし、別フェーズで実装する（ADR-0006）。
+- `PromptRepository.save` は状態保存とイベント追記を同一トランザクションで行うため、
+  `events: List<PromptDomainEvent>` を引数に取る（ADR-0006）。
 
 ## 2.15 Monitoring仕様
 
