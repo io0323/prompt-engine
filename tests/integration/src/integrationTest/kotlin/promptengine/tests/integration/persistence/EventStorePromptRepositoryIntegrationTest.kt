@@ -93,11 +93,13 @@ class EventStorePromptRepositoryIntegrationTest {
                     constraints = listOf("maxLength:200"),
                     sensitive = false,
                 ),
+                // sensitive=trueの変数はリテラルのdefaultを持てない（ADR-0007、
+                // VariableDefinitionの不変条件）。defaultなしで往復することを検証する。
                 VariableDefinition(
-                    name = "apiKey",
+                    name = "apiKeyRef",
                     type = VariableType.STRING,
-                    required = false,
-                    default = "secret-default",
+                    required = true,
+                    default = null,
                     constraints = emptyList(),
                     sensitive = true,
                 ),

@@ -29,9 +29,9 @@ internal data class PromptSnapshotPayload(
     )
 
     /**
-     * `sensitive=true` の変数は `default` をマスクする（CLAUDE.md「Secret / sensitive=true の
-     * 変数値は絶対に出力しない」）。スナップショットはDBに永続化される監査・復旧用データであり、
-     * 平文の秘匿値をJSONBに残さない。
+     * `sensitive=true` の変数は `default` を持てない（`VariableDefinition` の不変条件、
+     * ADR-0007）ため、ここで平文の秘匿値をマスクする必要はない ── 生成時点でそもそも
+     * `default` が `null` であることが保証されている。
      */
     data class VariablePayload(
         val name: String,
@@ -43,8 +43,6 @@ internal data class PromptSnapshotPayload(
     )
 
     companion object {
-        private const val MASKED_VALUE = "***"
-
         fun from(prompt: Prompt): PromptSnapshotPayload =
             PromptSnapshotPayload(
                 promptKey = prompt.key.value,
@@ -68,7 +66,7 @@ internal data class PromptSnapshotPayload(
                 name = name,
                 type = type.name,
                 required = required,
-                default = if (sensitive) MASKED_VALUE else default,
+                default = default,
                 constraints = constraints,
                 sensitive = sensitive,
             )
