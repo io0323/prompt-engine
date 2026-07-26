@@ -143,6 +143,26 @@ class ArchitectureTest {
             .check(importedClasses)
     }
 
+    /**
+     * ADR-0006: `Prompt.restore` は `@PersistenceApi`（`@RequiresOptIn`）でゲートされた
+     * 永続化復元専用API。`domain.prompt`（アノテーション定義・[Prompt.restore]自体の宣言）と
+     * `infrastructure.persistence`（唯一の許可された呼び出し元）以外のクラスが
+     * `@OptIn(PersistenceApi::class)` 等で `PersistenceApi` に依存していないことを検証する。
+     * `@RequiresOptIn` 自体もコンパイル時に強制するため、本ルールは二重の安全網。
+     */
+    @Test
+    fun `PersistenceApiへの依存は domain prompt と infrastructure persistence に限定される`() {
+        noClasses()
+            .that().resideOutsideOfPackages(
+                "promptengine.domain.prompt..",
+                "promptengine.infrastructure.persistence..",
+            )
+            .should().dependOnClassesThat()
+            .haveFullyQualifiedName("promptengine.domain.prompt.PersistenceApi")
+            .allowEmptyShould(true)
+            .check(importedClasses)
+    }
+
     @Test
     fun `具象クラスのDI結線は prompt-engine-bootstrap のConfigurationクラスでのみ行う`() {
         classes()

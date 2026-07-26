@@ -18,9 +18,16 @@ import java.util.UUID
  * §2.5 の遷移8件 + create/newVersionをそれぞれ独立したメソッドとして持つため
  * メソッド数がdetektの既定閾値をわずかに超えるが、設計書の遷移表と1:1対応させる
  * ことを優先し、恣意的な分割は行わない。
+ *
+ * プライマリコンストラクタは `internal`（[ConsistentCopyVisibility] により `copy()` も
+ * 同様に `internal`）。任意の `versions`（＝任意状態のPromptVersion列）を外部から
+ * 直接指定して構築できてしまうと、Stateパターンの遷移を経ずに不正な状態遷移列を
+ * 経由したAggregateが作れてしまうため。新規作成は [create]、
+ * 永続化層からの復元は [restore] を使うこと（ADR-0006）。
  */
 @Suppress("TooManyFunctions")
-data class Prompt(
+@ConsistentCopyVisibility
+data class Prompt internal constructor(
     val key: PromptKey,
     val versions: List<PromptVersion>,
 ) {
@@ -65,6 +72,25 @@ data class Prompt(
                     payload = PromptCreated.Payload(key.value, version.semVer),
                 )
             return prompt to event
+        }
+
+        /**
+         * 永続化層からの復元専用（ADR-0006）。[PromptMemento] はDBの行が保持する
+         * `state` をそのまま受け取るため、遷移の正当性（どの順序でその状態に至ったか）は
+         * 検証しない ── DBの行自体が過去の正当な遷移列の結果であることを信頼する。
+         * 「Publishedは同時に1Versionまで」という不変条件のみ [init] が引き続き検証する。
+         *
+         * `prompt-engine-infrastructure` の `promptengine.infrastructure.persistence`
+         * パッケージ以外からの呼び出しは、`@PersistenceApi` の `@RequiresOptIn` と
+         * ArchUnitルールの二重で防ぐ。
+         */
+        @PersistenceApi
+        fun restore(memento: PromptMemento): Prompt {
+            val versions =
+                memento.versions.map {
+                    PromptVersion(it.semVer, it.content, it.variables, it.contextRequirement, it.state)
+                }
+            return Prompt(memento.key, versions)
         }
     }
 
