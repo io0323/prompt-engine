@@ -1549,6 +1549,10 @@ variables:
     default: [ { q: "...", a: "..." } ]
 ```
 
+`source: secret`（`sensitive: true`）の変数はSecret Managerの参照名のみを保持し、
+リテラルの`default`を持てない（ADR-0007）。実値はRender直前にSecret Managerから
+解決されるものであり、平文の既定値をDSL・DBのいずれにも保持しない。
+
 ## 15.3 Composition / Inheritance仕様
 
 - `extends: <templateKey>[@versionRange]`: 単一継承のみ。親の `{{#block}}` を子が同名blockで上書き。上書きしないblockは親を継承。`{{ super() }}` で親block内容を子block内に挿入可。
