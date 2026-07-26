@@ -175,21 +175,28 @@ CREATE TABLE audit_logs (
     occurred_at TIMESTAMPTZ NOT NULL
 );
 
--- domain_events: Event Store（追記専用）。aggregate_id は Aggregate Root の
--- 永続化層サロゲートキー（例: prompts.prompt_id）。Domain層の
--- DomainEvent.aggregateId（PromptKeyの文字列値等、ビジネスキー）とは別物であり、
--- 永続化層でビジネスキー→サロゲートキーの解決を行う（ADR-0006）。
+-- domain_events: Event Store（追記専用）。全Bounded Context共通のDomain Event封筒
+-- （promptengine.domain.event.DomainEvent、8項目）に対応する列を持つ。
+-- aggregate_id は Aggregate Root の永続化層サロゲートキー（例: prompts.prompt_id）。
+-- Domain層の DomainEvent.aggregateId（PromptKeyの文字列値等、ビジネスキー）とは
+-- 別物であり、永続化層でビジネスキー→サロゲートキーの解決を行う（ADR-0006）。
+-- aggregate_type/aggregate_idはPrompt以外のAggregate（ReviewCase、Experiment等）も
+-- 指すため、audit_logsと同様に特定テーブルへのFKは設定しない。
 CREATE TABLE domain_events (
     event_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    aggregate_type VARCHAR NOT NULL,
     aggregate_id UUID NOT NULL,
     sequence BIGINT NOT NULL,
     event_type VARCHAR NOT NULL,
+    actor VARCHAR NOT NULL,
+    trace_id VARCHAR NOT NULL,
     payload JSON NOT NULL,
     occurred_at TIMESTAMPTZ NOT NULL,
     UNIQUE (aggregate_id, sequence)
 );
 
 CREATE INDEX idx_domain_events_occurred_at ON domain_events (occurred_at);
+CREATE INDEX idx_domain_events_trace_id ON domain_events (trace_id);
 
 -- outbox: domain_eventsへの追記と同一トランザクションで書く。Broker中継の
 -- 実配線（ポーリング/プロデューサ）はP2の対象外（ADR-0006）。

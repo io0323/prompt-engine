@@ -299,14 +299,19 @@ class EventStorePromptRepository(
             val eventId = UUID.randomUUID()
             jdbcTemplate.update(
                 """
-                INSERT INTO domain_events (event_id, aggregate_id, sequence, event_type, payload, occurred_at)
-                VALUES (:eventId, :aggregateId, :sequence, :eventType, :payload::json, :occurredAt)
+                INSERT INTO domain_events
+                    (event_id, aggregate_type, aggregate_id, sequence, event_type, actor, trace_id, payload, occurred_at)
+                VALUES
+                    (:eventId, :aggregateType, :aggregateId, :sequence, :eventType, :actor, :traceId, :payload::json, :occurredAt)
                 """.trimIndent(),
                 MapSqlParameterSource()
                     .addValue("eventId", eventId)
+                    .addValue("aggregateType", event.aggregateType)
                     .addValue("aggregateId", promptId)
                     .addValue("sequence", baseSequence + index + 1)
                     .addValue("eventType", event.eventType)
+                    .addValue("actor", event.actor)
+                    .addValue("traceId", event.traceId)
                     .addValue("payload", objectMapper.writeValueAsString(event.payload))
                     .addValue("occurredAt", Timestamp.from(event.occurredAt)),
             )

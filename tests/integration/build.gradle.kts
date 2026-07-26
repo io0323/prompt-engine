@@ -1,3 +1,7 @@
+import org.gradle.api.tasks.testing.TestDescriptor
+import org.gradle.api.tasks.testing.TestListener
+import org.gradle.api.tasks.testing.TestResult
+
 plugins {
     kotlin("jvm")
     id("org.jlleitschuh.gradle.ktlint")
@@ -39,6 +43,36 @@ val integrationTest =
         testClassesDirs = sourceSets["integrationTest"].output.classesDirs
         classpath = sourceSets["integrationTest"].runtimeClasspath
         useJUnitPlatform()
+
+        // SourceSet配線やCIのタスク検出が壊れて対象0件のまま "BUILD SUCCESSFUL" になる
+        // (silent green)を防ぐガード。ArchitectureTestの「plugins配下にサブプロジェクトが
+        // 存在するなら...」ガードと同じ発想（CLAUDE.md「実装の進め方」参照）。
+        var executedTestCount = 0L
+        addTestListener(
+            object : TestListener {
+                override fun beforeSuite(suite: TestDescriptor) = Unit
+
+                override fun afterSuite(
+                    suite: TestDescriptor,
+                    result: TestResult,
+                ) {
+                    if (suite.parent == null) executedTestCount = result.testCount
+                }
+
+                override fun beforeTest(testDescriptor: TestDescriptor) = Unit
+
+                override fun afterTest(
+                    testDescriptor: TestDescriptor,
+                    result: TestResult,
+                ) = Unit
+            },
+        )
+        doLast {
+            check(executedTestCount > 0) {
+                "integrationTestの実行件数が0件でした。SourceSet配線が壊れているか、" +
+                    "テストが検出されていません（silent greenの防止のため失敗させています）。"
+            }
+        }
     }
 
 dependencies {

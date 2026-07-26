@@ -159,12 +159,35 @@ class EventStorePromptRepositoryIntegrationTest {
         val promptId = findPromptId(key)
         val rows =
             jdbcTemplate.query(
-                "SELECT sequence, event_type FROM domain_events WHERE aggregate_id = :promptId ORDER BY sequence",
+                """
+                SELECT sequence, event_type, aggregate_type, actor, trace_id
+                FROM domain_events WHERE aggregate_id = :promptId ORDER BY sequence
+                """.trimIndent(),
                 MapSqlParameterSource("promptId", promptId),
-            ) { rs, _ -> rs.getLong("sequence") to rs.getString("event_type") }
+            ) { rs, _ ->
+                EventRow(
+                    sequence = rs.getLong("sequence"),
+                    eventType = rs.getString("event_type"),
+                    aggregateType = rs.getString("aggregate_type"),
+                    actor = rs.getString("actor"),
+                    traceId = rs.getString("trace_id"),
+                )
+            }
 
-        rows shouldBe listOf(1L to "PromptCreated", 2L to "PromptVersionCreated")
+        rows shouldBe
+            listOf(
+                EventRow(1L, "PromptCreated", "Prompt", context.actor, context.traceId),
+                EventRow(2L, "PromptVersionCreated", "Prompt", context.actor, context.traceId),
+            )
     }
+
+    private data class EventRow(
+        val sequence: Long,
+        val eventType: String,
+        val aggregateType: String,
+        val actor: String,
+        val traceId: String,
+    )
 
     @Test
     fun `読んだ時点のrowVersionが古いままsaveすると楽観ロック衝突でVersionConflictExceptionを投げる`() {
