@@ -1293,7 +1293,8 @@ entity execution_logs {
 entity audit_logs {
   * audit_id : UUID <<PK>>
   --
-  * aggregate_type / aggregate_id
+  * aggregate_type : VARCHAR
+  * aggregate_id : UUID
   * action : VARCHAR
   * actor : VARCHAR
   * payload : JSON  ' Secretマスク済
@@ -1303,9 +1304,12 @@ entity audit_logs {
 entity domain_events {
   * event_id : UUID <<PK>>
   --
-  * aggregate_id : UUID
+  * aggregate_type : VARCHAR  ' DomainEvent封筒8項目のうちaggregateType（ADR-0006）
+  * aggregate_id : UUID       ' 永続化層サロゲートキー。複数Bounded Context共通のため特定テーブルへのFKは設定しない
   * sequence : BIGINT
   * event_type : VARCHAR
+  * actor : VARCHAR           ' DomainEvent封筒のactor（ADR-0006）
+  * trace_id : VARCHAR        ' DomainEvent封筒のtraceId（ADR-0006）
   * payload : JSON
   * occurred_at
   <<UQ aggregate_id+sequence>>
@@ -1314,7 +1318,7 @@ entity outbox {
   * outbox_id : UUID <<PK>>
   --
   * event_id : UUID <<FK>>
-  dispatched_at : TIMESTAMP  ' NULL = 未配信（ADR-0006、Broker中継の実配線は対象外）
+  dispatched_at : TIMESTAMPTZ  ' NULL = 未配信（ADR-0006、Broker中継の実配線は対象外）
   * created_at
 }
 entity prompt_snapshots {
@@ -1338,9 +1342,9 @@ prompts ||--o{ experiments
 experiments ||--|{ variants
 prompt_versions ||--o{ variants
 prompt_versions ||--o{ evaluation_records
+variants ||--o{ evaluation_records
 prompt_versions ||--o{ execution_logs
 prompt_aliases }o--|| prompt_versions
-domain_events }o--|| prompts : aggregate_id
 prompt_snapshots }o--|| prompts : aggregate_id
 outbox }o--|| domain_events : event_id
 @enduml

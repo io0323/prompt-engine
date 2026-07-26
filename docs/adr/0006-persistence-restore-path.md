@@ -110,9 +110,12 @@ entity prompt_snapshots {
   * created_at
   <<UQ aggregate_id+sequence>>
 }
-domain_events }o--|| prompts : aggregate_id
 prompt_snapshots }o--|| prompts : aggregate_id
 ```
+
+`prompt_snapshots.aggregate_id` はPromptに固有（`PromptMemento`のスナップショット）
+なので実FKを張るが、`domain_events.aggregate_id` は次項の通りFKを張らない
+（`prompts}o--||`の関連線は誤りだったため削除した）。
 
 `sequence` は「このスナップショットが `domain_events` の何番目までを反映しているか」
 を表す。復元時は「最新スナップショット + それ以降の `domain_events`」で理論上は
@@ -146,7 +149,7 @@ entity outbox {
   * outbox_id : UUID <<PK>>
   --
   * event_id : UUID <<FK -> domain_events.event_id>>
-  dispatched_at : TIMESTAMP  ' NULL = 未配信
+  dispatched_at : TIMESTAMPTZ  ' NULL = 未配信
   * created_at
 }
 outbox }o--|| domain_events : event_id
@@ -205,6 +208,46 @@ domainには追加しない）を投げ、成功時は `rowVersion` をインク
 判断が分かれる論点ではなく単純な漏れのため、`prompt_versions` に
 `context_requirement JSON`（NULL許容）を追加する。
 
+### マージ前レビュー: §12 ER図とV1__init.sqlの1対1対応を確認し、見つかった差分を修正
+
+実装完了後、`docs/PromptEngine_設計書.md` §12 のER図が実際に上記の変更を
+反映しているか、および `V1__init.sql` と1対1で対応しているかを行レベルで
+突き合わせて確認した。見つかった差分と対応:
+
+1. **`domain_events` がDomainEvent封筒8項目のうち3項目（`aggregateType` /
+   `actor` / `traceId`）を欠いていた。** `promptengine.domain.event.DomainEvent`
+   は8フィールド（`eventId, eventType, occurredAt, aggregateType, aggregateId,
+   actor, traceId, payload`）だが、`domain_events` テーブルは
+   `event_id, aggregate_id, sequence, event_type, payload, occurred_at` の
+   6列（P1以前からの既存ギャップ）しか持たず、`EventStorePromptRepository`
+   の実装も `actor`/`traceId`/`aggregateType` を書き込んでいなかった
+   （`payload` にもこれらは含まれない）。監査証跡としてWHO/どのリクエストで
+   発生したかが失われる実質的なバグのため、`aggregate_type` / `actor` /
+   `trace_id` 列を追加し、`EventStorePromptRepository.appendEvents` を
+   修正して書き込むようにした。`trace_id` にインデックスも追加する
+   （設計書§2.15「相関ID（traceId/promptKey/version）」）。
+2. **`domain_events }o--|| prompts : aggregate_id` の関連線が誤り。**
+   `domain_events` は全Bounded Context共通のEvent Storeであり、Prompt以外の
+   Aggregate（ReviewCase、Experiment等）のイベントも将来的に同じテーブルに
+   追記される想定（`audit_logs` が特定テーブルへのFKを持たないのと同じ理由）。
+   にもかかわらずV1__init.sqlでは`aggregate_id`にFK制約を付けておらず、
+   ER図の関連線とSQLの実装が矛盾していた。ER図から当該関連線を削除し、
+   SQL側の実装（FK無し）に合わせた。
+3. **`outbox.dispatched_at` の型がER図では`TIMESTAMP`、実装では`TIMESTAMPTZ`
+   だった。** Instant相当のUTC時刻を格納する列は全て`TIMESTAMPTZ`で統一する
+   実装方針だったが、ER図側の記載を直し忘れていた。ER図を`TIMESTAMPTZ`に修正。
+4. **`audit_logs.aggregate_id` の型がER図に明記されていなかった。**
+   `domain_events.aggregate_id`との一貫性のため`UUID`と明記した
+   （実装への影響なし、ドキュメントの明確化のみ）。
+5. **`variants ||--o{ evaluation_records` の関連線が欠落していた。**
+   `evaluation_records`エンティティ自体には`variant_id : UUID <<FK>>`が
+   マークされているが、関連線一覧に対応する行がなかった（P1以前からの
+   既存ギャップ、本ADRのスコープ外だが監査中に発見したため合わせて追加）。
+6. **`prompt_tags`の複合主キー。** V1__init.sqlは`PRIMARY KEY (prompt_id,
+   tag_id)`を設定しているが、ER図のPlantUML表記は両列を`<<FK>>`相当の`*`
+   マークのみで`<<PK>>`タグを付けていない。中間テーブルとして標準的な
+   構成であり実質的な矛盾ではないため、ER図・SQLとも変更しない。
+
 ## 影響範囲
 
 - 設計書§12 のER図に `prompt_snapshots` / `outbox` エンティティと関連、
@@ -225,6 +268,13 @@ domainには追加しない）を投げ、成功時は `rowVersion` をインク
 - `Prompt` に `rowVersion: Long = 0` を追加し、`PromptMemento` にも
   `rowVersion: Long` を追加（復元経路以外の追加domain変更、ユーザー確認済み）
 - 設計書§12 のER図に `prompt_versions.context_requirement` 列を追加
+- マージ前レビューで発見した差分を修正（設計書§12 更新済み・V1__init.sql更新済み）:
+  - `domain_events` に `aggregate_type` / `actor` / `trace_id` 列を追加し、
+    `EventStorePromptRepository.appendEvents` を修正して書き込むようにした
+  - `domain_events }o--|| prompts` の誤った関連線をER図から削除
+  - `outbox.dispatched_at` のER図記載を `TIMESTAMP` → `TIMESTAMPTZ` に修正
+  - `audit_logs.aggregate_id` の型（`UUID`）をER図に明記
+  - `variants ||--o{ evaluation_records` の欠落していた関連線をER図に追加
 
 ## 参照
 
