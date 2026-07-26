@@ -177,6 +177,34 @@ emptyList()): Prompt` に変更する。呼び出し側は `Prompt.publish(...)`
 `promptengine.infrastructure.persistence.EventStorePromptRepository` とする
 （独自に`JdbcPromptRepository`等の別名を付けない）。
 
+### `Prompt.rowVersion`: 楽観ロックのトークンをAggregateに持たせる
+
+真の楽観ロック（"同時更新での衝突を検出する"）には、`findByKey` で読んだ時点の
+バージョンを `save` 呼び出し側が持ち回り、書き込み時にDB側の現在値と突き合わせる
+仕組みが要る。`Prompt`（domain）がバージョンを一切保持しない場合、
+`findByKey` → （呼び出し側でAggregateを変更）→ `save` という2回の別呼び出しの間に
+他の書き込みが割り込んでも、`save` 側にはそれを検出する情報が一切残らない
+（`save`の直前にDBを読み直しても、その時点では常に一致してしまい検出にならない）。
+これは実装上の工夫では埋められない、情報の欠落そのものである。
+
+`Prompt` に `rowVersion: Long = 0`（フレームワーク非依存のプレーンな `Long`。
+`@Version`等のアノテーションは付けない）を追加する。多くのDDD実装で
+Aggregate自身の改訂番号はAggregateのライフサイクルメタデータの一部として
+許容されており、永続化技術の漏出とは区別される。`findByKey`（`Prompt.restore`
+経由）がDBの `row_version` から復元し、`save` はDB側の現在値と突き合わせて
+不一致なら `VersionConflictException`（`prompt-engine-infrastructure`側で定義、
+domainには追加しない）を投げ、成功時は `rowVersion` をインクリメントした
+コピーを返す。
+
+これも復元経路以外の追加domain変更のため、実装前にユーザーに確認を取った。
+
+### §12 ER図の拡張: `prompt_versions.context_requirement`
+
+`PromptVersion.contextRequirement: ContextRequirement?`（`scope`/`required`/
+`optional`の小さなVO）に対応する列が§12のER図に存在しない。他の列のように
+判断が分かれる論点ではなく単純な漏れのため、`prompt_versions` に
+`context_requirement JSON`（NULL許容）を追加する。
+
 ## 影響範囲
 
 - 設計書§12 のER図に `prompt_snapshots` / `outbox` エンティティと関連、
@@ -194,6 +222,9 @@ emptyList()): Prompt` に変更する。呼び出し側は `Prompt.publish(...)`
   `promptengine.infrastructure.persistence..` に限定されることを検証するルールを追加
 - `PromptRepository.save` のシグネチャに `events: List<PromptDomainEvent> =
   emptyList()` を追加（復元経路以外の追加domain変更、ユーザー確認済み）
+- `Prompt` に `rowVersion: Long = 0` を追加し、`PromptMemento` にも
+  `rowVersion: Long` を追加（復元経路以外の追加domain変更、ユーザー確認済み）
+- 設計書§12 のER図に `prompt_versions.context_requirement` 列を追加
 
 ## 参照
 

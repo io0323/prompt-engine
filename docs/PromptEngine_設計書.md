@@ -1179,6 +1179,7 @@ entity prompt_versions {
   * content_hash : CHAR(64)
   * status : VARCHAR
   change_note : TEXT
+  context_requirement : JSON  ' ADR-0006
   * created_by / created_at
   <<UQ prompt_id+version>>
 }
