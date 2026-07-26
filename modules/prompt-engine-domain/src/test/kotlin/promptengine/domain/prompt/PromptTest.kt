@@ -361,6 +361,50 @@ class PromptTest {
         }
     }
 
+    // ---- 永続化層からの復元: restore（ADR-0006） ----
+
+    @OptIn(PersistenceApi::class)
+    @Test
+    fun `restore はMementoのstateをそのまま持つPromptを再構築する`() {
+        val memento =
+            PromptMemento(
+                key,
+                listOf(
+                    PromptVersionMemento(SemVer(0, 1, 0), content, emptyList(), null, LifecycleState.Deprecated),
+                    PromptVersionMemento(SemVer(0, 2, 0), content, emptyList(), null, LifecycleState.Published),
+                ),
+                rowVersion = 7,
+            )
+
+        val restored = Prompt.restore(memento)
+
+        restored.key shouldBe key
+        restored.rowVersion shouldBe 7
+        restored.versions.map { it.semVer to it.state } shouldBe
+            listOf(
+                SemVer(0, 1, 0) to LifecycleState.Deprecated,
+                SemVer(0, 2, 0) to LifecycleState.Published,
+            )
+    }
+
+    @OptIn(PersistenceApi::class)
+    @Test
+    fun `restore もPublishedは同時に1Versionまでという不変条件を検証する`() {
+        val memento =
+            PromptMemento(
+                key,
+                listOf(
+                    PromptVersionMemento(SemVer(0, 1, 0), content, emptyList(), null, LifecycleState.Published),
+                    PromptVersionMemento(SemVer(0, 2, 0), content, emptyList(), null, LifecycleState.Published),
+                ),
+                rowVersion = 0,
+            )
+
+        shouldThrow<IllegalArgumentException> {
+            Prompt.restore(memento)
+        }
+    }
+
     // ---- テスト用フィクスチャ ----
 
     private fun createDraft(): Pair<Prompt, PromptCreated> =

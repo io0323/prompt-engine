@@ -342,6 +342,17 @@ Model Profile（APAPのモデルメタデータを参照して構成）: `{ maxC
 - Command側: Aggregate単位で保存。Event Store（追記専用）+ Snapshot。RDBに現在状態も投影（運用容易性のため）。
 - Query側: Read Model（非正規化ビュー）と Search Index（Event購読で更新、結果整合）。
 - Storage抽象: `PromptRepository` 等のInterfaceのみDomainに公開。RDB/Document Store実装はPluginとして差替可（§16.8）。
+- 復元経路: `PromptRepository.findByKey` の通常経路はRDB投影（`prompts`/`prompt_versions`）
+  から直接Aggregateを組み立てる。`domain_events` + `prompt_snapshots`（§12）による
+  イベントリプレイは、監査・障害復旧用の代替経路として位置づけ、通常のQuery/Command
+  経路では使用しない（ADR-0006）。
+- 楽観ロック: `prompts.row_version`（Aggregate Root単位、§12）で検出する。保存時は
+  `WHERE row_version = 期待値` の更新0件をVERSION_CONFLICTとする（ADR-0006）。
+- Outbox: `domain_events` への追記と `outbox` テーブルへの追記はAggregate保存と
+  同一トランザクションで行う。`outbox` からKafka互換Brokerへの実際の配信（ポーリング/
+  プロデューサ）はP2の対象外とし、別フェーズで実装する（ADR-0006）。
+- `PromptRepository.save` は状態保存とイベント追記を同一トランザクションで行うため、
+  `events: List<PromptDomainEvent>` を引数に取る（ADR-0006）。
 
 ## 2.15 Monitoring仕様
 
@@ -1155,6 +1166,7 @@ entity prompts {
   category_id : UUID <<FK>>
   description : TEXT
   * state : VARCHAR
+  * row_version : BIGINT  ' 楽観ロック用（ADR-0006）
   * created_by / created_at
   * updated_at
 }
@@ -1167,6 +1179,7 @@ entity prompt_versions {
   * content_hash : CHAR(64)
   * status : VARCHAR
   change_note : TEXT
+  context_requirement : JSON  ' ADR-0006
   * created_by / created_at
   <<UQ prompt_id+version>>
 }
@@ -1280,7 +1293,8 @@ entity execution_logs {
 entity audit_logs {
   * audit_id : UUID <<PK>>
   --
-  * aggregate_type / aggregate_id
+  * aggregate_type : VARCHAR
+  * aggregate_id : UUID
   * action : VARCHAR
   * actor : VARCHAR
   * payload : JSON  ' Secretマスク済
@@ -1290,11 +1304,30 @@ entity audit_logs {
 entity domain_events {
   * event_id : UUID <<PK>>
   --
-  * aggregate_id : UUID
+  * aggregate_type : VARCHAR  ' DomainEvent封筒8項目のうちaggregateType（ADR-0006）
+  * aggregate_id : UUID       ' 永続化層サロゲートキー。複数Bounded Context共通のため特定テーブルへのFKは設定しない
   * sequence : BIGINT
   * event_type : VARCHAR
+  * actor : VARCHAR           ' DomainEvent封筒のactor（ADR-0006）
+  * trace_id : VARCHAR        ' DomainEvent封筒のtraceId（ADR-0006）
   * payload : JSON
   * occurred_at
+  <<UQ aggregate_id+sequence>>
+}
+entity outbox {
+  * outbox_id : UUID <<PK>>
+  --
+  * event_id : UUID <<FK>>
+  dispatched_at : TIMESTAMPTZ  ' NULL = 未配信（ADR-0006、Broker中継の実配線は対象外）
+  * created_at
+}
+entity prompt_snapshots {
+  * snapshot_id : UUID <<PK>>
+  --
+  * aggregate_id : UUID <<FK>>
+  * sequence : BIGINT   ' 保存時点の domain_events.sequence 最大値
+  * state : JSONB       ' 直列化された集約状態（復元用）
+  * created_at
   <<UQ aggregate_id+sequence>>
 }
 prompts ||--|{ prompt_versions
@@ -1309,8 +1342,11 @@ prompts ||--o{ experiments
 experiments ||--|{ variants
 prompt_versions ||--o{ variants
 prompt_versions ||--o{ evaluation_records
+variants ||--o{ evaluation_records
 prompt_versions ||--o{ execution_logs
 prompt_aliases }o--|| prompt_versions
+prompt_snapshots }o--|| prompts : aggregate_id
+outbox }o--|| domain_events : event_id
 @enduml
 ```
 
