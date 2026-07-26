@@ -119,9 +119,43 @@ prompt_snapshots }o--|| prompts : aggregate_id
 再構築できるが、本ADRで決定した通り通常の `findByKey` はRDB投影を使うため、
 この復元経路は監査・障害復旧用のバックアップ手段として位置づける。
 
+### §12 ER図の拡張: `prompts.row_version`（楽観ロック）
+
+§6.3 手順2「楽観ロック（version列）でVERSION_CONFLICTを検出」に対応する列が
+§12のER図に存在しない。加えて `prompt_versions.version` は既にSemVer文字列用の
+列名として使われているため、ロック用カウンタに `version` という名前は使えない。
+`prompts`（Aggregate Root）に `row_version BIGINT NOT NULL DEFAULT 0` を追加する。
+ロックはAggregate単位（`Prompt` 全体の保存/復元の単位、§2.14）で行うため、
+`prompt_versions` 側には追加しない。保存のたびに `row_version` をインクリメントし、
+UPDATE時に `WHERE row_version = :expected` が0件更新ならVERSION_CONFLICTとする。
+
+### Outbox: 本フェーズはテーブル追記までとし、Broker中継の実配線は対象外とする
+
+§6.3手順3「Outboxパターンでの Broker 中継」のうち、本PRでは
+「保存とイベント追記・Outboxテーブルへの追記が同一トランザクションであること」
+までを実装対象とし、Outboxテーブルをポーリングして実際にKafka互換Brokerへ
+配信するプロデューサ/ポーラー部分は対象外とする。理由:
+Broker配信の実配線にはKafka互換クライアント設定・配信失敗時のリトライ/
+再送方針など§6.3の範囲を超える追加の設計判断が必要で、CLAUDE.mdの
+「巨大PRを作らない（目安800行以内）」を踏まえ別フェーズに切り出す方が
+レビュー可能な粒度を保てるため。`outbox` テーブルは
+`dispatched_at`（NULL＝未配信）を持たせ、配信処理を後から追加できる形にする。
+
+```
+entity outbox {
+  * outbox_id : UUID <<PK>>
+  --
+  * event_id : UUID <<FK -> domain_events.event_id>>
+  dispatched_at : TIMESTAMP  ' NULL = 未配信
+  * created_at
+}
+outbox }o--|| domain_events : event_id
+```
+
 ## 影響範囲
 
-- 設計書§12 のER図に `prompt_snapshots` エンティティと関連を追加
+- 設計書§12 のER図に `prompt_snapshots` / `outbox` エンティティと関連、
+  `prompts.row_version` 列を追加
 - 設計書§2.14 に、Command側の復元がRDB投影経由であり、`prompt_snapshots` +
   `domain_events` によるイベントリプレイは監査・障害復旧用の代替経路である旨を注記
 - `prompt-engine-domain`:

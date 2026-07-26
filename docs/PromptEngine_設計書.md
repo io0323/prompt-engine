@@ -346,6 +346,11 @@ Model Profile（APAPのモデルメタデータを参照して構成）: `{ maxC
   から直接Aggregateを組み立てる。`domain_events` + `prompt_snapshots`（§12）による
   イベントリプレイは、監査・障害復旧用の代替経路として位置づけ、通常のQuery/Command
   経路では使用しない（ADR-0006）。
+- 楽観ロック: `prompts.row_version`（Aggregate Root単位、§12）で検出する。保存時は
+  `WHERE row_version = 期待値` の更新0件をVERSION_CONFLICTとする（ADR-0006）。
+- Outbox: `domain_events` への追記と `outbox` テーブルへの追記はAggregate保存と
+  同一トランザクションで行う。`outbox` からKafka互換Brokerへの実際の配信（ポーリング/
+  プロデューサ）はP2の対象外とし、別フェーズで実装する（ADR-0006）。
 
 ## 2.15 Monitoring仕様
 
@@ -1159,6 +1164,7 @@ entity prompts {
   category_id : UUID <<FK>>
   description : TEXT
   * state : VARCHAR
+  * row_version : BIGINT  ' 楽観ロック用（ADR-0006）
   * created_by / created_at
   * updated_at
 }
@@ -1301,6 +1307,13 @@ entity domain_events {
   * occurred_at
   <<UQ aggregate_id+sequence>>
 }
+entity outbox {
+  * outbox_id : UUID <<PK>>
+  --
+  * event_id : UUID <<FK>>
+  dispatched_at : TIMESTAMP  ' NULL = 未配信（ADR-0006、Broker中継の実配線は対象外）
+  * created_at
+}
 entity prompt_snapshots {
   * snapshot_id : UUID <<PK>>
   --
@@ -1326,6 +1339,7 @@ prompt_versions ||--o{ execution_logs
 prompt_aliases }o--|| prompt_versions
 domain_events }o--|| prompts : aggregate_id
 prompt_snapshots }o--|| prompts : aggregate_id
+outbox }o--|| domain_events : event_id
 @enduml
 ```
 
