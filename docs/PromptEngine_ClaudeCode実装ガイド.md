@@ -151,7 +151,7 @@ include(
 | P7 | Execution + Parsing | ExecutionAdapter（Fake）、OutputFormatter（JSON/Text）、修復リトライ | Fakeでexecute E2E成功、parse失敗時の挙動テスト |
 | P8 | Pipeline Orchestrator | 12ステージ結線、Stage別Span、エラーコード写像 | RENDER_ONLY / FULL_EXECUTION / COMPILE_ONLY の3モードE2E |
 | P9 | REST API + 認可 | 設計書§13の主要エンドポイント、エラー形式、OpenAPI突合 | contract-test green、401/403/404/409/422の網羅テスト |
-| P10 | Evaluation + Audit + Monitoring | 非同期評価Subscriber、Audit追記、Metrics/Trace、Outbox→Broker中継worker（P2で追記のみ実装、GitHub Issue #11） | イベント発火→評価記録→監査検索がE2Eで通る |
+| P10 | Evaluation + Audit + Monitoring | 非同期評価Subscriber、Audit追記、Metrics/Trace | イベント発火→評価記録→監査検索がE2Eで通る |
 | P11 | 仕上げ | Helm/Dockerfile、README、prompt-regression、負荷確認 | p99目標（設計書NFR-002/003）をローカル計測で確認 |
 
 **M1の非対象**: Experiment Engine、Search Engine本実装（Fallbackのみ）、
@@ -770,12 +770,6 @@ docs/PromptEngine_設計書.md の §2.12（Evaluation）、§2.15（Monitoring�
      pe.experiment / pe.governance / pe.plugin）
    - イベント封筒 {eventId, eventType, occurredAt, aggregateType, aggregateId,
      actor, traceId, payload} を厳守
-   - P2（ADR-0006）で `domain_events` への追記と同一トランザクションで
-     `outbox` テーブルへ追記する実装は完了しているが、`outbox` を
-     ポーリング（または LISTEN/NOTIFY 等）して未配信（`dispatched_at IS
-     NULL`）のレコードをEvent Busへ実際にpublishし `dispatched_at` を
-     更新するOutbox中継workerは未実装（GitHub Issue #11）。本フェーズで
-     実装すること
 2. EvaluationEngine（prompt-engine-core）
    - PromptExecuted を購読して非同期評価
    - M1の評価器: Latency / TokenUsage / Cost（usage × ModelProfile単価）

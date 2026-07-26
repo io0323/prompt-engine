@@ -6,15 +6,8 @@ import promptengine.domain.variable.VariableDefinition
 
 /**
  * Prompt Aggregate内のEntity。1つのSemVerに対応する内容とライフサイクル状態を持つ。
- *
- * プライマリコンストラクタは `internal`（[ConsistentCopyVisibility] により `copy()` も
- * 同様に `internal`）。任意の `state` を外部から直接指定して構築できてしまうと、
- * State パターンの遷移を経ずに不正な状態のインスタンスが作れてしまうため。
- * 通常の新規作成は [Prompt.create] / [Prompt.newVersion]（常にDraft）を、
- * 永続化層からの復元は [Prompt.restore] を使うこと（ADR-0006）。
  */
-@ConsistentCopyVisibility
-data class PromptVersion internal constructor(
+data class PromptVersion(
     val semVer: SemVer,
     val content: PromptContent,
     val variables: List<VariableDefinition> = emptyList(),

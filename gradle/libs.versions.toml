@@ -37,12 +37,6 @@ testcontainers-postgresql = { module = "org.testcontainers:postgresql" }
 flyway-core = { module = "org.flywaydb:flyway-core", version.ref = "flyway" }
 flyway-postgresql = { module = "org.flywaydb:flyway-database-postgresql", version.ref = "flyway" }
 
-# postgresql / jackson-module-kotlin はバージョン未指定。infrastructure配下で
-# io.spring.dependency-management により spring-boot-dependencies BOMをimportし、
-# そのBOM管理下のバージョンで解決する（spring-boot-starter-* と同じ方針）。
-postgresql = { module = "org.postgresql:postgresql" }
-jackson-module-kotlin = { module = "com.fasterxml.jackson.module:jackson-module-kotlin" }
-
 # 注意: 以下の [plugins] エントリはドキュメント目的で定義しているが、モジュールの build.gradle.kts から
 # alias(libs.plugins.*) では参照しない。buildSrc（kotlin-dsl）が Kotlin Gradle Plugin を暗黙提供しており、
 # 同一プラグインIDを明示versionで再解決しようとすると衝突するため、実際の適用は buildSrc の規約プラグイン
