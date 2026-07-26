@@ -342,6 +342,10 @@ Model Profile（APAPのモデルメタデータを参照して構成）: `{ maxC
 - Command側: Aggregate単位で保存。Event Store（追記専用）+ Snapshot。RDBに現在状態も投影（運用容易性のため）。
 - Query側: Read Model（非正規化ビュー）と Search Index（Event購読で更新、結果整合）。
 - Storage抽象: `PromptRepository` 等のInterfaceのみDomainに公開。RDB/Document Store実装はPluginとして差替可（§16.8）。
+- 復元経路: `PromptRepository.findByKey` の通常経路はRDB投影（`prompts`/`prompt_versions`）
+  から直接Aggregateを組み立てる。`domain_events` + `prompt_snapshots`（§12）による
+  イベントリプレイは、監査・障害復旧用の代替経路として位置づけ、通常のQuery/Command
+  経路では使用しない（ADR-0006）。
 
 ## 2.15 Monitoring仕様
 
@@ -1297,6 +1301,15 @@ entity domain_events {
   * occurred_at
   <<UQ aggregate_id+sequence>>
 }
+entity prompt_snapshots {
+  * snapshot_id : UUID <<PK>>
+  --
+  * aggregate_id : UUID <<FK>>
+  * sequence : BIGINT   ' 保存時点の domain_events.sequence 最大値
+  * state : JSONB       ' 直列化された集約状態（復元用）
+  * created_at
+  <<UQ aggregate_id+sequence>>
+}
 prompts ||--|{ prompt_versions
 prompts ||--o{ prompt_aliases
 prompt_versions ||--o{ variable_defs
@@ -1311,6 +1324,8 @@ prompt_versions ||--o{ variants
 prompt_versions ||--o{ evaluation_records
 prompt_versions ||--o{ execution_logs
 prompt_aliases }o--|| prompt_versions
+domain_events }o--|| prompts : aggregate_id
+prompt_snapshots }o--|| prompts : aggregate_id
 @enduml
 ```
 
