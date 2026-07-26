@@ -373,11 +373,13 @@ class PromptTest {
                     PromptVersionMemento(SemVer(0, 1, 0), content, emptyList(), null, LifecycleState.Deprecated),
                     PromptVersionMemento(SemVer(0, 2, 0), content, emptyList(), null, LifecycleState.Published),
                 ),
+                rowVersion = 7,
             )
 
         val restored = Prompt.restore(memento)
 
         restored.key shouldBe key
+        restored.rowVersion shouldBe 7
         restored.versions.map { it.semVer to it.state } shouldBe
             listOf(
                 SemVer(0, 1, 0) to LifecycleState.Deprecated,
@@ -395,6 +397,7 @@ class PromptTest {
                     PromptVersionMemento(SemVer(0, 1, 0), content, emptyList(), null, LifecycleState.Published),
                     PromptVersionMemento(SemVer(0, 2, 0), content, emptyList(), null, LifecycleState.Published),
                 ),
+                rowVersion = 0,
             )
 
         shouldThrow<IllegalArgumentException> {

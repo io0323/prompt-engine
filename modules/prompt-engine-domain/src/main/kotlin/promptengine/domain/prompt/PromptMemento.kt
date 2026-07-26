@@ -6,4 +6,5 @@ package promptengine.domain.prompt
 data class PromptMemento(
     val key: PromptKey,
     val versions: List<PromptVersionMemento>,
+    val rowVersion: Long,
 )

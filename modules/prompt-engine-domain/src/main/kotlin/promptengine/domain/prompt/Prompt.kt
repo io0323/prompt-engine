@@ -24,12 +24,19 @@ import java.util.UUID
  * 直接指定して構築できてしまうと、Stateパターンの遷移を経ずに不正な状態遷移列を
  * 経由したAggregateが作れてしまうため。新規作成は [create]、
  * 永続化層からの復元は [restore] を使うこと（ADR-0006）。
+ *
+ * [rowVersion] は楽観ロックのトークン（ADR-0006）。永続化技術のannotationは
+ * 一切付与しないプレーンな `Long` であり、「このAggregateが何回改訂されたか」という
+ * Aggregate自身のライフサイクルメタデータとして持つ。`findByKey`（[restore] 経由）で
+ * DBの現在値を受け取り、`save` はDB側の現在値と突き合わせて不一致なら
+ * `VersionConflictException`（`prompt-engine-infrastructure` 側で定義）を投げる。
  */
 @Suppress("TooManyFunctions")
 @ConsistentCopyVisibility
 data class Prompt internal constructor(
     val key: PromptKey,
     val versions: List<PromptVersion>,
+    val rowVersion: Long = 0,
 ) {
     init {
         require(versions.isNotEmpty()) { "Prompt must have at least one version" }
@@ -90,7 +97,7 @@ data class Prompt internal constructor(
                 memento.versions.map {
                     PromptVersion(it.semVer, it.content, it.variables, it.contextRequirement, it.state)
                 }
-            return Prompt(memento.key, versions)
+            return Prompt(memento.key, versions, memento.rowVersion)
         }
     }
 
