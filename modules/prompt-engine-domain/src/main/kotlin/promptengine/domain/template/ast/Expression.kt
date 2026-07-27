@@ -14,12 +14,16 @@ data class PropertyRef(val path: List<String>) : ExpressionOperand {
     }
 }
 
+/** 式のリテラル被演算子（文字列/数値/真偽値）。プロパティ参照ではなく即値であることを表す。 */
 sealed interface Literal : ExpressionOperand
 
+/** `"..."` / `'...'`（バックスラッシュエスケープ対応）で表される文字列リテラル。 */
 data class StringLiteral(val value: String) : Literal
 
+/** 整数・小数（負数可）の数値リテラル。 */
 data class NumberLiteral(val value: Double) : Literal
 
+/** bareword `true` / `false` の真偽値リテラル。 */
 data class BooleanLiteral(val value: Boolean) : Literal
 
 /** パイプフィルタ1段（`upper` / `truncate(100)`）。 */

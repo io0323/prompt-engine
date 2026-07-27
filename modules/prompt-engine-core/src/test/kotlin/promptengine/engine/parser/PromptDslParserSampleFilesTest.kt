@@ -26,8 +26,10 @@ class PromptDslParserSampleFilesTest {
 
         val parser = PromptDslParser()
         for (file in files) {
-            val document = parser.parse(file.readText())
-            document.body.shouldNotBeEmpty()
+            withClue(file.name) {
+                val document = parser.parse(file.readText())
+                document.body.shouldNotBeEmpty()
+            }
         }
     }
 
@@ -50,8 +52,10 @@ class PromptDslParserSampleFilesTest {
     }
 
     private fun promptFiles(dir: File): List<File> =
-        (dir.listFiles { f -> f.isFile && f.extension == "prompt" } ?: emptyArray())
-            .sortedBy { it.name }
+        (
+            dir.listFiles { f -> f.isFile && f.extension == "prompt" }
+                ?: error("サンプルディレクトリが見つかりません: ${dir.absolutePath}")
+        ).sortedBy { it.name }
 
     private data class ExpectedError(val kind: ParseErrorKind, val line: Int, val column: Int)
 

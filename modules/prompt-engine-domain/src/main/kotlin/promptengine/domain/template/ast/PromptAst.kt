@@ -6,16 +6,20 @@ package promptengine.domain.template.ast
  */
 sealed interface PromptAst
 
+/** リテラルテキスト（`{{ }}`タグ以外の生文字列）。 */
 data class TextNode(val text: String) : PromptAst
 
+/** `{{ expr }}`（式の値のテキスト置換）。 */
 data class ExprNode(val expression: Expression) : PromptAst
 
+/** `{{#if}}...{{else}}...{{/if}}`。`condition`が真ならthenBranch、偽ならelseBranchを描画する。 */
 data class IfNode(
     val condition: Expression,
     val thenBranch: List<PromptAst>,
     val elseBranch: List<PromptAst> = emptyList(),
 ) : PromptAst
 
+/** `{{#each list as item}}...{{/each}}`。`iterable`の各要素を`itemName`で束縛して`body`を繰り返す。 */
 data class EachNode(
     val iterable: Expression,
     val itemName: String,
@@ -33,6 +37,7 @@ enum class BlockRole {
     ASSISTANT,
 }
 
+/** `{{#block role}}...{{/block}}`（設計書§15.1）。roleごとにメッセージを構成する単位。 */
 data class BlockNode(
     val role: BlockRole,
     val body: List<PromptAst>,

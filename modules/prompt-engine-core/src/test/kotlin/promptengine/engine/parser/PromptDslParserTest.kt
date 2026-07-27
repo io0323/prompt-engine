@@ -456,6 +456,15 @@ class PromptDslParserTest {
     }
 
     @Test
+    fun `Front Matterのキーが文字列以外だとSYNTAX_ERRORになる`() {
+        val exception =
+            shouldThrow<PromptDslParseException> { parser.parse(prompt(body = "hello", frontMatter = "1: a\n")) }
+
+        exception.error.kind shouldBe ParseErrorKind.SYNTAX_ERROR
+        exception.error.message.shouldContain("keys must be strings")
+    }
+
+    @Test
     fun `Front Matterが末尾行で未終端のflowシーケンスだとYAML構文エラーになる`() {
         val exception =
             shouldThrow<PromptDslParseException> {

@@ -32,6 +32,11 @@ data class ParseError(
     fun caretExcerpt(): String = "$lineText\n${" ".repeat(column - 1)}^"
 }
 
+/**
+ * Prompt DSLの構文解析失敗を表す例外。最初に検出した[ParseError]1件を保持する
+ * （構文エラーは最初の1件で停止する方針。P3実装ガイド）。メッセージには
+ * 種別・位置・キャレット表示を含める。
+ */
 class PromptDslParseException(val error: ParseError, cause: Throwable? = null) :
     Exception(
         "${error.kind} at line ${error.line}, column ${error.column}: ${error.message}\n${error.caretExcerpt()}",

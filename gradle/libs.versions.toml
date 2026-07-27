@@ -10,7 +10,7 @@ kotest = "5.9.1"
 mockk = "1.13.13"
 testcontainers = "1.20.4"
 flyway = "10.20.1"
-snakeyaml = "2.2"
+snakeyaml = "2.6"
 
 [libraries]
 kotlin-reflect = { module = "org.jetbrains.kotlin:kotlin-reflect", version.ref = "kotlin" }

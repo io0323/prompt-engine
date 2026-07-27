@@ -34,8 +34,6 @@ private const val FRONT_MATTER_DELIMITER = "---"
  * Fragment Aggregate（3b）の責務であり、本Parserは構文解析のみを担う。
  */
 class PromptDslParser(private val config: PromptDslParserConfig = PromptDslParserConfig()) {
-    private val yaml = Yaml(SafeConstructor(LoaderOptions()))
-
     fun parse(source: String): PromptDocument {
         checkInputSize(source)
         val sourceLines = source.lines()
@@ -97,6 +95,9 @@ class PromptDslParser(private val config: PromptDslParserConfig = PromptDslParse
         yamlText: String,
         startLine: Int,
     ): PromptFrontMatter {
+        // Yamlインスタンスはスレッドセーフではない（snakeyaml公式ドキュメント）ため、
+        // フィールドで共有せずparse()の呼出ごとに生成する（CodeRabbit指摘対応）。
+        val yaml = Yaml(SafeConstructor(LoaderOptions()))
         val loaded =
             try {
                 yaml.load<Any?>(yamlText)
@@ -127,18 +128,33 @@ class PromptDslParser(private val config: PromptDslParserConfig = PromptDslParse
             // return済みのため、yamlText.lines() は要素数1以上（Kotlinの仕様上、
             // どんな文字列に対しても.lines()は空リストを返さない）。firstOrNull()の
             // null分岐は到達不能なので.first()に簡略化済み（監査）。
-            throw PromptDslParseException(
-                ParseError(
-                    kind = ParseErrorKind.SYNTAX_ERROR,
-                    line = startLine,
-                    column = 1,
-                    lineText = yamlText.lines().first(),
-                    message = "front matter must be a YAML mapping",
-                ),
-            )
+            failFrontMatterSyntax(startLine, yamlText, "front matter must be a YAML mapping")
+        }
+        if (loaded.keys.any { it !is String }) {
+            // YAMLはマッピングのキーに数値・シーケンス等も許すため`Map<*, *>`であることだけでは
+            // キーがStringである保証にならない。無検査キャストで後段（3b）に
+            // ClassCastExceptionを漏らさず、構文解析の責務としてここでSYNTAX_ERRORにする
+            // （CodeRabbit指摘対応）。
+            failFrontMatterSyntax(startLine, yamlText, "front matter keys must be strings")
         }
         @Suppress("UNCHECKED_CAST")
         return PromptFrontMatter((loaded as Map<String, Any?>))
+    }
+
+    private fun failFrontMatterSyntax(
+        startLine: Int,
+        yamlText: String,
+        message: String,
+    ): Nothing {
+        throw PromptDslParseException(
+            ParseError(
+                kind = ParseErrorKind.SYNTAX_ERROR,
+                line = startLine,
+                column = 1,
+                lineText = yamlText.lines().first(),
+                message = message,
+            ),
+        )
     }
 
     /**
