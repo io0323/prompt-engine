@@ -6,4 +6,5 @@ plugins {
 // 実装する側。逆方向の依存（domain → core）を作らないこと（CLAUDE.md）。
 dependencies {
     implementation(project(":modules:prompt-engine-domain"))
+    implementation(libs.snakeyaml)
 }

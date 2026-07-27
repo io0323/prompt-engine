@@ -10,9 +10,14 @@ kotest = "5.9.1"
 mockk = "1.13.13"
 testcontainers = "1.20.4"
 flyway = "10.20.1"
+snakeyaml = "2.2"
 
 [libraries]
 kotlin-reflect = { module = "org.jetbrains.kotlin:kotlin-reflect", version.ref = "kotlin" }
+
+# Front Matter（YAML）解析用。任意クラスのインスタンス化を許すunsafeな既定Constructorではなく、
+# SafeConstructor + 制限付きLoaderOptions（PromptDslParser側で設定）で使用する。
+snakeyaml = { module = "org.yaml:snakeyaml", version.ref = "snakeyaml" }
 
 spring-boot-starter-web = { module = "org.springframework.boot:spring-boot-starter-web" }
 spring-boot-starter-actuator = { module = "org.springframework.boot:spring-boot-starter-actuator" }
