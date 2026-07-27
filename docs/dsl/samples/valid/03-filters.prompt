@@ -1,0 +1,13 @@
+---
+pe: "1"
+kind: fragment
+key: fragments/formatted-title
+name: 整形済みタイトル
+category: shared
+---
+{{#block user}}
+タイトル: {{ title | upper | truncate(100) }}
+価格: {{ price | round(2) }}
+公開: {{ published | default(true) }}
+表示名: {{ user.displayName | fallback("ゲスト") }}
+{{/block}}

@@ -1,0 +1,9 @@
+---
+pe: "1"
+kind: prompt
+key: broken/invalid-block-role
+name: 不正なrole
+---
+{{#block moderator}}
+これは許可されていないroleです。
+{{/block}}

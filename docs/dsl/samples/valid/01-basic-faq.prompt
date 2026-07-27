@@ -1,0 +1,39 @@
+---
+pe: "1"
+kind: prompt
+key: support/faq-answer
+name: FAQ回答生成
+category: support
+tags: [faq, customer]
+engine: pe-tmpl/1
+variables:
+  - name: productName
+    type: string
+    source: runtime
+    required: true
+  - name: tone
+    type: enum
+    source: runtime
+    required: false
+    default: "polite"
+context:
+  required: [system, user]
+  optional: [conversation]
+output:
+  format: json
+validation:
+  maxTokens: 8000
+---
+{{#block system}}
+{{> fragments/safety-policy@^2 }}
+あなたは{{ context.application.serviceName }}のサポート担当です。
+現在日時: {{ context.system.now }}
+{{/block}}
+
+{{#block user}}
+製品「{{ productName }}」について{{ tone }}な文体で回答してください。
+{{#if conversationSummary}}これまでの経緯: {{ conversationSummary }}{{/if}}
+{{#each examples as ex}}
+例: {{ ex.q }} → {{ ex.a }}
+{{/each}}
+{{/block}}

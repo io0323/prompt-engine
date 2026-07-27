@@ -1,0 +1,27 @@
+---
+pe: "1"
+kind: prompt
+key: broken/nesting-too-deep
+name: ネスト深さ超過
+---
+{{#block user}}
+{{#if level1}}
+{{#if level2}}
+{{#if level3}}
+{{#if level4}}
+{{#if level5}}
+{{#if level6}}
+{{#if level7}}
+{{#if level8}}
+{{#if level9}}
+深すぎるネストです。
+{{/if}}
+{{/if}}
+{{/if}}
+{{/if}}
+{{/if}}
+{{/if}}
+{{/if}}
+{{/if}}
+{{/if}}
+{{/block}}
