@@ -1,0 +1,25 @@
+---
+pe: "1"
+kind: template
+key: templates/base-assistant
+name: 基本アシスタント
+category: shared
+context:
+  required: [system]
+  optional: [workflow]
+---
+{{#block system}}
+あなたは有能なアシスタントです。
+{{#if workflow.active}}
+現在のワークフロー: {{ workflow.name }}
+{{#each workflow.steps as step}}
+{{#if step.done}}
+完了: {{ step.label }}
+{{else}}
+未完了: {{ step.label }}
+{{/if}}
+{{/each}}
+{{else}}
+ワークフローは実行されていません。
+{{/if}}
+{{/block}}

@@ -1,0 +1,10 @@
+---
+pe: "1"
+kind: prompt
+key: broken/malformed-yaml
+tags: [faq, customer
+name: 不正なYAML
+---
+{{#block user}}
+hello
+{{/block}}

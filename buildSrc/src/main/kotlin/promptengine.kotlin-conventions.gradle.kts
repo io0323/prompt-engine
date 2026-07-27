@@ -1,3 +1,4 @@
+import org.gradle.testing.jacoco.tasks.JacocoCoverageVerification
 import org.gradle.testing.jacoco.tasks.JacocoReport
 
 plugins {
@@ -34,6 +35,39 @@ tasks.named<JacocoReport>("jacocoTestReport") {
         xml.required.set(true)
         html.required.set(true)
     }
+}
+
+/**
+ * 分岐・行カバレッジの下限（劣化検知用）。既定は0.0（未設定＝検証しない）。
+ * 各モジュールのbuild.gradle.ktsで `extra["jacocoMinLineCoverage"]` /
+ * `extra["jacocoMinBranchCoverage"]`（Double）を設定したモジュールのみ実効化する
+ * （P3aの分岐カバレッジ監査で prompt-engine-domain / prompt-engine-core に設定。
+ * 実測値を下回る「切りの良い」値にしてあるため、実測値の上下動に過敏に反応しない）。
+ */
+val minLineCoverage: Double
+    get() = (project.findProperty("jacocoMinLineCoverage") as? Double) ?: 0.0
+
+val minBranchCoverage: Double
+    get() = (project.findProperty("jacocoMinBranchCoverage") as? Double) ?: 0.0
+
+tasks.named<JacocoCoverageVerification>("jacocoTestCoverageVerification") {
+    dependsOn(tasks.named("jacocoTestReport"))
+    violationRules {
+        rule {
+            limit {
+                counter = "LINE"
+                minimum = minLineCoverage.toBigDecimal()
+            }
+            limit {
+                counter = "BRANCH"
+                minimum = minBranchCoverage.toBigDecimal()
+            }
+        }
+    }
+}
+
+tasks.named("check") {
+    dependsOn(tasks.named("jacocoTestCoverageVerification"))
 }
 
 repositories {

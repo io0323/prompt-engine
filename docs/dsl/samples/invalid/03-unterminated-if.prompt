@@ -1,0 +1,9 @@
+---
+pe: "1"
+kind: prompt
+key: broken/unterminated-if
+name: 閉じタグなしのif
+---
+{{#block user}}
+{{#if conversationSummary}}
+これまでの経緯: {{ conversationSummary }}

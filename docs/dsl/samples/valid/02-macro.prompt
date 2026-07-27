@@ -1,0 +1,18 @@
+---
+pe: "1"
+kind: prompt
+key: support/bullet-summary
+name: 箇条書き要約
+category: support
+macros:
+  - name: bulletList
+    params: [items]
+    body: |
+      {{#each items as i}}
+      - {{ i }}
+      {{/each}}
+---
+{{#block user}}
+次のポイントを箇条書きでまとめてください。
+{{ bulletList(items=faqItems) }}
+{{/block}}

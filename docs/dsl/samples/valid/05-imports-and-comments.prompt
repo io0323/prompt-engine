@@ -1,0 +1,21 @@
+---
+pe: "1"
+kind: prompt
+key: support/faq-with-glossary
+name: 用語集付きFAQ回答
+category: support
+imports:
+  - alias: safety
+    ref: fragments/safety-policy@^2
+  - alias: glossary
+    ref: fragments/domain-glossary@1.3.0
+---
+{{!-- このPromptはsafetyとglossaryをimportして利用する --}}
+{{#block system}}
+{{> safety }}
+{{> glossary term=productName }}
+{{/block}}
+{{#block user}}
+{{!-- ユーザー向けメッセージ本体 --}}
+{{ productName | upper }}について教えてください。
+{{/block}}

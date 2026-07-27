@@ -1,0 +1,5 @@
+---
+pe: "1"
+kind: prompt
+key: broken/no-closing-delimiter
+name: 閉じデリミタなし
