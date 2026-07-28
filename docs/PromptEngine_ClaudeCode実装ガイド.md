@@ -596,6 +596,17 @@ prompt-engine-core に Parser と Compiler を実装します。TDD必須。
 全てが期待通りの結果になることを検証してください。
 ```
 
+**注記（P3c、ADR-0008）**: CompiledPrompt をキャッシュする場合は、
+Template/Fragment の公開イベントによる無効化が前提となる。P3b時点では
+Template/FragmentはDomain Eventを一切発行しない（§14に対応イベントが
+未定義のため）。§16拡張ポイント#9（Cache）の`PromptCache.invalidateByPrompt`
+は「Version公開イベントで呼出」を前提としており、Template/Fragmentの
+Publish/Archiveをトリガに依存PromptのCompiledPromptキャッシュを無効化する
+仕組みが今は存在しない。CompiledPromptキャッシュを導入するフェーズより前に、
+Template/FragmentのDomain Event（設計書§14への追加、GitHub Issue参照）を
+解消しておくこと。さもないと、依存Prompt側が古いCompiledPromptを無期限に
+配信し続けるstale cacheバグを生む。
+
 ## 6.5 P4 — Resolver
 
 ```

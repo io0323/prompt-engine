@@ -144,21 +144,28 @@ class ArchitectureTest {
     }
 
     /**
-     * ADR-0006: `Prompt.restore` は `@PersistenceApi`（`@RequiresOptIn`）でゲートされた
-     * 永続化復元専用API。`domain.prompt`（アノテーション定義・[Prompt.restore]自体の宣言）と
-     * `infrastructure.persistence`（唯一の許可された呼び出し元）以外のクラスが
-     * `@OptIn(PersistenceApi::class)` 等で `PersistenceApi` に依存していないことを検証する。
-     * `@RequiresOptIn` 自体もコンパイル時に強制するため、本ルールは二重の安全網。
+     * ADR-0006/ADR-0008: `Prompt.restore`/`Template.restore`/`Fragment.restore` は
+     * `@PersistenceApi`（`@RequiresOptIn`）でゲートされた永続化復元専用API。
+     * `promptengine.domain.shared`（アノテーション定義）を含む`domain`配下
+     * （各Aggregateの`restore`自体の宣言）と`infrastructure.persistence`
+     * （唯一の許可された呼び出し元）以外のクラスが`@OptIn(PersistenceApi::class)`等で
+     * `PersistenceApi`に依存していないことを検証する。`@RequiresOptIn`自体も
+     * コンパイル時に強制するため、本ルールは二重の安全網。
+     *
+     * ADR-0008でPrompt専用パッケージ（`domain.prompt`）から`domain.shared`へ
+     * マーカーを移動し、Template/Fragmentからも参照できるようにした際、許可対象を
+     * `domain.prompt`だけでなく`domain..`全体に広げた（restoreはどのAggregateの
+     * パッケージに置かれてもよいため）。
      */
     @Test
-    fun `PersistenceApiへの依存は domain prompt と infrastructure persistence に限定される`() {
+    fun `PersistenceApiへの依存は domain と infrastructure persistence に限定される`() {
         noClasses()
             .that().resideOutsideOfPackages(
-                "promptengine.domain.prompt..",
+                "promptengine.domain..",
                 "promptengine.infrastructure.persistence..",
             )
             .should().dependOnClassesThat()
-            .haveFullyQualifiedName("promptengine.domain.prompt.PersistenceApi")
+            .haveFullyQualifiedName("promptengine.domain.shared.PersistenceApi")
             .allowEmptyShould(true)
             .check(importedClasses)
     }

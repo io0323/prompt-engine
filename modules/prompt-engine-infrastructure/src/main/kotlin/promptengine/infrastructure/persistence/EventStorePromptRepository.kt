@@ -7,7 +7,6 @@ import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
 import org.springframework.transaction.support.TransactionTemplate
 import promptengine.domain.context.ContextRequirement
 import promptengine.domain.prompt.LifecycleState
-import promptengine.domain.prompt.PersistenceApi
 import promptengine.domain.prompt.Prompt
 import promptengine.domain.prompt.PromptContent
 import promptengine.domain.prompt.PromptDomainEvent
@@ -16,6 +15,7 @@ import promptengine.domain.prompt.PromptMemento
 import promptengine.domain.prompt.PromptRepository
 import promptengine.domain.prompt.PromptVersion
 import promptengine.domain.prompt.PromptVersionMemento
+import promptengine.domain.shared.PersistenceApi
 import promptengine.domain.variable.VariableDefinition
 import promptengine.domain.variable.VariableType
 import java.sql.Timestamp

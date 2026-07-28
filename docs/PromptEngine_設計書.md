@@ -1194,16 +1194,60 @@ entity templates {
   * template_id : UUID <<PK>>
   --
   * template_key : VARCHAR <<UQ>>
+  * row_version : BIGINT  ' 楽観ロック用（ADR-0008、promptsのrow_versionと同じ意図）
+  * created_by / created_at
+  * updated_at
+}
+entity template_versions {
+  * version_id : UUID <<PK>>
+  --
+  * template_id : UUID <<FK>>
+  * version : VARCHAR  ' SemVer
   * body : TEXT
-  * version : VARCHAR
-  extends_key : VARCHAR
+  * content_hash : CHAR(64)
+  * status : VARCHAR  ' Draft/Published/Archived（PublicationState、ADR-0008）
+  extends_key : VARCHAR  ' extends先のTemplateKey。Version範囲の解決は3cスコープ（ADR-0008）
+  * created_by / created_at
+  <<UQ template_id+version>>
+}
+entity template_variable_defs {
+  * variable_id : UUID <<PK>>
+  --
+  * version_id : UUID <<FK>>
+  * name / type : VARCHAR
+  * required : BOOL
+  default_value : TEXT
+  constraints : JSON
+  * sensitive : BOOL
 }
 entity fragments {
   * fragment_id : UUID <<PK>>
   --
   * fragment_key : VARCHAR <<UQ>>
+  * row_version : BIGINT  ' 楽観ロック用（ADR-0008）
+  * created_by / created_at
+  * updated_at
+}
+entity fragment_versions {
+  * version_id : UUID <<PK>>
+  --
+  * fragment_id : UUID <<FK>>
+  * version : VARCHAR  ' SemVer
   * body : TEXT
-  * version : VARCHAR
+  * content_hash : CHAR(64)
+  * status : VARCHAR  ' Draft/Published/Archived（PublicationState、ADR-0008）
+  * created_by / created_at
+  <<UQ fragment_id+version>>
+}
+entity fragment_variable_defs {
+  * variable_id : UUID <<PK>>
+  --
+  * version_id : UUID <<FK>>
+  * name / type : VARCHAR
+  * required : BOOL
+  default_value : TEXT
+  constraints : JSON
+  * sensitive : BOOL
 }
 entity variable_defs {
   * variable_id : UUID <<PK>>
@@ -1334,6 +1378,10 @@ prompts ||--|{ prompt_versions
 prompts ||--o{ prompt_aliases
 prompt_versions ||--o{ variable_defs
 prompt_versions ||--o{ dependencies
+templates ||--|{ template_versions
+template_versions ||--o{ template_variable_defs
+fragments ||--|{ fragment_versions
+fragment_versions ||--o{ fragment_variable_defs
 prompts }o--o{ tags : prompt_tags
 categories ||--o{ prompts
 prompt_versions ||--o{ review_cases
