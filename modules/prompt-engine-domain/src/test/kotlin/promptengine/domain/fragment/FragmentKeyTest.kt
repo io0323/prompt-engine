@@ -6,7 +6,7 @@ import org.junit.jupiter.api.Test
 
 class FragmentKeyTest {
     @Test
-    fun `namespace slash name 形式の文字列でFragmentKeyを生成できる`() {
+    fun `namespaceとnameをスラッシュで区切った文字列からFragmentKeyを生成できる`() {
         FragmentKey("fragments/safety-policy").value shouldBe "fragments/safety-policy"
     }
 

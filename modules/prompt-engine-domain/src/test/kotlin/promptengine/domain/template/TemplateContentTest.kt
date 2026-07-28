@@ -14,6 +14,12 @@ class TemplateContentTest {
     }
 
     @Test
+    fun `既知のsourceからはSHA-256の既知の値が計算される`() {
+        TemplateContent("abc").contentHash shouldBe
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+    }
+
+    @Test
     fun `同一のsourceからは常に同一のcontentHashが計算される 決定性`() {
         val first = TemplateContent("{{#block body}}{{/block}}")
         val second = TemplateContent("{{#block body}}{{/block}}")
@@ -24,5 +30,10 @@ class TemplateContentTest {
     @Test
     fun `source が空文字だとIllegalArgumentExceptionを投げる`() {
         shouldThrow<IllegalArgumentException> { TemplateContent("") }
+    }
+
+    @Test
+    fun `source が空白のみだとIllegalArgumentExceptionを投げる`() {
+        shouldThrow<IllegalArgumentException> { TemplateContent(" \t\n") }
     }
 }

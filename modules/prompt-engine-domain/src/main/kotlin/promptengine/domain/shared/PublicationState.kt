@@ -12,22 +12,27 @@ package promptengine.domain.shared
  * 必要が無いため。
  */
 sealed class PublicationState {
+    /** Draft→Published。Draft以外から呼ぶと [InvalidStateTransitionException] を投げる。 */
     open fun publish(): PublicationState = invalidTransition("publish")
 
+    /** Draft/Published→Archived。Archived状態で呼ぶと [InvalidStateTransitionException] を投げる。 */
     open fun archive(): PublicationState = invalidTransition("archive")
 
     protected fun invalidTransition(operation: String): Nothing =
         throw InvalidStateTransitionException(this::class.simpleName ?: "Unknown", operation)
 
+    /** 新規作成直後の状態。`publish`/`archive` のいずれも呼び出し可能。 */
     data object Draft : PublicationState() {
         override fun publish(): PublicationState = Published
 
         override fun archive(): PublicationState = Archived
     }
 
+    /** 公開済みの状態。`archive` のみ呼び出し可能。 */
     data object Published : PublicationState() {
         override fun archive(): PublicationState = Archived
     }
 
+    /** 終端状態。以降どの操作も呼び出せない。 */
     data object Archived : PublicationState()
 }

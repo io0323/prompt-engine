@@ -129,9 +129,9 @@ Template/FragmentのDomain Eventが今後必要になった場合
    CompiledPromptキャッシュ自体が未実装（3c以降のスコープ）のため実害は無いが、
    **キャッシュを導入するフェーズより前に必ず解消する必要がある** ──
    さもなければ、Draft相互参照のCompile-onlyモード（§2.10）から
-   Templateが後からPublishされた場合や、Publish済みTemplate/Fragmentの
-   新Versionがdeprecate/archiveされた場合に、依存Prompt側が古い
-   CompiledPromptを無期限に配信し続けるstale cacheバグを生む。
+   Templateが後からPublishされた場合や、参照中のTemplate/Fragment Versionが
+   archiveされた場合に、依存Prompt側が古いCompiledPromptを無期限に配信し
+   続けるstale cacheバグを生む。
 
 この2件はGitHub Issue #15（tech-debt、「Template / Fragmentの Domain Eventを
 設計書§14に追加し実装する」）で追跡する。

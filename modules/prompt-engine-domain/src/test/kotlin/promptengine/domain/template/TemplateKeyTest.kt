@@ -6,7 +6,7 @@ import org.junit.jupiter.api.Test
 
 class TemplateKeyTest {
     @Test
-    fun `namespace slash name 形式の文字列でTemplateKeyを生成できる`() {
+    fun `namespaceとnameをスラッシュで区切った文字列からTemplateKeyを生成できる`() {
         TemplateKey("shared/base-instructions").value shouldBe "shared/base-instructions"
     }
 
