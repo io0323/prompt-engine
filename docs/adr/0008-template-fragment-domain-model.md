@@ -71,6 +71,11 @@ Version子Entityのリスト」構造にする。§12のER図を次のように�
 extends先の`TemplateKey`のみを保持し、範囲文字列は保持しない
 （「今回はextends先のキーを保持するところまで」という元々のスコープ合意通り）。
 
+> **2026-07-28追記（ADR-0009）**: 上記「範囲文字列は保持しない」という決定は、
+> 3c（CompositionService）実装着手時に改訂した。`TemplateVersion.extendsKey`は
+> `extends: ExtendsRef?`（key + `VersionRange`の両方を保持する型）に置き換わっている。
+> 詳細はADR-0009を参照。
+
 ### 2. ライフサイクル: 簡略版3状態（Draft/Published/Archived）を採用する
 
 Promptの6状態（`LifecycleState`、Review/Approval付き）は再利用しない。
@@ -210,6 +215,18 @@ Event Sourcingなし）に即した名前を新たに付ける。
 - `tests/integration`: `JdbcTemplateRepository`/`JdbcFragmentRepository`の
   Testcontainers統合テストを追加
 
+## 追記（2026-07-28、ADR-0009）
+
+決定1の「`extendsKey`は範囲文字列を保持しない」は、3c（CompositionService）実装着手時に
+改訂した。CompositionServiceがextendsのVersion範囲を解決するには構造化フィールドだけでは
+情報が足りず、所有者の`content.source`を実行時に再パースする必要が生じることが判明した
+ため、`TemplateVersion.extendsKey: TemplateKey?`を`TemplateVersion.extends: ExtendsRef?`
+（`ExtendsRef(key: TemplateKey, range: VersionRange)`）に置き換え、`PromptVersion`にも
+同型の`extends`フィールドを新規追加した。決定2（ライフサイクル）・決定3（Domain Event
+未発行）・決定4（循環検出の非対称性）・決定5（`PersistenceApi`共有）・決定6（Jdbc実装名）
+は変更していない。詳細・理由・スキーマ変更・ラウンドトリップ保証の方法は
+[ADR-0009](0009-composition-service-reference-resolution.md)を参照。
+
 ## 参照
 
 - [PromptEngine_設計書.md §4.3 / §12 / §14 / §15.4 / §16](../PromptEngine_設計書.md)
@@ -217,4 +234,5 @@ Event Sourcingなし）に即した名前を新たに付ける。
 - [ADR-0004: 全状態遷移を監査可能にするため PromptWithdrawn / PromptDiscarded を追加する](0004-domain-events-for-state-transitions.md)
 - [ADR-0006: 永続化層からの復元は Memento + @PersistenceApi opt-in に限定する](0006-persistence-restore-path.md)
 - [ADR-0007: sensitive=trueの変数はリテラルのdefaultを持てない](0007-sensitive-variable-no-literal-default.md)
+- [ADR-0009: CompositionServiceの参照解決基盤（キーグラフDFS・SemVer範囲・Status検証・CompiledPrompt）](0009-composition-service-reference-resolution.md)
 - [GitHub Issue #15: Template / Fragment の Domain Event を設計書§14に追加し実装する](https://github.com/io0323/prompt-engine/issues/15)
