@@ -108,6 +108,34 @@ Template/FragmentのDomain Eventが今後必要になった場合
 イベントを切り出したのと同様、別ADR + §14更新 + GitHub Issueで提案する
 （本ADRでは提案しない）。
 
+#### イベント未発行によって生じる既知の欠落（2件）
+
+本フェーズでTemplate/FragmentがDomain Eventを一切発行しないことにより、
+現時点で次の2つの欠落が生じている。どちらも「後で気づく」のではなく、
+本ADRの時点で既知のトレードオフとして記録する。
+
+1. **Audit Logに記録が残らない。** `audit_logs`（§12）はDomain Event（Event Bus
+   経由でAudit Engineが購読、§7コンポーネント図）を発生源として書き込まれる想定
+   だが、Template/Fragmentはイベントを発行しないため、`publish`/`archive`等の
+   操作はAudit Logに一切記録されない。NFR-006「Audit Logは追記専用・保持期間
+   設定可」の対象からTemplate/Fragmentの操作history全体が抜け落ちている状態
+   であり、本フェーズ時点でも実害がある（監査証跡が無い）。
+2. **CompiledPromptキャッシュを無効化する契機が存在しない。** §16の拡張ポイント
+   #9（Cache、`PromptCache`）は「Version公開イベントで呼出」
+   （`invalidateByPrompt(key): void // Version公開イベントで呼出`、§3.4）を
+   前提としている。Template/Fragmentがイベントを発行しない現状では、
+   TemplateやFragmentのPublish/Archiveをトリガに依存Prompt側の
+   CompiledPromptキャッシュを無効化する仕組みが存在しない。本フェーズ時点では
+   CompiledPromptキャッシュ自体が未実装（3c以降のスコープ）のため実害は無いが、
+   **キャッシュを導入するフェーズより前に必ず解消する必要がある** ──
+   さもなければ、Draft相互参照のCompile-onlyモード（§2.10）から
+   Templateが後からPublishされた場合や、Publish済みTemplate/Fragmentの
+   新Versionがdeprecate/archiveされた場合に、依存Prompt側が古い
+   CompiledPromptを無期限に配信し続けるstale cacheバグを生む。
+
+この2件はGitHub Issue #15（tech-debt、「Template / Fragmentの Domain Eventを
+設計書§14に追加し実装する」）で追跡する。
+
 ### 4. Aggregate内蔵の循環検出はTemplateの自己extendsチェックのみとする
 
 - **Template**: `TemplateVersion.extendsKey`は構造化フィールドとして保持している
@@ -184,8 +212,9 @@ Event Sourcingなし）に即した名前を新たに付ける。
 
 ## 参照
 
-- [PromptEngine_設計書.md §4.3 / §12 / §14 / §15.4](../PromptEngine_設計書.md)
+- [PromptEngine_設計書.md §4.3 / §12 / §14 / §15.4 / §16](../PromptEngine_設計書.md)
 - [PromptEngine_ClaudeCode実装ガイド.md §6.4](../PromptEngine_ClaudeCode実装ガイド.md)
 - [ADR-0004: 全状態遷移を監査可能にするため PromptWithdrawn / PromptDiscarded を追加する](0004-domain-events-for-state-transitions.md)
 - [ADR-0006: 永続化層からの復元は Memento + @PersistenceApi opt-in に限定する](0006-persistence-restore-path.md)
 - [ADR-0007: sensitive=trueの変数はリテラルのdefaultを持てない](0007-sensitive-variable-no-literal-default.md)
+- [GitHub Issue #15: Template / Fragment の Domain Event を設計書§14に追加し実装する](https://github.com/io0323/prompt-engine/issues/15)
