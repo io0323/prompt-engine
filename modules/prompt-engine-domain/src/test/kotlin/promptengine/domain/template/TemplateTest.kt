@@ -3,16 +3,21 @@ package promptengine.domain.template
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
+import promptengine.domain.shared.ExtendsRefApi
 import promptengine.domain.shared.InvalidStateTransitionException
 import promptengine.domain.shared.PersistenceApi
 import promptengine.domain.shared.PublicationState
 import promptengine.domain.shared.SemVer
+import promptengine.domain.shared.VersionRange
 
 /**
  * Template Aggregate のテスト（ADR-0008）。
  * 設計書§4.3の不変条件（循環継承禁止＝自己参照不可）とPublicationStateの
  * 3状態（Draft/Published/Archived）遷移をTemplateVersion経由で検証する。
+ * extends不変条件のテストが[ExtendsRef]を直接構築するため、クラス単位で
+ * [ExtendsRefApi]をOptInする（ADR-0009）。
  */
+@OptIn(ExtendsRefApi::class)
 class TemplateTest {
     private val key = TemplateKey("shared/base-instructions")
     private val content = TemplateContent("{{#block greeting}}Hello{{/block}}")
@@ -105,19 +110,20 @@ class TemplateTest {
     // ---- 不変条件: 循環継承禁止（自己参照不可） ----
 
     @Test
-    fun `extendsKeyが自分自身のkeyと同じVersionを持つTemplateを直接構築しようとするとIllegalArgumentExceptionを投げる`() {
+    fun `extendsが自分自身のkeyと同じVersionを直接構築しようとするとIllegalArgumentExceptionを投げる`() {
         shouldThrow<IllegalArgumentException> {
-            Template.create(key, NewTemplateVersion(SemVer(0, 1, 0), content, extendsKey = key))
+            Template.create(key, NewTemplateVersion(SemVer(0, 1, 0), content, extends = ExtendsRef(key)))
         }
     }
 
     @Test
-    fun `extendsKeyが他のTemplateを指す場合は問題なく作成できる`() {
+    fun `extendsが他のTemplateを指す場合は問題なく作成できる`() {
         val otherKey = TemplateKey("shared/other")
+        val extendsRef = ExtendsRef(otherKey, VersionRange.CaretMajor(2))
 
-        val template = Template.create(key, NewTemplateVersion(SemVer(0, 1, 0), content, extendsKey = otherKey))
+        val template = Template.create(key, NewTemplateVersion(SemVer(0, 1, 0), content, extends = extendsRef))
 
-        template.versions.single().extendsKey shouldBe otherKey
+        template.versions.single().extends shouldBe extendsRef
     }
 
     @Test
@@ -125,6 +131,20 @@ class TemplateTest {
         shouldThrow<IllegalArgumentException> {
             Template(key, emptyList())
         }
+    }
+
+    @Test
+    fun `newVersion で追加したVersionのextendsは完全な形key+rangeで保持される`() {
+        val created = Template.create(key, NewTemplateVersion(SemVer(0, 1, 0), content))
+        val otherKey = TemplateKey("shared/other")
+        val extendsRef = ExtendsRef(otherKey, VersionRange.Exact(SemVer(1, 3, 0)))
+
+        val template =
+            created.newVersion(
+                NewTemplateVersion(SemVer(0, 2, 0), TemplateContent("v2 body"), extends = extendsRef),
+            )
+
+        template.versions.last().extends shouldBe extendsRef
     }
 
     // ---- 永続化層からの復元: restore（ADR-0006/ADR-0008） ----
@@ -155,12 +175,41 @@ class TemplateTest {
 
     @OptIn(PersistenceApi::class)
     @Test
+    fun `restore は非デフォルトのVersionRangeを持つextendsをそのまま再構築する`() {
+        val otherKey = TemplateKey("shared/other")
+        val extendsRef = ExtendsRef(otherKey, VersionRange.CaretMajor(2))
+        val memento =
+            TemplateMemento(
+                key,
+                listOf(
+                    TemplateVersionMemento(
+                        SemVer(0, 1, 0),
+                        content,
+                        extends = extendsRef,
+                        state = PublicationState.Published,
+                    ),
+                ),
+                rowVersion = 1,
+            )
+
+        val restored = Template.restore(memento)
+
+        restored.versions.single().extends shouldBe extendsRef
+    }
+
+    @OptIn(PersistenceApi::class)
+    @Test
     fun `restore も自己参照不可という不変条件を検証する`() {
         val memento =
             TemplateMemento(
                 key,
                 listOf(
-                    TemplateVersionMemento(SemVer(0, 1, 0), content, extendsKey = key, state = PublicationState.Draft),
+                    TemplateVersionMemento(
+                        SemVer(0, 1, 0),
+                        content,
+                        extends = ExtendsRef(key),
+                        state = PublicationState.Draft,
+                    ),
                 ),
                 rowVersion = 0,
             )

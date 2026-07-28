@@ -16,8 +16,11 @@ import org.springframework.transaction.support.TransactionTemplate
 import org.testcontainers.containers.PostgreSQLContainer
 import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
+import promptengine.domain.shared.ExtendsRefApi
 import promptengine.domain.shared.PublicationState
 import promptengine.domain.shared.SemVer
+import promptengine.domain.shared.VersionRange
+import promptengine.domain.template.ExtendsRef
 import promptengine.domain.template.NewTemplateVersion
 import promptengine.domain.template.Template
 import promptengine.domain.template.TemplateContent
@@ -36,6 +39,7 @@ import javax.sql.DataSource
  * 復元経路パターン（Memento + `@PersistenceApi`）が2つ目のAggregateでも通用するかを
  * 検証する。Domain Event/Outbox/Snapshotは対象外（ADR-0008）。
  */
+@OptIn(ExtendsRefApi::class)
 @Testcontainers
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class JdbcTemplateRepositoryIntegrationTest {
@@ -67,7 +71,7 @@ class JdbcTemplateRepositoryIntegrationTest {
     @Test
     fun `保存したTemplateは全状態 Draft Published Archived を往復しても内容が一致する`() {
         val key = uniqueKey()
-        val extendsKey = TemplateKey("shared/base")
+        val extendsRef = ExtendsRef(TemplateKey("shared/base"), VersionRange.CaretMajor(2))
         val v1 = SemVer(0, 1, 0)
         val v2 = SemVer(0, 2, 0)
         val variables =
@@ -91,14 +95,14 @@ class JdbcTemplateRepositoryIntegrationTest {
                 ),
             )
 
-        // Draft（variables/extendsKeyのround-tripも合わせて検証する）
+        // Draft（variables/extends（key+range）のround-tripも合わせて検証する。ADR-0009）
         val created =
-            Template.create(key, NewTemplateVersion(v1, TemplateContent("Hello {{name}}"), variables, extendsKey))
+            Template.create(key, NewTemplateVersion(v1, TemplateContent("Hello {{name}}"), variables, extendsRef))
         repository.save(created)
         var reloaded = repository.findByKey(key)!!
         reloaded.versions.single().content shouldBe TemplateContent("Hello {{name}}")
         reloaded.versions.single().variables shouldBe variables
-        reloaded.versions.single().extendsKey shouldBe extendsKey
+        reloaded.versions.single().extends shouldBe extendsRef
         reloaded.versions.single().state shouldBe PublicationState.Draft
 
         // Published

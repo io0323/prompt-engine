@@ -44,12 +44,13 @@ class JdbcTemplateRepository(
                 val body: String,
                 val status: String,
                 val extendsKey: String?,
+                val extendsVersionRange: String?,
             )
 
             val versionRows =
                 jdbcTemplate.query(
                     """
-                    SELECT version_id, version, body, status, extends_key
+                    SELECT version_id, version, body, status, extends_key, extends_version_range
                     FROM template_versions WHERE template_id = :templateId ORDER BY created_at, version_id
                     """.trimIndent(),
                     MapSqlParameterSource("templateId", templateRow.templateId),
@@ -60,6 +61,7 @@ class JdbcTemplateRepository(
                         body = rs.getString("body"),
                         status = rs.getString("status"),
                         extendsKey = rs.getString("extends_key"),
+                        extendsVersionRange = rs.getString("extends_version_range"),
                     )
                 }
 
@@ -71,7 +73,7 @@ class JdbcTemplateRepository(
                         semVer = parseSemVer(row.semVer),
                         content = TemplateContent(row.body),
                         variables = variablesByVersionId[row.versionId] ?: emptyList(),
-                        extendsKey = row.extendsKey?.let { TemplateKey(it) },
+                        extends = extendsRefFromDbValue(row.extendsKey, row.extendsVersionRange),
                         state = publicationStateFromDbValue(row.status),
                     )
                 }
@@ -94,7 +96,7 @@ class JdbcTemplateRepository(
     ): Template {
         val versionMementos =
             template.versions.map {
-                TemplateVersionMemento(it.semVer, it.content, it.variables, it.extendsKey, it.state)
+                TemplateVersionMemento(it.semVer, it.content, it.variables, it.extends, it.state)
             }
         return Template.restore(TemplateMemento(template.key, versionMementos, rowVersion))
     }
@@ -190,14 +192,17 @@ class JdbcTemplateRepository(
             jdbcTemplate.queryForObject(
                 """
                 INSERT INTO template_versions
-                    (version_id, template_id, version, body, content_hash, status, extends_key, created_by, created_at)
+                    (version_id, template_id, version, body, content_hash, status,
+                     extends_key, extends_version_range, created_by, created_at)
                 VALUES
-                    (:versionId, :templateId, :version, :body, :contentHash, :status, :extendsKey, :createdBy, :createdAt)
+                    (:versionId, :templateId, :version, :body, :contentHash, :status,
+                     :extendsKey, :extendsVersionRange, :createdBy, :createdAt)
                 ON CONFLICT (template_id, version) DO UPDATE SET
                     body = EXCLUDED.body,
                     content_hash = EXCLUDED.content_hash,
                     status = EXCLUDED.status,
-                    extends_key = EXCLUDED.extends_key
+                    extends_key = EXCLUDED.extends_key,
+                    extends_version_range = EXCLUDED.extends_version_range
                 RETURNING version_id
                 """.trimIndent(),
                 MapSqlParameterSource()
@@ -207,7 +212,8 @@ class JdbcTemplateRepository(
                     .addValue("body", version.content.source)
                     .addValue("contentHash", version.content.contentHash)
                     .addValue("status", version.state.toDbValue())
-                    .addValue("extendsKey", version.extendsKey?.value)
+                    .addValue("extendsKey", version.extends.toExtendsKeyDbValue())
+                    .addValue("extendsVersionRange", version.extends.toExtendsVersionRangeDbValue())
                     .addValue("createdBy", DEFAULT_ACTOR)
                     .addValue("createdAt", Timestamp.from(Instant.now())),
                 UUID::class.java,

@@ -1180,6 +1180,8 @@ entity prompt_versions {
   * status : VARCHAR
   change_note : TEXT
   context_requirement : JSON  ' ADR-0006
+  extends_key : VARCHAR  ' extends先のTemplateKey（ADR-0009）
+  extends_version_range : VARCHAR  ' extendsのVersion範囲（例: "^2"。ADR-0009）
   * created_by / created_at
   <<UQ prompt_id+version>>
 }
@@ -1206,7 +1208,8 @@ entity template_versions {
   * body : TEXT
   * content_hash : CHAR(64)
   * status : VARCHAR  ' Draft/Published/Archived（PublicationState、ADR-0008）
-  extends_key : VARCHAR  ' extends先のTemplateKey。Version範囲の解決は3cスコープ（ADR-0008）
+  extends_key : VARCHAR  ' extends先のTemplateKey（ADR-0008）
+  extends_version_range : VARCHAR  ' extendsのVersion範囲（例: "^2"。ADR-0009）
   * created_by / created_at
   <<UQ template_id+version>>
 }
@@ -1621,6 +1624,11 @@ imports:
 ## 15.5 Include仕様
 
 `{{> <alias|fragmentKey>[@versionRange] [k=v ...] }}`。Fragment側で宣言された変数へ `k=v` で束縛（未指定は呼出側スコープを透過継承）。制約: 参照先はPublishedのみ（Compile-onlyモードはDraft可）、循環禁止、深さ上限5、展開後サイズ上限（設定値、既定1MB）。
+
+深さ上限5は、§15.3の解決順（extends → import → include → macro展開）を通した
+**解決チェーン全体の通算深さ**を指す（Fragment Include単体の深さではない。ADR-0009）。
+P3aのパーサ側ネスト深さ上限（`{{#if}}/{{#each}}/{{#block}}`構文木の入れ子数、既定8）とは
+別概念であり、両者は独立して検証・エラー種別化される。
 
 ## 15.6 Macro仕様
 

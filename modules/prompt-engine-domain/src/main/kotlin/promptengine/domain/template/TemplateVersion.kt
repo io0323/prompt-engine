@@ -14,15 +14,15 @@ import promptengine.domain.variable.VariableDefinition
  * 通常の新規作成は [Template.create] / [Template.newVersion]（常にDraft）を、
  * 永続化層からの復元は [Template.restore] を使うこと。
  *
- * [extendsKey] はextends先の [TemplateKey] のみを保持する。Version範囲（`@^2`等）の
- * 解釈・解決は3c（CompositionService）のスコープであり、本Aggregateは範囲文字列を
- * 保持しない（ADR-0008）。
+ * [extends] はextends先の [TemplateKey] とVersion範囲（`@^2`等）の両方を保持する
+ * （ADR-0009。当初ADR-0008はkeyのみの保持としていたが、CompositionServiceが範囲を
+ * 解決するには構造化フィールドだけでは情報が足りないことが判明し改訂した）。
  */
 @ConsistentCopyVisibility
 data class TemplateVersion internal constructor(
     val semVer: SemVer,
     val content: TemplateContent,
     val variables: List<VariableDefinition> = emptyList(),
-    val extendsKey: TemplateKey? = null,
+    val extends: ExtendsRef? = null,
     val state: PublicationState = PublicationState.Draft,
 )

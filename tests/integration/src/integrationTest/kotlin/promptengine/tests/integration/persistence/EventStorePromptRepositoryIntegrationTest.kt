@@ -24,7 +24,11 @@ import promptengine.domain.prompt.NewPromptVersion
 import promptengine.domain.prompt.Prompt
 import promptengine.domain.prompt.PromptContent
 import promptengine.domain.prompt.PromptKey
+import promptengine.domain.shared.ExtendsRefApi
 import promptengine.domain.shared.SemVer
+import promptengine.domain.shared.VersionRange
+import promptengine.domain.template.ExtendsRef
+import promptengine.domain.template.TemplateKey
 import promptengine.domain.variable.VariableDefinition
 import promptengine.domain.variable.VariableType
 import promptengine.infrastructure.persistence.EventStorePromptRepository
@@ -41,6 +45,7 @@ import javax.sql.DataSource
  * - イベント追記順序とsequenceの連番性
  * - 同時更新での楽観ロック衝突
  */
+@OptIn(ExtendsRefApi::class)
 @Testcontainers
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class EventStorePromptRepositoryIntegrationTest {
@@ -106,12 +111,13 @@ class EventStorePromptRepositoryIntegrationTest {
             )
         val contextRequirement =
             ContextRequirement(scope = "user", required = listOf("userId"), optional = listOf("locale"))
+        val extendsRef = ExtendsRef(TemplateKey("templates/base-assistant"), VersionRange.CaretMajor(2))
 
-        // Draft（variables/contextRequirementのround-tripも合わせて検証する）
+        // Draft（variables/contextRequirement/extends（key+range）のround-tripも合わせて検証する。ADR-0009）
         val (created, createdEvent) =
             Prompt.create(
                 key,
-                NewPromptVersion(v1, PromptContent("Answer: {{question}}"), variables, contextRequirement),
+                NewPromptVersion(v1, PromptContent("Answer: {{question}}"), variables, contextRequirement, extendsRef),
                 context,
             )
         repository.save(created, listOf(createdEvent))
@@ -120,6 +126,7 @@ class EventStorePromptRepositoryIntegrationTest {
         reloaded.versions.single().content shouldBe PromptContent("Answer: {{question}}")
         reloaded.versions.single().variables shouldBe variables
         reloaded.versions.single().contextRequirement shouldBe contextRequirement
+        reloaded.versions.single().extends shouldBe extendsRef
 
         // InReview
         repository.save(reloaded.submitForReview(v1, validationPassed = true))

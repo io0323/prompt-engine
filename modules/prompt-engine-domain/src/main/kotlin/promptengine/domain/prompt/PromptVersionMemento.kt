@@ -2,6 +2,7 @@ package promptengine.domain.prompt
 
 import promptengine.domain.context.ContextRequirement
 import promptengine.domain.shared.SemVer
+import promptengine.domain.template.ExtendsRef
 import promptengine.domain.variable.VariableDefinition
 
 /**
@@ -17,5 +18,6 @@ data class PromptVersionMemento(
     val content: PromptContent,
     val variables: List<VariableDefinition>,
     val contextRequirement: ContextRequirement?,
+    val extends: ExtendsRef? = null,
     val state: LifecycleState,
 )

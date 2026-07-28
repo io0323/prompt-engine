@@ -15,5 +15,5 @@ data class NewTemplateVersion(
     val semVer: SemVer,
     val content: TemplateContent,
     val variables: List<VariableDefinition> = emptyList(),
-    val extendsKey: TemplateKey? = null,
+    val extends: ExtendsRef? = null,
 )

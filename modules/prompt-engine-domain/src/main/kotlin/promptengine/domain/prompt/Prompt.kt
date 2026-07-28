@@ -68,7 +68,13 @@ data class Prompt internal constructor(
             context: EventContext,
         ): Pair<Prompt, PromptCreated> {
             val promptVersion =
-                PromptVersion(version.semVer, version.content, version.variables, version.contextRequirement)
+                PromptVersion(
+                    version.semVer,
+                    version.content,
+                    version.variables,
+                    version.contextRequirement,
+                    version.extends,
+                )
             val prompt = Prompt(key, listOf(promptVersion))
             val event =
                 PromptCreated(
@@ -96,7 +102,7 @@ data class Prompt internal constructor(
         fun restore(memento: PromptMemento): Prompt {
             val versions =
                 memento.versions.map {
-                    PromptVersion(it.semVer, it.content, it.variables, it.contextRequirement, it.state)
+                    PromptVersion(it.semVer, it.content, it.variables, it.contextRequirement, it.extends, it.state)
                 }
             return Prompt(memento.key, versions, memento.rowVersion)
         }
@@ -113,7 +119,13 @@ data class Prompt internal constructor(
     ): Pair<Prompt, PromptVersionCreated> {
         require(versions.none { it.semVer == version.semVer }) { "version ${version.semVer} already exists" }
         val promptVersion =
-            PromptVersion(version.semVer, version.content, version.variables, version.contextRequirement)
+            PromptVersion(
+                version.semVer,
+                version.content,
+                version.variables,
+                version.contextRequirement,
+                version.extends,
+            )
         val prompt = copy(versions = versions + promptVersion)
         val event =
             PromptVersionCreated(
