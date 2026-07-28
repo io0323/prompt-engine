@@ -1,7 +1,8 @@
-package promptengine.domain.prompt
+package promptengine.domain.shared
 
 /**
- * 永続化層からの復元専用API（[Prompt.restore]）にのみ付与するマーカー（ADR-0006）。
+ * 永続化層からの復元専用API（`Prompt.restore` / `Template.restore` / `Fragment.restore`）
+ * にのみ付与するマーカー（ADR-0006、ADR-0008でPrompt専用から全Aggregate共通へ移動）。
  *
  * Kotlinの `internal` はGradleモジュール単位のため、`domain` の `internal` は
  * `infrastructure` にも `application` にも等しく届かない。`@RequiresOptIn` は
@@ -11,7 +12,7 @@ package promptengine.domain.prompt
  * `prompt-engine-bootstrap` の `ArchitectureTest` でも検証する。
  */
 @RequiresOptIn(
-    message = "Prompt.restoreは永続化層からの復元専用。通常の新規作成は Prompt.create / newVersion を使うこと。",
+    message = "各AggregateのrestoreはPersistence層からの復元専用。通常の新規作成は create / newVersion を使うこと。",
     level = RequiresOptIn.Level.ERROR,
 )
 @Retention(AnnotationRetention.BINARY)

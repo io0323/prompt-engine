@@ -1,6 +1,7 @@
 package promptengine.domain.prompt
 
 import promptengine.domain.event.EventContext
+import promptengine.domain.shared.PersistenceApi
 import promptengine.domain.shared.SemVer
 import java.util.UUID
 

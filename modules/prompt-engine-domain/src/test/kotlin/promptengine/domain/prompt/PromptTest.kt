@@ -5,6 +5,7 @@ import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import org.junit.jupiter.api.Test
 import promptengine.domain.event.EventContext
+import promptengine.domain.shared.PersistenceApi
 import promptengine.domain.shared.SemVer
 import java.time.Instant
 
