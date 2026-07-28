@@ -27,6 +27,37 @@ git config core.hooksPath .githooks
 
 `main` ブランチへの直接pushは禁止です。すべての変更はPull Requestを経由してください。
 
+## ブランチ作成手順
+
+作業ブランチはローカル `main` から作成してください。
+
+```bash
+git switch main && git pull
+git switch -c feat/<phase>-<slug>
+```
+
+`origin/main` から直接切る場合（`git switch -c <branch> origin/main`）は、gitのデフォルト挙動で
+そのブランチの upstream が `origin/main` に設定されます。この状態で `git push` すると、
+push先が現在のブランチではなく `origin/main` に解決され、意図せず `main` へpushしようとして
+保護ルールに弾かれます。この経路を使う場合は `--no-track` を付けて切るか、作成後に
+以下でupstreamを張り直してください。
+
+```bash
+git branch --set-upstream-to=origin/<branch> <branch>
+```
+
+### push.default
+
+本リポジトリではローカル設定で `push.default=simple` を使用してください（未設定の場合）。
+
+```bash
+git config --local push.default simple
+```
+
+理由: 既定の `upstream` は、upstream先のブランチ名が現在のブランチ名と異なっていても
+その upstream 先へpushしてしまいます。`simple` はブランチ名が一致する場合のみpushを許可し、
+一致しなければ安全に失敗するため、上記のような意図しないブランチへのpushを未然に防げます。
+
 ## コミットメッセージ
 
 [Conventional Commits](https://www.conventionalcommits.org/) に従ってください。
