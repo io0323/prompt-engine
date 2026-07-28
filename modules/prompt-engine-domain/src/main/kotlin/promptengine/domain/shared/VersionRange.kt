@@ -45,22 +45,24 @@ sealed class VersionRange {
         private val EXACT_SEMVER_PATTERN = Regex("^(\\d+)\\.(\\d+)\\.(\\d+)$")
 
         /**
-         * `text` が `null`・空文字列なら[Latest]、`^<major>` 形式なら[CaretMajor]、
-         * `major.minor.patch` 形式なら[Exact]として解釈する。いずれの形式にも
-         * 一致しない場合は `IllegalArgumentException` を投げる。
+         * `text` が `null`（範囲指定の省略）なら[Latest]、`^<major>` 形式なら[CaretMajor]、
+         * `major.minor.patch` 形式なら[Exact]として解釈する。空文字列・空白のみの`text`は
+         * 「範囲指定の省略」ではなく不正な明示指定とみなし、`IllegalArgumentException`を
+         * 投げる（`parse(text).toRangeText() == text` という往復が空文字列に対しても
+         * 成立するようにするため。`null`のみが[Latest]に対応する）。
          */
-        fun parse(text: String?): VersionRange =
-            if (text.isNullOrBlank()) {
-                Latest
+        fun parse(text: String?): VersionRange {
+            if (text == null) return Latest
+            require(text.isNotBlank()) { "version range must not be blank" }
+
+            val caretMatch = CARET_MAJOR_PATTERN.matchEntire(text)
+            return if (caretMatch != null) {
+                val (major) = caretMatch.destructured
+                CaretMajor(major.toInt())
             } else {
-                val caretMatch = CARET_MAJOR_PATTERN.matchEntire(text)
-                if (caretMatch != null) {
-                    val (major) = caretMatch.destructured
-                    CaretMajor(major.toInt())
-                } else {
-                    parseExact(text)
-                }
+                parseExact(text)
             }
+        }
 
         private fun parseExact(text: String): Exact {
             val match =

@@ -57,7 +57,7 @@ class ReferenceResolver(
             checkNotCyclic(visitedKeys, keyLabel)
             visitedKeys += keyLabel
 
-            accumulatedSizeBytes += version.content.source.length
+            accumulatedSizeBytes += version.content.source.toByteArray(Charsets.UTF_8).size
             checkSize(accumulatedSizeBytes)
 
             result +=
@@ -133,7 +133,7 @@ class ReferenceResolver(
         val eligible = rangeMatches.filter { it.state in allowedStatuses }
         if (eligible.isNotEmpty()) return eligible
         if (rangeMatches.any { it.state == PublicationState.Draft }) {
-            throw DraftReferenceNotAllowedException("templates/${key.value}@${range.toRangeText() ?: "latest"}")
+            throw DraftReferenceNotAllowedException("${key.value}@${range.toRangeText() ?: "latest"}")
         }
         throw TemplateReferenceNotFoundException(key, range)
     }

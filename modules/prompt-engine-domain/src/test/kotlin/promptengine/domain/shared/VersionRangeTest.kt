@@ -10,9 +10,14 @@ import org.junit.jupiter.api.Test
  */
 class VersionRangeTest {
     @Test
-    fun `parse はnullまたは空文字列をLatestとして解釈する`() {
+    fun `parse はnullをLatestとして解釈する`() {
         VersionRange.parse(null) shouldBe VersionRange.Latest
-        VersionRange.parse("") shouldBe VersionRange.Latest
+    }
+
+    @Test
+    fun `parse は空文字列や空白のみの明示指定にIllegalArgumentExceptionを投げる`() {
+        shouldThrow<IllegalArgumentException> { VersionRange.parse("") }
+        shouldThrow<IllegalArgumentException> { VersionRange.parse("   ") }
     }
 
     @Test

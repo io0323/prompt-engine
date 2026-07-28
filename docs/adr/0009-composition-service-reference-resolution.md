@@ -83,9 +83,16 @@ ArchUnitルールを追加した（コンパイラのopt-in強制が一次防御
 ただし、これが保証するのは「`ExtendsRef`が常に何らかのパース結果として得られたもの」
 までであり、「同じ`content.source`から一貫して導出されたか」という意味的整合性
 （`content`と`extends`を別々の`content.source`に対して求めた結果同士を組み合わせて渡す、
-といった誤用）までは型システムでは防げない。取り込みパイプライン（P9以降）実装時に
-この点を必ず解消することを、GitHub Issue「取り込みパイプライン実装時、ExtendsRef を
-content.source から必ず導出する」（tech-debt）で追跡する。
+といった誤用）までは型システムでは防げない。加えて、`@ExtendsRefApi`はプライマリ
+コンストラクタにのみ付与しており、コンパイラ自動生成の`copy()`はこのゲートを継承しない
+（`copy()`にも追随させるにはクラス全体を`@ExtendsRefApi`にする必要があるが、そうすると
+`TemplateVersion`/`PromptVersion`等、型として`ExtendsRef`を保持するだけの既存P1/P2/P3b
+コード・テストすべてにOptInの伝播を要求してしまうことが実験的に判明し、extendsの整合性
+確保という目的に対して影響範囲が不釣り合いに大きいため見送った）。したがって
+「既存の正当な`ExtendsRef`を`copy()`で書き換える」バイパス経路が残る。取り込み
+パイプライン（P9以降）実装時にこれらの点を必ず解消することを、GitHub Issue
+「取り込みパイプライン実装時、ExtendsRef を content.source から必ず導出する」
+（tech-debt、#21）で追跡する。
 
 ### 2. 深さ上限「5」は、extends/import/include/macro解決チェーンを通算した上限と解釈する（設計書§15.5を明確化）
 
@@ -148,9 +155,13 @@ include展開・macro展開）はPR2（`feat/p3c2-composition-rules`）で行う
 
 CompositionServiceは解決時点のゲートを持つ：範囲の候補は原則`Published`のみ、
 `CompositionMode.COMPILE_ONLY`の場合のみ`Draft`も候補に含める（設計書§2.10の
-Compile-onlyモードの扱いに対応）。該当なしなら`TemplateReferenceNotFoundException`/
-`FragmentReferenceNotFoundException`（→ 設計書§13.3の`TEMPLATE_NOT_FOUND`/
-`FRAGMENT_NOT_FOUND`）。Validation Engine（P5、未実装）の`DependencyValidation`
+Compile-onlyモードの扱いに対応）。「参照先キー自体が存在しない／範囲にマッチする
+Versionが1つも無い」場合と、「範囲にマッチするVersionは存在するがDraftのみで、かつ
+`COMPILE_ONLY`以外のため許可されない」場合を区別する: 前者は
+`TemplateReferenceNotFoundException`/`FragmentReferenceNotFoundException`
+（→ 設計書§13.3の`TEMPLATE_NOT_FOUND`/`FRAGMENT_NOT_FOUND`）、後者は
+`DraftReferenceNotAllowedException`を投げる（存在自体はする参照を「見つからない」と
+誤認させないため）。Validation Engine（P5、未実装）の`DependencyValidation`
 Rule（設計書§2.10）は、`CompiledPrompt.dependencies[].status`を読むだけで
 Draft参照等をseverity付きの`ValidationReport`所見に変換する側であり、
 リポジトリへの再照会は行わない。

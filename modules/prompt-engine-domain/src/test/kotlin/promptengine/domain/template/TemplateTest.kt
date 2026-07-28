@@ -133,6 +133,20 @@ class TemplateTest {
         }
     }
 
+    @Test
+    fun `newVersion で追加したVersionのextendsは完全な形key+rangeで保持される`() {
+        val created = Template.create(key, NewTemplateVersion(SemVer(0, 1, 0), content))
+        val otherKey = TemplateKey("shared/other")
+        val extendsRef = ExtendsRef(otherKey, VersionRange.Exact(SemVer(1, 3, 0)))
+
+        val template =
+            created.newVersion(
+                NewTemplateVersion(SemVer(0, 2, 0), TemplateContent("v2 body"), extends = extendsRef),
+            )
+
+        template.versions.last().extends shouldBe extendsRef
+    }
+
     // ---- 永続化層からの復元: restore（ADR-0006/ADR-0008） ----
 
     @OptIn(PersistenceApi::class)
@@ -157,6 +171,30 @@ class TemplateTest {
                 SemVer(0, 1, 0) to PublicationState.Published,
                 SemVer(0, 2, 0) to PublicationState.Draft,
             )
+    }
+
+    @OptIn(PersistenceApi::class)
+    @Test
+    fun `restore は非デフォルトのVersionRangeを持つextendsをそのまま再構築する`() {
+        val otherKey = TemplateKey("shared/other")
+        val extendsRef = ExtendsRef(otherKey, VersionRange.CaretMajor(2))
+        val memento =
+            TemplateMemento(
+                key,
+                listOf(
+                    TemplateVersionMemento(
+                        SemVer(0, 1, 0),
+                        content,
+                        extends = extendsRef,
+                        state = PublicationState.Published,
+                    ),
+                ),
+                rowVersion = 1,
+            )
+
+        val restored = Template.restore(memento)
+
+        restored.versions.single().extends shouldBe extendsRef
     }
 
     @OptIn(PersistenceApi::class)
