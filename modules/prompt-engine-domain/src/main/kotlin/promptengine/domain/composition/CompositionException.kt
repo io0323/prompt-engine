@@ -3,6 +3,7 @@ package promptengine.domain.composition
 import promptengine.domain.fragment.FragmentKey
 import promptengine.domain.shared.VersionRange
 import promptengine.domain.template.TemplateKey
+import promptengine.domain.template.ast.BlockRole
 
 /**
  * CompositionServiceの解決失敗を表す例外階層（設計書§2.6ステージ2〜3・§13.3、ADR-0009）。
@@ -55,3 +56,18 @@ class MacroRecursionException(val macroName: String) :
  */
 class NestedPromptNotSupportedException(val target: String) :
     CompositionException("Nested Prompt is not supported in this phase: $target")
+
+/**
+ * extendsマージにおいて、直近の親が確定している内容に[role]のblockが存在しないのに
+ * `{{ super() }}` を呼んだ（根本のTemplate自身が呼んだ場合を含む、設計書§15.3、ADR-0010決定3）。
+ */
+class SuperWithoutParentBlockException(val role: BlockRole) :
+    CompositionException("super() called in block '$role' which has no parent block content")
+
+/** 同一block内で `{{ super() }}` を複数回呼んだ（設計書§15.3、ADR-0010決定3）。 */
+class DuplicateSuperCallException(val role: BlockRole) :
+    CompositionException("super() called more than once in block '$role'")
+
+/** `imports:` 内で同一aliasが2回以上宣言された（設計書§15.4、ADR-0010決定7）。 */
+class DuplicateImportAliasException(val alias: String) :
+    CompositionException("duplicate import alias: $alias")
