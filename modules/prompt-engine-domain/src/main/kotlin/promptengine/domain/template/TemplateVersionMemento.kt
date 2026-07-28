@@ -9,6 +9,6 @@ data class TemplateVersionMemento(
     val semVer: SemVer,
     val content: TemplateContent,
     val variables: List<VariableDefinition> = emptyList(),
-    val extendsKey: TemplateKey? = null,
+    val extends: ExtendsRef? = null,
     val state: PublicationState,
 )

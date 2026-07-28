@@ -371,8 +371,14 @@ class PromptTest {
             PromptMemento(
                 key,
                 listOf(
-                    PromptVersionMemento(SemVer(0, 1, 0), content, emptyList(), null, LifecycleState.Deprecated),
-                    PromptVersionMemento(SemVer(0, 2, 0), content, emptyList(), null, LifecycleState.Published),
+                    PromptVersionMemento(
+                        SemVer(0, 1, 0),
+                        content,
+                        emptyList(),
+                        null,
+                        state = LifecycleState.Deprecated,
+                    ),
+                    PromptVersionMemento(SemVer(0, 2, 0), content, emptyList(), null, state = LifecycleState.Published),
                 ),
                 rowVersion = 7,
             )
@@ -395,8 +401,8 @@ class PromptTest {
             PromptMemento(
                 key,
                 listOf(
-                    PromptVersionMemento(SemVer(0, 1, 0), content, emptyList(), null, LifecycleState.Published),
-                    PromptVersionMemento(SemVer(0, 2, 0), content, emptyList(), null, LifecycleState.Published),
+                    PromptVersionMemento(SemVer(0, 1, 0), content, emptyList(), null, state = LifecycleState.Published),
+                    PromptVersionMemento(SemVer(0, 2, 0), content, emptyList(), null, state = LifecycleState.Published),
                 ),
                 rowVersion = 0,
             )

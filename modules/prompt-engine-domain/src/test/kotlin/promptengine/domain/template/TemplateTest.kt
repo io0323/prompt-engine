@@ -7,6 +7,7 @@ import promptengine.domain.shared.InvalidStateTransitionException
 import promptengine.domain.shared.PersistenceApi
 import promptengine.domain.shared.PublicationState
 import promptengine.domain.shared.SemVer
+import promptengine.domain.shared.VersionRange
 
 /**
  * Template Aggregate のテスト（ADR-0008）。
@@ -105,19 +106,20 @@ class TemplateTest {
     // ---- 不変条件: 循環継承禁止（自己参照不可） ----
 
     @Test
-    fun `extendsKeyが自分自身のkeyと同じVersionを持つTemplateを直接構築しようとするとIllegalArgumentExceptionを投げる`() {
+    fun `extendsが自分自身のkeyと同じVersionを直接構築しようとするとIllegalArgumentExceptionを投げる`() {
         shouldThrow<IllegalArgumentException> {
-            Template.create(key, NewTemplateVersion(SemVer(0, 1, 0), content, extendsKey = key))
+            Template.create(key, NewTemplateVersion(SemVer(0, 1, 0), content, extends = ExtendsRef(key)))
         }
     }
 
     @Test
-    fun `extendsKeyが他のTemplateを指す場合は問題なく作成できる`() {
+    fun `extendsが他のTemplateを指す場合は問題なく作成できる`() {
         val otherKey = TemplateKey("shared/other")
+        val extendsRef = ExtendsRef(otherKey, VersionRange.CaretMajor(2))
 
-        val template = Template.create(key, NewTemplateVersion(SemVer(0, 1, 0), content, extendsKey = otherKey))
+        val template = Template.create(key, NewTemplateVersion(SemVer(0, 1, 0), content, extends = extendsRef))
 
-        template.versions.single().extendsKey shouldBe otherKey
+        template.versions.single().extends shouldBe extendsRef
     }
 
     @Test
@@ -160,7 +162,12 @@ class TemplateTest {
             TemplateMemento(
                 key,
                 listOf(
-                    TemplateVersionMemento(SemVer(0, 1, 0), content, extendsKey = key, state = PublicationState.Draft),
+                    TemplateVersionMemento(
+                        SemVer(0, 1, 0),
+                        content,
+                        extends = ExtendsRef(key),
+                        state = PublicationState.Draft,
+                    ),
                 ),
                 rowVersion = 0,
             )

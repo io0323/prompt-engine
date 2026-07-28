@@ -2,6 +2,7 @@ package promptengine.domain.prompt
 
 import promptengine.domain.context.ContextRequirement
 import promptengine.domain.shared.SemVer
+import promptengine.domain.template.ExtendsRef
 import promptengine.domain.variable.VariableDefinition
 
 /**
@@ -12,6 +13,10 @@ import promptengine.domain.variable.VariableDefinition
  * State パターンの遷移を経ずに不正な状態のインスタンスが作れてしまうため。
  * 通常の新規作成は [Prompt.create] / [Prompt.newVersion]（常にDraft）を、
  * 永続化層からの復元は [Prompt.restore] を使うこと（ADR-0006）。
+ *
+ * [extends] はPromptがextendsするTemplateの参照（key + Version範囲）を保持する
+ * （設計書§15.1/§15.3、ADR-0009）。PromptはTemplateしかextendsできないため、
+ * 参照先は常に [promptengine.domain.template.TemplateKey]。
  */
 @ConsistentCopyVisibility
 data class PromptVersion internal constructor(
@@ -19,6 +24,7 @@ data class PromptVersion internal constructor(
     val content: PromptContent,
     val variables: List<VariableDefinition> = emptyList(),
     val contextRequirement: ContextRequirement? = null,
+    val extends: ExtendsRef? = null,
     val state: LifecycleState = LifecycleState.Draft,
 ) {
     /**

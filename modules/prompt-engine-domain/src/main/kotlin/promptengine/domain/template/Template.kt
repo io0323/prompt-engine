@@ -28,7 +28,7 @@ data class Template internal constructor(
 ) {
     init {
         require(versions.isNotEmpty()) { "Template must have at least one version" }
-        require(versions.none { it.extendsKey == key }) {
+        require(versions.none { it.extends?.key == key }) {
             "Template must not extend itself: ${key.value}"
         }
     }
@@ -48,7 +48,7 @@ data class Template internal constructor(
             version: NewTemplateVersion,
         ): Template {
             val templateVersion =
-                TemplateVersion(version.semVer, version.content, version.variables, version.extendsKey)
+                TemplateVersion(version.semVer, version.content, version.variables, version.extends)
             return Template(key, listOf(templateVersion))
         }
 
@@ -61,7 +61,7 @@ data class Template internal constructor(
         fun restore(memento: TemplateMemento): Template {
             val versions =
                 memento.versions.map {
-                    TemplateVersion(it.semVer, it.content, it.variables, it.extendsKey, it.state)
+                    TemplateVersion(it.semVer, it.content, it.variables, it.extends, it.state)
                 }
             return Template(memento.key, versions, memento.rowVersion)
         }
@@ -71,7 +71,7 @@ data class Template internal constructor(
     fun newVersion(version: NewTemplateVersion): Template {
         require(versions.none { it.semVer == version.semVer }) { "version ${version.semVer} already exists" }
         val templateVersion =
-            TemplateVersion(version.semVer, version.content, version.variables, version.extendsKey)
+            TemplateVersion(version.semVer, version.content, version.variables, version.extends)
         return copy(versions = versions + templateVersion)
     }
 

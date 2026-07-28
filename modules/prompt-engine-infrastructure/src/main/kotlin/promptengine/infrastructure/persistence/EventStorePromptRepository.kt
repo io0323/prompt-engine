@@ -64,12 +64,15 @@ class EventStorePromptRepository(
                 val content: String,
                 val status: String,
                 val contextRequirement: String?,
+                val extendsKey: String?,
+                val extendsVersionRange: String?,
             )
 
             val versionRows =
                 jdbcTemplate.query(
                     """
-                    SELECT version_id, version, content, status, context_requirement
+                    SELECT version_id, version, content, status, context_requirement,
+                           extends_key, extends_version_range
                     FROM prompt_versions WHERE prompt_id = :promptId ORDER BY created_at, version_id
                     """.trimIndent(),
                     MapSqlParameterSource("promptId", promptRow.promptId),
@@ -80,6 +83,8 @@ class EventStorePromptRepository(
                         content = rs.getString("content"),
                         status = rs.getString("status"),
                         contextRequirement = rs.getString("context_requirement"),
+                        extendsKey = rs.getString("extends_key"),
+                        extendsVersionRange = rs.getString("extends_version_range"),
                     )
                 }
 
@@ -93,6 +98,7 @@ class EventStorePromptRepository(
                         content = PromptContent(row.content),
                         variables = variablesByVersionId[row.versionId] ?: emptyList(),
                         contextRequirement = row.contextRequirement?.let { readContextRequirement(it) },
+                        extends = extendsRefFromDbValue(row.extendsKey, row.extendsVersionRange),
                         state = lifecycleStateFromDbValue(row.status),
                     )
                 }
@@ -137,6 +143,7 @@ class EventStorePromptRepository(
                     version.content,
                     version.variables,
                     version.contextRequirement,
+                    version.extends,
                     version.state,
                 )
             }
@@ -256,14 +263,18 @@ class EventStorePromptRepository(
             jdbcTemplate.queryForObject(
                 """
                 INSERT INTO prompt_versions
-                    (version_id, prompt_id, version, content, content_hash, status, context_requirement, created_by, created_at)
+                    (version_id, prompt_id, version, content, content_hash, status, context_requirement,
+                     extends_key, extends_version_range, created_by, created_at)
                 VALUES
-                    (:versionId, :promptId, :version, :content, :contentHash, :status, :contextRequirement::json, :createdBy, :createdAt)
+                    (:versionId, :promptId, :version, :content, :contentHash, :status, :contextRequirement::json,
+                     :extendsKey, :extendsVersionRange, :createdBy, :createdAt)
                 ON CONFLICT (prompt_id, version) DO UPDATE SET
                     content = EXCLUDED.content,
                     content_hash = EXCLUDED.content_hash,
                     status = EXCLUDED.status,
-                    context_requirement = EXCLUDED.context_requirement
+                    context_requirement = EXCLUDED.context_requirement,
+                    extends_key = EXCLUDED.extends_key,
+                    extends_version_range = EXCLUDED.extends_version_range
                 RETURNING version_id
                 """.trimIndent(),
                 MapSqlParameterSource()
@@ -276,7 +287,9 @@ class EventStorePromptRepository(
                     .addValue(
                         "contextRequirement",
                         version.contextRequirement?.let { objectMapper.writeValueAsString(it) },
-                    ).addValue("createdBy", actor)
+                    ).addValue("extendsKey", version.extends.toExtendsKeyDbValue())
+                    .addValue("extendsVersionRange", version.extends.toExtendsVersionRangeDbValue())
+                    .addValue("createdBy", actor)
                     .addValue("createdAt", Timestamp.from(occurredAt)),
                 UUID::class.java,
             )!!
