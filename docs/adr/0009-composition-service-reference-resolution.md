@@ -73,6 +73,20 @@ CompositionService自身は、この決定により**再パースによる復元
 （DSLパーサへの依存箇所を「Template/Fragmentのbodyを展開する時」だけに限定する）
 という利点もある。
 
+「`ExtendsFieldMapper`を経由すること」を規約として定めるだけでは、`NewTemplateVersion`/
+`NewPromptVersion`が`content`とは独立に任意の`ExtendsRef`を受け取れてしまい、規約を
+守らないコードを型で防げない。これを構造的な保証に格上げするため、
+`promptengine.domain.shared.ExtendsRefApi`（`@RequiresOptIn`、`@PersistenceApi`と同型）を
+新設し、`ExtendsRef`の直接構築を「宣言箇所（`domain.template`）・`ExtendsFieldMapper`
+（`engine.compiler`）・DB復元経路（`infrastructure.persistence`）」の3箇所に限定する
+ArchUnitルールを追加した（コンパイラのopt-in強制が一次防御、ArchUnitは二次防御）。
+ただし、これが保証するのは「`ExtendsRef`が常に何らかのパース結果として得られたもの」
+までであり、「同じ`content.source`から一貫して導出されたか」という意味的整合性
+（`content`と`extends`を別々の`content.source`に対して求めた結果同士を組み合わせて渡す、
+といった誤用）までは型システムでは防げない。取り込みパイプライン（P9以降）実装時に
+この点を必ず解消することを、GitHub Issue「取り込みパイプライン実装時、ExtendsRef を
+content.source から必ず導出する」（tech-debt）で追跡する。
+
 ### 2. 深さ上限「5」は、extends/import/include/macro解決チェーンを通算した上限と解釈する（設計書§15.5を明確化）
 
 設計書§15.5は「循環禁止、深さ上限5」とInclude仕様の節に書かれているが、§15.3が
@@ -203,3 +217,4 @@ Draft参照等をseverity付きの`ValidationReport`所見に変換する側で�
 - [ADR-0008: Template / Fragment Aggregateのドメインモデルと永続化方針](0008-template-fragment-domain-model.md)（本ADRが決定1を追記改訂）
 - GitHub Issue: 「Nested Prompt（`{{> prompt:key }}`）を実装する」（tech-debt）
 - GitHub Issue: 「Composition関連エラー種別のHTTPコードを設計書§13.3に追加する」（tech-debt）
+- GitHub Issue #21: 「取り込みパイプライン実装時、ExtendsRef を content.source から必ず導出する」（tech-debt）
