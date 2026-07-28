@@ -2,12 +2,16 @@ package promptengine.domain.template
 
 import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
+import promptengine.domain.shared.ExtendsRefApi
 import promptengine.domain.shared.SemVer
 import promptengine.domain.shared.VersionRange
 
 /**
  * extends参照（key + range）のテスト（ADR-0009）。
+ * [ExtendsRef] 自体を主題とするテストのため、クラス単位で[ExtendsRefApi]をOptInする
+ * （通常のドメインコードはDSLソースからの導出＝ExtendsFieldMapper経由に限られる）。
  */
+@OptIn(ExtendsRefApi::class)
 class ExtendsRefTest {
     @Test
     fun `key と range を保持する`() {

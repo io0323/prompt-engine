@@ -24,6 +24,7 @@ import promptengine.domain.prompt.NewPromptVersion
 import promptengine.domain.prompt.Prompt
 import promptengine.domain.prompt.PromptContent
 import promptengine.domain.prompt.PromptKey
+import promptengine.domain.shared.ExtendsRefApi
 import promptengine.domain.shared.SemVer
 import promptengine.domain.shared.VersionRange
 import promptengine.domain.template.ExtendsRef
@@ -44,6 +45,7 @@ import javax.sql.DataSource
  * - イベント追記順序とsequenceの連番性
  * - 同時更新での楽観ロック衝突
  */
+@OptIn(ExtendsRefApi::class)
 @Testcontainers
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class EventStorePromptRepositoryIntegrationTest {

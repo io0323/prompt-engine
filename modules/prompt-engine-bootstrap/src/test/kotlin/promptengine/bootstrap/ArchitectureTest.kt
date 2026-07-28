@@ -170,6 +170,35 @@ class ArchitectureTest {
             .check(importedClasses)
     }
 
+    /**
+     * ADR-0009: `ExtendsRef`（extendsのkey+range）の直接構築は、宣言箇所自体
+     * （`promptengine.domain.template.ExtendsRef`、コンストラクタへのアノテーション付与も
+     * 依存とみなされる）と、DSLソースから実際に導出する2箇所
+     * （`promptengine.engine.compiler`のExtendsFieldMapper、
+     * `promptengine.infrastructure.persistence`のDB復元経路）以外から行えないことを検証する。
+     * `content.source`と無関係な値を任意に構築できてしまうと、「保存された参照 == DSLソースを
+     * パースした結果」という整合性がドメイン層のみでは保証できない（domainはパーサに
+     * 依存できないため）ことに対する構造的な歯止め。`@PersistenceApi`と同じ、
+     * `@RequiresOptIn`によるモジュール境界非依存の強制 + ArchUnitでの二重の安全網。
+     *
+     * `domain..`全体ではなく`domain.template..`のみを許可対象とすることで、
+     * 他のAggregate（`domain.prompt`等）がextendsを独自に導出しようとする経路が
+     * 新設されたら検知できるようにする（`PersistenceApi`のルールより意図的に狭い）。
+     */
+    @Test
+    fun `ExtendsRefApiへの依存は domain template と engine compiler と infrastructure persistence に限定される`() {
+        noClasses()
+            .that().resideOutsideOfPackages(
+                "promptengine.domain.template..",
+                "promptengine.engine.compiler..",
+                "promptengine.infrastructure.persistence..",
+            )
+            .should().dependOnClassesThat()
+            .haveFullyQualifiedName("promptengine.domain.shared.ExtendsRefApi")
+            .allowEmptyShould(true)
+            .check(importedClasses)
+    }
+
     @Test
     fun `具象クラスのDI結線は prompt-engine-bootstrap のConfigurationクラスでのみ行う`() {
         classes()

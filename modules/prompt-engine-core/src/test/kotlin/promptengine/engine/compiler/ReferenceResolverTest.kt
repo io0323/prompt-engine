@@ -11,6 +11,7 @@ import promptengine.domain.composition.CompositionSizeExceededException
 import promptengine.domain.composition.DraftReferenceNotAllowedException
 import promptengine.domain.composition.ResolvedDependency
 import promptengine.domain.composition.TemplateReferenceNotFoundException
+import promptengine.domain.shared.ExtendsRefApi
 import promptengine.domain.shared.PublicationState
 import promptengine.domain.shared.SemVer
 import promptengine.domain.shared.VersionRange
@@ -24,8 +25,10 @@ import promptengine.domain.template.TemplateRepository
 /**
  * [ReferenceResolver]のテスト（ADR-0009）。[FakeTemplateRepository]は固定の内容を持つ
  * 純粋なインメモリ実装であり、モック化フレームワークは使わない（決定性テストの前提を
- * リポジトリ側の振る舞いに依存させないため）。
+ * リポジトリ側の振る舞いに依存させないため）。テスト用フィクスチャが[ExtendsRef]を
+ * 直接構築するため、クラス単位で[ExtendsRefApi]をOptInする。
  */
+@OptIn(ExtendsRefApi::class)
 class ReferenceResolverTest {
     @Test
     fun `rootExtendsがnullなら空リストを返す`() {

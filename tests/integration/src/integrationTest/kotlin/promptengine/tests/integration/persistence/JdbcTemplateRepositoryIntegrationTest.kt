@@ -16,6 +16,7 @@ import org.springframework.transaction.support.TransactionTemplate
 import org.testcontainers.containers.PostgreSQLContainer
 import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
+import promptengine.domain.shared.ExtendsRefApi
 import promptengine.domain.shared.PublicationState
 import promptengine.domain.shared.SemVer
 import promptengine.domain.shared.VersionRange
@@ -38,6 +39,7 @@ import javax.sql.DataSource
  * 復元経路パターン（Memento + `@PersistenceApi`）が2つ目のAggregateでも通用するかを
  * 検証する。Domain Event/Outbox/Snapshotは対象外（ADR-0008）。
  */
+@OptIn(ExtendsRefApi::class)
 @Testcontainers
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class JdbcTemplateRepositoryIntegrationTest {

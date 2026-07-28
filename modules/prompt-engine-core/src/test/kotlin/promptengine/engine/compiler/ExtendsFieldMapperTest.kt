@@ -3,6 +3,7 @@ package promptengine.engine.compiler
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
+import promptengine.domain.shared.ExtendsRefApi
 import promptengine.domain.shared.SemVer
 import promptengine.domain.shared.VersionRange
 import promptengine.domain.template.ExtendsRef
@@ -15,7 +16,9 @@ import promptengine.engine.parser.PromptDslParser
  * 「保存された参照 == DSLソースをパースした結果」というADR-0009の保証は、
  * [PromptDslParser]で実際にDSLをパースして得た生`extends`文字列を本Mapperに通した結果が
  * 期待する[ExtendsRef]と一致することを検証するラウンドトリップテストで固定する。
+ * 期待値の組立て（[ExtendsRef]の直接構築）のため、クラス単位で[ExtendsRefApi]をOptInする。
  */
+@OptIn(ExtendsRefApi::class)
 class ExtendsFieldMapperTest {
     private val parser = PromptDslParser()
 

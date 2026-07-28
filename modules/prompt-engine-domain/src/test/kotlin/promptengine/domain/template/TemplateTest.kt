@@ -3,6 +3,7 @@ package promptengine.domain.template
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
+import promptengine.domain.shared.ExtendsRefApi
 import promptengine.domain.shared.InvalidStateTransitionException
 import promptengine.domain.shared.PersistenceApi
 import promptengine.domain.shared.PublicationState
@@ -13,7 +14,10 @@ import promptengine.domain.shared.VersionRange
  * Template Aggregate のテスト（ADR-0008）。
  * 設計書§4.3の不変条件（循環継承禁止＝自己参照不可）とPublicationStateの
  * 3状態（Draft/Published/Archived）遷移をTemplateVersion経由で検証する。
+ * extends不変条件のテストが[ExtendsRef]を直接構築するため、クラス単位で
+ * [ExtendsRefApi]をOptInする（ADR-0009）。
  */
+@OptIn(ExtendsRefApi::class)
 class TemplateTest {
     private val key = TemplateKey("shared/base-instructions")
     private val content = TemplateContent("{{#block greeting}}Hello{{/block}}")
