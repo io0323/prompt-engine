@@ -26,6 +26,11 @@ class ContextResolverImpl(
 ) {
     private val resolversByScope: Map<String, ContextResolver> = resolvers.associateBy { it.scope() }
 
+    /**
+     * [requirements]（`PromptVersion.contextRequirements`と同じscope単位で1件の宣言リスト、
+     * 重複scopeはドメイン層で構築時に拒否済み）を解決・マージし[ContextBindingSet]を返す。
+     * `required`未充足時は[ContextUnavailableException]を投げる（クラスのKDoc参照）。
+     */
     fun resolve(
         requirements: List<ContextRequirement>,
         request: PromptRequest,

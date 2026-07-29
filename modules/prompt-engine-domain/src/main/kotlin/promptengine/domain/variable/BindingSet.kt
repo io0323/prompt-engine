@@ -9,7 +9,9 @@ import promptengine.domain.shared.SensitiveValue
  * 状態で[values]に格納される（[VariableResolverChain]がラップ後の値のみを渡す）。
  * [toString] はMap全体をそのまま連結して返さず、キー一覧のみを出す
  * （値の`toString()`が呼ばれても`SensitiveValue.toString()`のマスクにより実値は出ないが、
- * 二重の安全網としてBindingSet自体もMapの中身を丸ごとは出力しない）。
+ * 二重の安全網としてBindingSet自体もMapの中身を丸ごとは出力しない）。キーは
+ * ソートして出力する（元の`Map`実装の反復順に依存せず、同じ内容なら常に同じ
+ * 診断出力になるようにするため）。
  */
 class BindingSet(values: Map<String, Any>) {
     val values: Map<String, Any> = values.toMap()
@@ -18,7 +20,7 @@ class BindingSet(values: Map<String, Any>) {
 
     fun containsKey(name: String): Boolean = values.containsKey(name)
 
-    override fun toString(): String = "BindingSet(keys=${values.keys})"
+    override fun toString(): String = "BindingSet(keys=${values.keys.sorted()})"
 
     override fun equals(other: Any?): Boolean = other is BindingSet && values == other.values
 

@@ -11,11 +11,15 @@ package promptengine.domain.variable
  * 単に値を持たなかった場合（未設定）はこの例外の[missingNames]に含める。一方
  * Secret Manager自体への到達性・認証エラー等のインフラ障害はこの例外に混ぜず、
  * 例外をそのまま伝播させる（ADR-0011）。HTTPコードへの写像はP9（REST API）で決定する。
+ *
+ * [missingNames] は呼出元が渡した[List]をそのまま保持せず不変コピーを取る。
  */
-class VariableUnresolvedException(val missingNames: List<String>) :
+class VariableUnresolvedException(missingNames: List<String>) :
     RuntimeException(
         "VARIABLE_UNRESOLVED: required variable(s) not resolved: ${missingNames.joinToString(", ")}",
     ) {
+    val missingNames: List<String> = missingNames.toList()
+
     init {
         require(missingNames.isNotEmpty()) { "missingNames must not be empty" }
     }

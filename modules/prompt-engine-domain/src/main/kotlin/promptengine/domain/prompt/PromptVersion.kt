@@ -20,6 +20,9 @@ import promptengine.domain.variable.VariableDefinition
  *
  * [contextRequirements] はPromptが宣言する各Contextスコープの要求（scope単位で1件）の
  * リストである（設計書§6クラス図、ADR-0011。P1〜P3c時点は単数の実装漏れがあった）。
+ * 同一scopeを2件以上含めることはできない（[init]で検証。`ContextResolverImpl`は
+ * scope→requirementの`associateBy`でマージするため、重複を許すと一方が無言で
+ * 消え、宣言したrequired/optional pathが検証対象から漏れてしまう）。
  */
 @ConsistentCopyVisibility
 data class PromptVersion internal constructor(
@@ -30,6 +33,13 @@ data class PromptVersion internal constructor(
     val extends: ExtendsRef? = null,
     val state: LifecycleState = LifecycleState.Draft,
 ) {
+    init {
+        val scopes = contextRequirements.map { it.scope }
+        require(scopes.size == scopes.toSet().size) {
+            "contextRequirements must not contain duplicate scopes: $scopes"
+        }
+    }
+
     /**
      * 内容を差し替えた新しいPromptVersionを返す。
      * Published状態の内容はImmutable（設計書§2.5・§4.3）であるため、
