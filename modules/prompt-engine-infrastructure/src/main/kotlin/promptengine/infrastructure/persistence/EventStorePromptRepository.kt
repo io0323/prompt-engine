@@ -16,6 +16,7 @@ import promptengine.domain.prompt.PromptRepository
 import promptengine.domain.prompt.PromptVersion
 import promptengine.domain.prompt.PromptVersionMemento
 import promptengine.domain.shared.PersistenceApi
+import promptengine.domain.validation.ValidationSettings
 import promptengine.domain.variable.VariableDefinition
 import promptengine.domain.variable.VariableSource
 import promptengine.domain.variable.VariableType
@@ -67,13 +68,14 @@ class EventStorePromptRepository(
                 val contextRequirements: String?,
                 val extendsKey: String?,
                 val extendsVersionRange: String?,
+                val validation: String?,
             )
 
             val versionRows =
                 jdbcTemplate.query(
                     """
                     SELECT version_id, version, content, status, context_requirements,
-                           extends_key, extends_version_range
+                           extends_key, extends_version_range, validation
                     FROM prompt_versions WHERE prompt_id = :promptId ORDER BY created_at, version_id
                     """.trimIndent(),
                     MapSqlParameterSource("promptId", promptRow.promptId),
@@ -86,6 +88,7 @@ class EventStorePromptRepository(
                         contextRequirements = rs.getString("context_requirements"),
                         extendsKey = rs.getString("extends_key"),
                         extendsVersionRange = rs.getString("extends_version_range"),
+                        validation = rs.getString("validation"),
                     )
                 }
 
@@ -101,6 +104,7 @@ class EventStorePromptRepository(
                         contextRequirements =
                             row.contextRequirements?.let { readContextRequirements(it) } ?: emptyList(),
                         extends = extendsRefFromDbValue(row.extendsKey, row.extendsVersionRange),
+                        validation = row.validation?.let { readValidationSettings(it) } ?: ValidationSettings(),
                         state = lifecycleStateFromDbValue(row.status),
                     )
                 }
@@ -146,6 +150,7 @@ class EventStorePromptRepository(
                     version.variables,
                     version.contextRequirements,
                     version.extends,
+                    version.validation,
                     version.state,
                 )
             }
@@ -185,6 +190,9 @@ class EventStorePromptRepository(
 
     private fun readContextRequirements(json: String): List<ContextRequirement> =
         objectMapper.readValue(json, object : TypeReference<List<ContextRequirement>>() {})
+
+    private fun readValidationSettings(json: String): ValidationSettings =
+        objectMapper.readValue(json, ValidationSettings::class.java)
 
     /**
      * `prompts.state` はQuery側の運用容易性のための非正規化投影であり（設計書§2.14）、
@@ -267,17 +275,18 @@ class EventStorePromptRepository(
                 """
                 INSERT INTO prompt_versions
                     (version_id, prompt_id, version, content, content_hash, status, context_requirements,
-                     extends_key, extends_version_range, created_by, created_at)
+                     extends_key, extends_version_range, validation, created_by, created_at)
                 VALUES
                     (:versionId, :promptId, :version, :content, :contentHash, :status, :contextRequirements::json,
-                     :extendsKey, :extendsVersionRange, :createdBy, :createdAt)
+                     :extendsKey, :extendsVersionRange, :validation::json, :createdBy, :createdAt)
                 ON CONFLICT (prompt_id, version) DO UPDATE SET
                     content = EXCLUDED.content,
                     content_hash = EXCLUDED.content_hash,
                     status = EXCLUDED.status,
                     context_requirements = EXCLUDED.context_requirements,
                     extends_key = EXCLUDED.extends_key,
-                    extends_version_range = EXCLUDED.extends_version_range
+                    extends_version_range = EXCLUDED.extends_version_range,
+                    validation = EXCLUDED.validation
                 RETURNING version_id
                 """.trimIndent(),
                 MapSqlParameterSource()
@@ -290,6 +299,7 @@ class EventStorePromptRepository(
                     .addValue("contextRequirements", objectMapper.writeValueAsString(version.contextRequirements))
                     .addValue("extendsKey", version.extends.toExtendsKeyDbValue())
                     .addValue("extendsVersionRange", version.extends.toExtendsVersionRangeDbValue())
+                    .addValue("validation", objectMapper.writeValueAsString(version.validation))
                     .addValue("createdBy", actor)
                     .addValue("createdAt", Timestamp.from(occurredAt)),
                 UUID::class.java,

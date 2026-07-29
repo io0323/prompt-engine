@@ -3,6 +3,7 @@ package promptengine.domain.prompt
 import promptengine.domain.context.ContextRequirement
 import promptengine.domain.shared.SemVer
 import promptengine.domain.template.ExtendsRef
+import promptengine.domain.validation.ValidationSettings
 import promptengine.domain.variable.VariableDefinition
 
 /**
@@ -19,5 +20,6 @@ data class PromptVersionMemento(
     val variables: List<VariableDefinition>,
     val contextRequirements: List<ContextRequirement>,
     val extends: ExtendsRef? = null,
+    val validation: ValidationSettings = ValidationSettings(),
     val state: LifecycleState,
 )

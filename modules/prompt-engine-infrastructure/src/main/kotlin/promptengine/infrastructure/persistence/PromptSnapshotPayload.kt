@@ -1,6 +1,7 @@
 package promptengine.infrastructure.persistence
 
 import promptengine.domain.prompt.Prompt
+import promptengine.domain.validation.ValidationSettings
 import promptengine.domain.variable.VariableDefinition
 
 /**
@@ -19,6 +20,7 @@ internal data class PromptSnapshotPayload(
         val content: String,
         val variables: List<VariablePayload>,
         val contextRequirements: List<ContextRequirementPayload>,
+        val validation: ValidationSettings,
         val state: String,
     )
 
@@ -57,6 +59,7 @@ internal data class PromptSnapshotPayload(
                                 version.contextRequirements.map {
                                     ContextRequirementPayload(it.scope, it.required, it.optional)
                                 },
+                            validation = version.validation,
                             state = version.state.toDbValue(),
                         )
                     },

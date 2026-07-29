@@ -3,6 +3,7 @@ package promptengine.domain.prompt
 import promptengine.domain.context.ContextRequirement
 import promptengine.domain.shared.SemVer
 import promptengine.domain.template.ExtendsRef
+import promptengine.domain.validation.ValidationSettings
 import promptengine.domain.variable.VariableDefinition
 
 /**
@@ -20,4 +21,5 @@ data class NewPromptVersion(
     val variables: List<VariableDefinition> = emptyList(),
     val contextRequirements: List<ContextRequirement> = emptyList(),
     val extends: ExtendsRef? = null,
+    val validation: ValidationSettings = ValidationSettings(),
 )

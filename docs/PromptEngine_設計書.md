@@ -1189,6 +1189,7 @@ entity prompt_versions {
   context_requirements : JSON  ' ContextRequirementの配列。ADR-0006で追加、ADR-0011で複数形化
   extends_key : VARCHAR  ' extends先のTemplateKey（ADR-0009）
   extends_version_range : VARCHAR  ' extendsのVersion範囲（例: "^2"。ADR-0009）
+  validation : JSON  ' ValidationSettings（maxLength/maxTokens/policies/placeholders）。ADR-0012で追加
   * created_by / created_at
   <<UQ prompt_id+version>>
 }

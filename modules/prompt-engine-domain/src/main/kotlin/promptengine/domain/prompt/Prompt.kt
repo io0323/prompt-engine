@@ -74,6 +74,7 @@ data class Prompt internal constructor(
                     version.variables,
                     version.contextRequirements,
                     version.extends,
+                    version.validation,
                 )
             val prompt = Prompt(key, listOf(promptVersion))
             val event =
@@ -102,7 +103,15 @@ data class Prompt internal constructor(
         fun restore(memento: PromptMemento): Prompt {
             val versions =
                 memento.versions.map {
-                    PromptVersion(it.semVer, it.content, it.variables, it.contextRequirements, it.extends, it.state)
+                    PromptVersion(
+                        it.semVer,
+                        it.content,
+                        it.variables,
+                        it.contextRequirements,
+                        it.extends,
+                        it.validation,
+                        it.state,
+                    )
                 }
             return Prompt(memento.key, versions, memento.rowVersion)
         }
@@ -125,6 +134,7 @@ data class Prompt internal constructor(
                 version.variables,
                 version.contextRequirements,
                 version.extends,
+                version.validation,
             )
         val prompt = copy(versions = versions + promptVersion)
         val event =

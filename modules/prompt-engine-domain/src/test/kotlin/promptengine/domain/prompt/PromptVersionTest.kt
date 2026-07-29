@@ -5,6 +5,8 @@ import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
 import promptengine.domain.context.ContextRequirement
 import promptengine.domain.shared.SemVer
+import promptengine.domain.validation.PlaceholderMode
+import promptengine.domain.validation.ValidationSettings
 
 class PromptVersionTest {
     private val content = PromptContent("Answer: {{question}}")
@@ -22,6 +24,22 @@ class PromptVersionTest {
 
         version.variables shouldBe emptyList()
         version.contextRequirements shouldBe emptyList()
+    }
+
+    @Test
+    fun `validation は省略時に既定のValidationSettingsになる`() {
+        val version = PromptVersion(semVer = SemVer(0, 1, 0), content = content)
+
+        version.validation shouldBe ValidationSettings()
+    }
+
+    @Test
+    fun `validation を明示的に指定して生成できる`() {
+        val settings = ValidationSettings(maxLength = 1000, placeholders = PlaceholderMode.STRICT)
+
+        val version = PromptVersion(semVer = SemVer(0, 1, 0), content = content, validation = settings)
+
+        version.validation shouldBe settings
     }
 
     @Test

@@ -29,6 +29,8 @@ import promptengine.domain.shared.SemVer
 import promptengine.domain.shared.VersionRange
 import promptengine.domain.template.ExtendsRef
 import promptengine.domain.template.TemplateKey
+import promptengine.domain.validation.PlaceholderMode
+import promptengine.domain.validation.ValidationSettings
 import promptengine.domain.variable.VariableDefinition
 import promptengine.domain.variable.VariableSource
 import promptengine.domain.variable.VariableType
@@ -115,12 +117,27 @@ class EventStorePromptRepositoryIntegrationTest {
         val contextRequirements =
             listOf(ContextRequirement(scope = "user", required = listOf("userId"), optional = listOf("locale")))
         val extendsRef = ExtendsRef(TemplateKey("templates/base-assistant"), VersionRange.CaretMajor(2))
+        val validationSettings =
+            ValidationSettings(
+                maxLength = 32000,
+                maxTokens = 8000,
+                policies = listOf("no-pii"),
+                placeholders = PlaceholderMode.STRICT,
+            )
 
-        // Draft（variables/contextRequirements/extends（key+range）のround-tripも合わせて検証する。ADR-0009）
+        // Draft（variables/contextRequirements/extends（key+range）/validationのround-tripも
+        // 合わせて検証する。ADR-0009・ADR-0012）
         val (created, createdEvent) =
             Prompt.create(
                 key,
-                NewPromptVersion(v1, PromptContent("Answer: {{question}}"), variables, contextRequirements, extendsRef),
+                NewPromptVersion(
+                    v1,
+                    PromptContent("Answer: {{question}}"),
+                    variables,
+                    contextRequirements,
+                    extendsRef,
+                    validationSettings,
+                ),
                 context,
             )
         repository.save(created, listOf(createdEvent))
@@ -130,6 +147,7 @@ class EventStorePromptRepositoryIntegrationTest {
         reloaded.versions.single().variables shouldBe variables
         reloaded.versions.single().contextRequirements shouldBe contextRequirements
         reloaded.versions.single().extends shouldBe extendsRef
+        reloaded.versions.single().validation shouldBe validationSettings
 
         // InReview
         repository.save(reloaded.submitForReview(v1, validationPassed = true))
