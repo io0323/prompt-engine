@@ -1701,6 +1701,12 @@ Includeで取り込んだFragment内のmacro呼出は、そのFragment自身が`
 なり決定性の推論が破綻するため）。宣言単位のどのmacro定義にも一致しない呼出は
 エラーとする。再帰検出も同一宣言単位が持つmacro定義集合の中だけで判定する。
 
+macroは、それが記述されたユニット（Prompt/Template/Fragment）内で解決される。
+extendsによる継承やincludeによる取り込みで他ユニットの内容が差し込まれた場合も、
+差し込まれた内容は元のユニットのmacro定義で解決済みである。したがって親子で
+同名macroを定義しても上書き関係にはならず、それぞれの呼出箇所が属するユニットの
+定義が使われる（ADR-0010、実際の検証結果は`CompositionServiceImplTest`参照）。
+
 ## 15.7 Validation仕様（DSL内宣言）
 
 ```yaml
