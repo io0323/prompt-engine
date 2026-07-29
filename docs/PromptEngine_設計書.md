@@ -1608,7 +1608,27 @@ variables:
 
 - `extends: <templateKey>[@versionRange]`: 単一継承のみ。親の `{{#block}}` を子が同名blockで上書き。上書きしないblockは親を継承。`{{ super() }}` で親block内容を子block内に挿入可。
 - Nested Prompt: `{{> prompt:other/prompt-key@1 param1=value }}` で他PromptをFragment同様に埋め込み可（Published限定、深さ上限5）。
+  **実装状況**: P3c（CompositionService）時点では未実装であり、`target`が`prompt:`で
+  始まるIncludeを検出した場合は`NestedPromptNotSupportedException`を投げる
+  （ADR-0009決定3で明示的にスコープ外と確認済み、GitHub Issue「Nested Promptを
+  実装する」で次フェーズへの回収を追跡）。上記の構文自体は仕様として維持し、
+  実装が追いついていないことをここに明記する。
 - Composition解決順: extends → import → include → macro展開。
+
+多段継承のマージは根本（`extends`を持たないTemplate）から直近の親、そして実際に
+コンパイルするPrompt/Templateへ向かって順に行う（ADR-0010）。`{{ super() }}` が
+指すのは常に「直近の親が確定した時点でのそのroleのblock内容」（親自身が祖父の
+`{{ super() }}` を解決済みの結果を含む）。異常系は以下の通りエラーとする
+（ADR-0010、黙って空文字列に展開すると書き手のミスに気づけないため）:
+
+- 親（直近の親として確定している内容）にそのroleのblockが存在しないのに
+  `{{ super() }}` を呼んだ場合。根本のTemplate自身が呼んだ場合も同様。
+- 同一block内で `{{ super() }}` を複数回呼んだ場合。
+
+`{{#block}}` の外側にあるトップレベルの内容（`TextNode`等）は、extendsマージの
+対象外であり、実際にコンパイルするPrompt/Template自身のものだけが最終出力に
+含まれる（extendsされることを意図するTemplateは、内容をすべて `{{#block}}` 内に
+収める運用とする、ADR-0010）。
 
 ## 15.4 Import仕様
 
@@ -1621,6 +1641,15 @@ imports:
 ```
 本文からは `{{> safety }}` で参照。Importは名前空間を導入し、同一Fragmentの多重取込を1回に正規化する。
 
+`imports:`未宣言のFragmentも、`{{> <fragmentKey>[@versionRange] }}` の形で直接参照
+できる（§15.5の `<alias|fragmentKey>`）。「多重取込を1回に正規化する」は、同じ
+`(FragmentKey, resolvedVersion)` に複数のalias・複数のInclude箇所から到達しても、
+そのFragment自身の内部合成（SemVer範囲・Status検証、Fragment自身が持つ
+import/include/macro解決）を1回だけ行い結果を再利用する、という意味である
+（キー参照グラフDFSのメモ化、ADR-0009決定4）。Include呼出箇所ごとの変数束縛の
+適用と出力ASTへの挿入は、呼出箇所ごとに独立して行う（束縛が異なれば挿入内容も
+異なるため、これは重複排除の対象ではない。ADR-0010）。
+
 ## 15.5 Include仕様
 
 `{{> <alias|fragmentKey>[@versionRange] [k=v ...] }}`。Fragment側で宣言された変数へ `k=v` で束縛（未指定は呼出側スコープを透過継承）。制約: 参照先はPublishedのみ（Compile-onlyモードはDraft可）、循環禁止、深さ上限5、展開後サイズ上限（設定値、既定1MB）。
@@ -1629,6 +1658,20 @@ imports:
 **解決チェーン全体の通算深さ**を指す（Fragment Include単体の深さではない。ADR-0009）。
 P3aのパーサ側ネスト深さ上限（`{{#if}}/{{#each}}/{{#block}}`構文木の入れ子数、既定8）とは
 別概念であり、両者は独立して検証・エラー種別化される。
+
+「呼出側スコープを透過継承」の範囲・必須変数未解決時の扱いをADR-0010で明確化する:
+
+- 透過継承の対象は、Fragment側で宣言された変数名のみ（呼出側スコープの
+  無関係な変数がFragmentへ漏れ込むことはない）。「呼出側スコープ」とは、
+  合成チェーン上でこれまでに宣言された変数名の累積集合（ルートPromptの
+  `variables` ∪ extendsチェーン上の各Templateの`variables` ∪ この呼出に至る
+  までに展開された外側Fragmentの`variables`）を指す。
+- Fragmentの`required: true`変数が、明示束縛にも上記の呼出側スコープにも
+  見つからない場合、Compose段階（Stage3）で即座にエラーとする（Compile時に
+  構造的に解決不可能と判定できるため。実行時パラメータ欠落による
+  Stage4 `VARIABLE_UNRESOLVED`とは別のチェック）。
+- Includeの`k=v`束縛・Fragment本体内の変数参照の置換規則（束縛値によるASTの
+  構造的な差し替え）はADR-0010参照。
 
 ## 15.6 Macro仕様
 
@@ -1642,6 +1685,13 @@ macros:
       {{/each}}
 ```
 呼出: `{{ bulletList(items=faqItems) }}`。MacroはPrompt/Template内ローカル定義（共有はFragment化）。再帰呼出禁止。
+
+macroのスコープはPrompt/Template/Fragmentそれぞれの宣言単位に閉じる（ADR-0010）。
+Includeで取り込んだFragment内のmacro呼出は、そのFragment自身が`macros:`で
+宣言したmacroでのみ解決され、呼出元（Prompt/Template）で定義されたmacroは見えない
+（再利用部品が呼出元の定義に依存すると、同じFragmentが文脈によって別の意味に
+なり決定性の推論が破綻するため）。宣言単位のどのmacro定義にも一致しない呼出は
+エラーとする。再帰検出も同一宣言単位が持つmacro定義集合の中だけで判定する。
 
 ## 15.7 Validation仕様（DSL内宣言）
 

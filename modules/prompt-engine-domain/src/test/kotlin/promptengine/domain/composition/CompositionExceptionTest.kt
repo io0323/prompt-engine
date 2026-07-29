@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test
 import promptengine.domain.fragment.FragmentKey
 import promptengine.domain.shared.VersionRange
 import promptengine.domain.template.TemplateKey
+import promptengine.domain.template.ast.BlockRole
 
 class CompositionExceptionTest {
     @Test
@@ -72,5 +73,29 @@ class CompositionExceptionTest {
 
         exception.target shouldBe "prompt:other/prompt-key@1"
         exception.message shouldContain "prompt:other/prompt-key@1"
+    }
+
+    @Test
+    fun `SuperWithoutParentBlockException はroleをメッセージに含める`() {
+        val exception = SuperWithoutParentBlockException(BlockRole.SYSTEM)
+
+        exception.role shouldBe BlockRole.SYSTEM
+        exception.message shouldContain "SYSTEM"
+    }
+
+    @Test
+    fun `DuplicateSuperCallException はroleをメッセージに含める`() {
+        val exception = DuplicateSuperCallException(BlockRole.USER)
+
+        exception.role shouldBe BlockRole.USER
+        exception.message shouldContain "USER"
+    }
+
+    @Test
+    fun `DuplicateImportAliasException はaliasをメッセージに含める`() {
+        val exception = DuplicateImportAliasException("safety")
+
+        exception.alias shouldBe "safety"
+        exception.message shouldContain "safety"
     }
 }
