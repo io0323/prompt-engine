@@ -267,7 +267,7 @@ include→macro の結線」とだけ述べていた部分が、実際には`{{ 
 
 ### 実際の解決アルゴリズム（擬似コード）
 
-```
+```text
 fun compile(promptKey, promptVersion, mode): CompiledPrompt
   extendsChain = ReferenceResolver.resolveExtendsChain(...)   // 直近の親→…→根本
   ancestorVersions = extendsChain.map { fetchTemplateVersion(it) }
