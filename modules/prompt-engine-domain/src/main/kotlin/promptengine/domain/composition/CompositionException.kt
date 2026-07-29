@@ -71,3 +71,20 @@ class DuplicateSuperCallException(val role: BlockRole) :
 /** `imports:` 内で同一aliasが2回以上宣言された（設計書§15.4、ADR-0010決定7）。 */
 class DuplicateImportAliasException(val alias: String) :
     CompositionException("duplicate import alias: $alias")
+
+/**
+ * [fragmentKey]が`required: true`で宣言する[variableName]が、Include呼出の明示束縛にも
+ * 呼出側スコープ（設計書§15.5、ADR-0010決定1）にも見つからない。実行時（Stage4）まで
+ * 待たずCompose段階で検出する（構造的に解決不可能であるため、ADR-0010決定4）。
+ */
+class IncludeRequiredVariableUnresolvedException(val fragmentKey: FragmentKey, val variableName: String) :
+    CompositionException(
+        "required variable '$variableName' of fragment ${fragmentKey.value} is neither bound nor in caller scope",
+    )
+
+/**
+ * 束縛Expressionのoperandがリテラルであるにもかかわらず、置換対象の式がそれを
+ * さらにプロパティアクセス（`k.field`）しようとした（ADR-0010決定2）。
+ */
+class InvalidVariableSubstitutionException(val variableName: String) :
+    CompositionException("cannot access a property of a literal-bound variable: $variableName")
