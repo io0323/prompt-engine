@@ -24,10 +24,18 @@ import promptengine.domain.variable.BindingSet
  * Compile-onlyモードでは[variableBindings]/[contextBindings]が実質空になりうるため）。
  */
 interface ValidationRule {
+    /** このRuleを一意に識別するID（設計書§13.3 `details[].rule`、DSLの`validation.policies`が参照するID）。 */
     fun id(): String
 
+    /** このRuleが通常報告する既定のseverity（個々の[Finding]のseverityとは必ずしも一致しない）。 */
     fun severity(): Severity
 
+    /**
+     * [compiled]・[variableBindings]・[contextBindings]を検証し、違反があれば[Finding]の
+     * リストを返す（違反が無ければ空リスト）。例外を投げない（ADR-0012決定4）。
+     * `ValidationEngineImpl`（`prompt-engine-core`）が全Ruleぶんの戻り値をそのまま
+     * 連結して[ValidationReport]を作る。
+     */
     fun validate(
         compiled: CompiledPrompt,
         variableBindings: BindingSet,

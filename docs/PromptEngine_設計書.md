@@ -1593,13 +1593,13 @@ variables:
     type: string                # string|number|boolean|enum|array|object
     source: runtime             # static|runtime|secret|environment|user|workflow
     required: true
-    constraints: { maxLength: 100, pattern: "^[^<>]*$" }
+    constraints: ["maxLength:100", "pattern:^[^<>]*$"]
   - name: tone
     type: enum
     source: runtime
     required: false
     default: "polite"
-    constraints: { values: [polite, formal, casual] }
+    constraints: ["enum:polite,formal,casual"]
   - name: apiKeyRef
     type: string
     source: secret              # 値はSecret Manager参照名。実値はRender直前解決・全ログでマスク

@@ -52,4 +52,29 @@ class ValidationFieldMapperTest {
     fun `placeholdersがstrict lenient以外ならIllegalArgumentExceptionを投げる`() {
         shouldThrow<IllegalArgumentException> { ValidationFieldMapper.parse(mapOf("placeholders" to "loose")) }
     }
+
+    @Test
+    fun `maxLengthが数値でなければIllegalArgumentExceptionを投げる`() {
+        shouldThrow<IllegalArgumentException> { ValidationFieldMapper.parse(mapOf("maxLength" to "100")) }
+    }
+
+    @Test
+    fun `maxLengthが小数ならIllegalArgumentExceptionを投げる`() {
+        shouldThrow<IllegalArgumentException> { ValidationFieldMapper.parse(mapOf("maxLength" to 100.5)) }
+    }
+
+    @Test
+    fun `maxTokensが数値でなければIllegalArgumentExceptionを投げる`() {
+        shouldThrow<IllegalArgumentException> { ValidationFieldMapper.parse(mapOf("maxTokens" to "8000")) }
+    }
+
+    @Test
+    fun `policiesがリストでなければIllegalArgumentExceptionを投げる`() {
+        shouldThrow<IllegalArgumentException> { ValidationFieldMapper.parse(mapOf("policies" to "no-pii")) }
+    }
+
+    @Test
+    fun `policiesの要素が文字列でなければIllegalArgumentExceptionを投げる`() {
+        shouldThrow<IllegalArgumentException> { ValidationFieldMapper.parse(mapOf("policies" to listOf(1, 2))) }
+    }
 }

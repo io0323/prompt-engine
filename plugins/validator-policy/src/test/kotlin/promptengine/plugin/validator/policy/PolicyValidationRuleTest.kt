@@ -1,5 +1,6 @@
 package promptengine.plugin.validator.policy
 
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
 import promptengine.domain.composition.CompiledPrompt
@@ -50,6 +51,16 @@ class PolicyValidationRuleTest {
     fun `id severity は既定値を持つ`() {
         rule.id() shouldBe "no-pii"
         rule.severity() shouldBe Severity.ERROR
+    }
+
+    @Test
+    fun `bannedWordsに空白のみの要素があれば生成時に例外を投げる`() {
+        shouldThrow<IllegalArgumentException> { PolicyValidationRule(bannedWords = listOf("confidential", "  ")) }
+    }
+
+    @Test
+    fun `bannedWordsに空文字要素があれば生成時に例外を投げる`() {
+        shouldThrow<IllegalArgumentException> { PolicyValidationRule(bannedWords = listOf("")) }
     }
 
     @Test

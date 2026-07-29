@@ -31,6 +31,10 @@ class PolicyValidationRule(
     private val ruleId: String = DEFAULT_RULE_ID,
     private val ruleSeverity: Severity = Severity.ERROR,
 ) : ValidationRule {
+    init {
+        require(bannedWords.none { it.isBlank() }) { "bannedWords must not contain blank entries" }
+    }
+
     override fun id(): String = ruleId
 
     override fun severity(): Severity = ruleSeverity

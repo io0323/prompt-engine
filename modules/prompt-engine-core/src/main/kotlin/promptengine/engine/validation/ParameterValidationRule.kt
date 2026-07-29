@@ -14,6 +14,11 @@ import promptengine.domain.variable.BindingSet
  * 文字列（ADR-0012決定6、設計書§15.2）。未知のキーは無視する（前方互換）。
  * [variableBindings]に値が存在する変数のみを対象とする（ADR-0012決定4と同じ理由で
  * Compile-onlyでも自然に空リストを返す）。
+ *
+ * 制約値自体が不正（`min:notanumber`・不正な正規表現等）の場合も例外を投げず、
+ * その旨のFindingを返す。`ValidationEngineImpl`はRule単位の例外隔離を持たないため
+ * （ADR-0012決定4は前提データ欠如の扱いのみを定める）、1件の不正な制約が
+ * Report全体を落とすことを避ける。
  */
 class ParameterValidationRule : ValidationRule {
     override fun id(): String = RULE_ID
@@ -65,26 +70,42 @@ class ParameterValidationRule : ValidationRule {
         value: Any,
         pattern: String,
     ): String? {
-        val text = value as? String ?: return null
-        return if (Regex(pattern).matches(text)) null else "value does not match pattern '$pattern'"
+        val text = value as? String
+        val regex = runCatching { Regex(pattern) }.getOrNull()
+        return when {
+            text == null -> null
+            regex == null -> "invalid pattern constraint '$pattern'"
+            !regex.matches(text) -> "value does not match pattern '$pattern'"
+            else -> null
+        }
     }
 
     private fun checkMin(
         value: Any,
         rawMin: String,
     ): String? {
-        val number = (value as? Number)?.toDouble() ?: return null
-        val min = rawMin.toDouble()
-        return if (number < min) "value $number is below min $min" else null
+        val number = (value as? Number)?.toDouble()
+        val min = rawMin.toDoubleOrNull()
+        return when {
+            number == null -> null
+            min == null -> "invalid min constraint value '$rawMin'"
+            number < min -> "value $number is below min $min"
+            else -> null
+        }
     }
 
     private fun checkMax(
         value: Any,
         rawMax: String,
     ): String? {
-        val number = (value as? Number)?.toDouble() ?: return null
-        val max = rawMax.toDouble()
-        return if (number > max) "value $number exceeds max $max" else null
+        val number = (value as? Number)?.toDouble()
+        val max = rawMax.toDoubleOrNull()
+        return when {
+            number == null -> null
+            max == null -> "invalid max constraint value '$rawMax'"
+            number > max -> "value $number exceeds max $max"
+            else -> null
+        }
     }
 
     private fun checkEnum(
@@ -99,9 +120,14 @@ class ParameterValidationRule : ValidationRule {
         value: Any,
         rawMaxLength: String,
     ): String? {
-        val text = value as? String ?: return null
-        val maxLength = rawMaxLength.toInt()
-        return if (text.length > maxLength) "value length ${text.length} exceeds maxLength $maxLength" else null
+        val text = value as? String
+        val maxLength = rawMaxLength.toIntOrNull()
+        return when {
+            text == null -> null
+            maxLength == null -> "invalid maxLength constraint value '$rawMaxLength'"
+            text.length > maxLength -> "value length ${text.length} exceeds maxLength $maxLength"
+            else -> null
+        }
     }
 
     companion object {

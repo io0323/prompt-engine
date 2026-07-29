@@ -239,6 +239,7 @@ class ArchitectureTest {
                 "promptengine.infrastructure..",
                 "promptengine.engine..",
                 "promptengine.bootstrap..",
+                "promptengine.testkit..",
             )
             .check(importedClasses)
     }

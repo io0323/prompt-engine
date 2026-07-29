@@ -167,4 +167,40 @@ class ParameterValidationRuleTest {
 
         rule.validate(compiledPrompt(variable), BindingSet.empty(), ContextBindingSet.empty()) shouldBe emptyList()
     }
+
+    @Test
+    fun `不正なmin制約値は例外を投げずFindingを返す`() {
+        val variable =
+            VariableDefinition(name = "count", type = VariableType.NUMBER, constraints = listOf("min:notanumber"))
+        val bindings = BindingSet(mapOf("count" to 5))
+
+        rule.validate(compiledPrompt(variable), bindings, ContextBindingSet.empty()).size shouldBe 1
+    }
+
+    @Test
+    fun `不正なmax制約値は例外を投げずFindingを返す`() {
+        val variable =
+            VariableDefinition(name = "count", type = VariableType.NUMBER, constraints = listOf("max:notanumber"))
+        val bindings = BindingSet(mapOf("count" to 5))
+
+        rule.validate(compiledPrompt(variable), bindings, ContextBindingSet.empty()).size shouldBe 1
+    }
+
+    @Test
+    fun `不正なmaxLength制約値は例外を投げずFindingを返す`() {
+        val variable =
+            VariableDefinition(name = "tone", type = VariableType.STRING, constraints = listOf("maxLength:notanumber"))
+        val bindings = BindingSet(mapOf("tone" to "polite"))
+
+        rule.validate(compiledPrompt(variable), bindings, ContextBindingSet.empty()).size shouldBe 1
+    }
+
+    @Test
+    fun `不正な正規表現のpattern制約は例外を投げずFindingを返す`() {
+        val variable =
+            VariableDefinition(name = "tone", type = VariableType.STRING, constraints = listOf("pattern:["))
+        val bindings = BindingSet(mapOf("tone" to "polite"))
+
+        rule.validate(compiledPrompt(variable), bindings, ContextBindingSet.empty()).size shouldBe 1
+    }
 }

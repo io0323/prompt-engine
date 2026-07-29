@@ -12,5 +12,6 @@ import promptengine.domain.shared.TokenCount
  * 追加する。
  */
 fun interface TokenizerPlugin {
+    /** [text]の推定Token数を返す。厳密さより決定性・速度を優先した近似値でよい。 */
     fun estimate(text: String): TokenCount
 }

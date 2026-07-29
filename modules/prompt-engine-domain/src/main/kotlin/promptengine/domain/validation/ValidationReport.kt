@@ -12,6 +12,7 @@ data class ValidationReport(val findings: List<Finding>) {
     val hasErrors: Boolean get() = findings.any { it.severity == Severity.ERROR }
 
     companion object {
+        /** Findingを1件も持たない空の[ValidationReport]を返す。 */
         fun empty(): ValidationReport = ValidationReport(emptyList())
     }
 }

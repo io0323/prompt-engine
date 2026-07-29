@@ -18,18 +18,42 @@ object ValidationFieldMapper {
      * [rawValidation]が`null`なら全項目既定値の[ValidationSettings]を返す。
      *
      * @throws IllegalArgumentException [rawValidation]がマッピングでない、
-     *   数値項目が数値でない、`placeholders`が`strict`/`lenient`以外である場合。
+     *   `maxLength`/`maxTokens`が整数でない（小数・文字列等）、`policies`の要素が
+     *   文字列でない、`placeholders`が`strict`/`lenient`以外である場合。
      */
     fun parse(rawValidation: Any?): ValidationSettings {
         if (rawValidation == null) return ValidationSettings()
         require(rawValidation is Map<*, *>) { "validation front matter field must be a mapping: $rawValidation" }
 
-        val maxLength = (rawValidation["maxLength"] as? Number)?.toInt()
-        val maxTokens = (rawValidation["maxTokens"] as? Number)?.toInt()
-        val policies = (rawValidation["policies"] as? List<*>)?.map { it as String } ?: emptyList()
+        val maxLength = parseLimit(rawValidation, "maxLength")
+        val maxTokens = parseLimit(rawValidation, "maxTokens")
+        val policies = parsePolicies(rawValidation["policies"])
         val placeholders = parsePlaceholderMode(rawValidation["placeholders"])
 
         return ValidationSettings(maxLength, maxTokens, policies, placeholders)
+    }
+
+    /** 数値かつ整数でなければ[IllegalArgumentException]を投げる（小数・文字列を無音でnull化しない）。 */
+    private fun parseLimit(
+        rawValidation: Map<*, *>,
+        field: String,
+    ): Int? {
+        val raw = rawValidation[field] ?: return null
+        require(raw is Number) { "validation.$field must be a number: $raw" }
+        val value = raw.toLong()
+        require(raw.toDouble() == value.toDouble() && value in Int.MIN_VALUE..Int.MAX_VALUE) {
+            "validation.$field must be an integer: $raw"
+        }
+        return value.toInt()
+    }
+
+    private fun parsePolicies(raw: Any?): List<String> {
+        if (raw == null) return emptyList()
+        require(raw is List<*>) { "validation.policies must be a list: $raw" }
+        return raw.map {
+            require(it is String) { "validation.policies entries must be strings: $it" }
+            it
+        }
     }
 
     private fun parsePlaceholderMode(raw: Any?): PlaceholderMode {
