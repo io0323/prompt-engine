@@ -17,6 +17,7 @@ import promptengine.domain.prompt.PromptVersion
 import promptengine.domain.prompt.PromptVersionMemento
 import promptengine.domain.shared.PersistenceApi
 import promptengine.domain.variable.VariableDefinition
+import promptengine.domain.variable.VariableSource
 import promptengine.domain.variable.VariableType
 import java.sql.Timestamp
 import java.time.Instant
@@ -63,7 +64,7 @@ class EventStorePromptRepository(
                 val semVer: String,
                 val content: String,
                 val status: String,
-                val contextRequirement: String?,
+                val contextRequirements: String?,
                 val extendsKey: String?,
                 val extendsVersionRange: String?,
             )
@@ -71,7 +72,7 @@ class EventStorePromptRepository(
             val versionRows =
                 jdbcTemplate.query(
                     """
-                    SELECT version_id, version, content, status, context_requirement,
+                    SELECT version_id, version, content, status, context_requirements,
                            extends_key, extends_version_range
                     FROM prompt_versions WHERE prompt_id = :promptId ORDER BY created_at, version_id
                     """.trimIndent(),
@@ -82,7 +83,7 @@ class EventStorePromptRepository(
                         semVer = rs.getString("version"),
                         content = rs.getString("content"),
                         status = rs.getString("status"),
-                        contextRequirement = rs.getString("context_requirement"),
+                        contextRequirements = rs.getString("context_requirements"),
                         extendsKey = rs.getString("extends_key"),
                         extendsVersionRange = rs.getString("extends_version_range"),
                     )
@@ -97,7 +98,8 @@ class EventStorePromptRepository(
                         semVer = parseSemVer(row.semVer),
                         content = PromptContent(row.content),
                         variables = variablesByVersionId[row.versionId] ?: emptyList(),
-                        contextRequirement = row.contextRequirement?.let { readContextRequirement(it) },
+                        contextRequirements =
+                            row.contextRequirements?.let { readContextRequirements(it) } ?: emptyList(),
                         extends = extendsRefFromDbValue(row.extendsKey, row.extendsVersionRange),
                         state = lifecycleStateFromDbValue(row.status),
                     )
@@ -142,7 +144,7 @@ class EventStorePromptRepository(
                     version.semVer,
                     version.content,
                     version.variables,
-                    version.contextRequirement,
+                    version.contextRequirements,
                     version.extends,
                     version.state,
                 )
@@ -161,7 +163,7 @@ class EventStorePromptRepository(
     private fun loadVariablesByVersionIds(versionIds: List<UUID>): Map<UUID, List<VariableDefinition>> =
         jdbcTemplate.query(
             """
-            SELECT version_id, name, type, required, default_value, constraints, sensitive
+            SELECT version_id, name, type, source, required, default_value, constraints, sensitive
             FROM variable_defs WHERE version_id IN (:versionIds)
             """.trimIndent(),
             MapSqlParameterSource("versionIds", versionIds),
@@ -170,6 +172,7 @@ class EventStorePromptRepository(
                 VariableDefinition(
                     name = rs.getString("name"),
                     type = VariableType.valueOf(rs.getString("type")),
+                    source = VariableSource.valueOf(rs.getString("source")),
                     required = rs.getBoolean("required"),
                     default = rs.getString("default_value")?.let { objectMapper.readValue(it, Any::class.java) },
                     constraints =
@@ -180,8 +183,8 @@ class EventStorePromptRepository(
                 )
         }.groupBy({ it.first }, { it.second })
 
-    private fun readContextRequirement(json: String): ContextRequirement =
-        objectMapper.readValue(json, ContextRequirement::class.java)
+    private fun readContextRequirements(json: String): List<ContextRequirement> =
+        objectMapper.readValue(json, object : TypeReference<List<ContextRequirement>>() {})
 
     /**
      * `prompts.state` はQuery側の運用容易性のための非正規化投影であり（設計書§2.14）、
@@ -263,16 +266,16 @@ class EventStorePromptRepository(
             jdbcTemplate.queryForObject(
                 """
                 INSERT INTO prompt_versions
-                    (version_id, prompt_id, version, content, content_hash, status, context_requirement,
+                    (version_id, prompt_id, version, content, content_hash, status, context_requirements,
                      extends_key, extends_version_range, created_by, created_at)
                 VALUES
-                    (:versionId, :promptId, :version, :content, :contentHash, :status, :contextRequirement::json,
+                    (:versionId, :promptId, :version, :content, :contentHash, :status, :contextRequirements::json,
                      :extendsKey, :extendsVersionRange, :createdBy, :createdAt)
                 ON CONFLICT (prompt_id, version) DO UPDATE SET
                     content = EXCLUDED.content,
                     content_hash = EXCLUDED.content_hash,
                     status = EXCLUDED.status,
-                    context_requirement = EXCLUDED.context_requirement,
+                    context_requirements = EXCLUDED.context_requirements,
                     extends_key = EXCLUDED.extends_key,
                     extends_version_range = EXCLUDED.extends_version_range
                 RETURNING version_id
@@ -284,10 +287,8 @@ class EventStorePromptRepository(
                     .addValue("content", version.content.source)
                     .addValue("contentHash", version.content.contentHash)
                     .addValue("status", version.state.toDbValue())
-                    .addValue(
-                        "contextRequirement",
-                        version.contextRequirement?.let { objectMapper.writeValueAsString(it) },
-                    ).addValue("extendsKey", version.extends.toExtendsKeyDbValue())
+                    .addValue("contextRequirements", objectMapper.writeValueAsString(version.contextRequirements))
+                    .addValue("extendsKey", version.extends.toExtendsKeyDbValue())
                     .addValue("extendsVersionRange", version.extends.toExtendsVersionRangeDbValue())
                     .addValue("createdBy", actor)
                     .addValue("createdAt", Timestamp.from(occurredAt)),
@@ -314,6 +315,7 @@ class EventStorePromptRepository(
                     .addValue("versionId", versionId)
                     .addValue("name", variable.name)
                     .addValue("type", variable.type.name)
+                    .addValue("source", variable.source.name)
                     .addValue("required", variable.required)
                     .addValue("defaultValue", variable.default?.let { objectMapper.writeValueAsString(it) })
                     .addValue("constraints", objectMapper.writeValueAsString(variable.constraints))
@@ -321,8 +323,10 @@ class EventStorePromptRepository(
             }.toTypedArray()
         jdbcTemplate.batchUpdate(
             """
-            INSERT INTO variable_defs (variable_id, version_id, name, type, required, default_value, constraints, sensitive)
-            VALUES (:variableId, :versionId, :name, :type, :required, :defaultValue, :constraints::json, :sensitive)
+            INSERT INTO variable_defs
+                (variable_id, version_id, name, type, source, required, default_value, constraints, sensitive)
+            VALUES
+                (:variableId, :versionId, :name, :type, :source, :required, :defaultValue, :constraints::json, :sensitive)
             """.trimIndent(),
             batchParams,
         )

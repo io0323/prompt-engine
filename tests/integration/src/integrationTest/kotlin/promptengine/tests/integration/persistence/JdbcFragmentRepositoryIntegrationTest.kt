@@ -23,6 +23,7 @@ import promptengine.domain.fragment.NewFragmentVersion
 import promptengine.domain.shared.PublicationState
 import promptengine.domain.shared.SemVer
 import promptengine.domain.variable.VariableDefinition
+import promptengine.domain.variable.VariableSource
 import promptengine.domain.variable.VariableType
 import promptengine.infrastructure.persistence.FragmentVersionConflictException
 import promptengine.infrastructure.persistence.JdbcFragmentRepository
@@ -71,6 +72,7 @@ class JdbcFragmentRepositoryIntegrationTest {
                 VariableDefinition(
                     name = "policyName",
                     type = VariableType.STRING,
+                    source = VariableSource.STATIC,
                     required = true,
                     default = "default-policy",
                     constraints = emptyList(),
@@ -80,6 +82,7 @@ class JdbcFragmentRepositoryIntegrationTest {
                 VariableDefinition(
                     name = "apiKeyRef",
                     type = VariableType.STRING,
+                    source = VariableSource.SECRET,
                     required = true,
                     default = null,
                     constraints = emptyList(),

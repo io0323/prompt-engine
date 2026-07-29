@@ -3,6 +3,7 @@ package promptengine.domain.prompt
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
+import promptengine.domain.context.ContextRequirement
 import promptengine.domain.shared.SemVer
 
 class PromptVersionTest {
@@ -16,11 +17,26 @@ class PromptVersionTest {
     }
 
     @Test
-    fun `variables contextRequirement は省略時に空 null になる`() {
+    fun `variables contextRequirements は省略時に空リストになる`() {
         val version = PromptVersion(semVer = SemVer(0, 1, 0), content = content)
 
         version.variables shouldBe emptyList()
-        version.contextRequirement shouldBe null
+        version.contextRequirements shouldBe emptyList()
+    }
+
+    @Test
+    fun `contextRequirements に同じscopeが重複しているとIllegalArgumentExceptionを投げる`() {
+        shouldThrow<IllegalArgumentException> {
+            PromptVersion(
+                semVer = SemVer(0, 1, 0),
+                content = content,
+                contextRequirements =
+                    listOf(
+                        ContextRequirement(scope = "user", required = listOf("id")),
+                        ContextRequirement(scope = "user", required = listOf("email")),
+                    ),
+            )
+        }
     }
 
     @Test

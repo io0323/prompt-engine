@@ -18,7 +18,7 @@ internal data class PromptSnapshotPayload(
         val semVer: String,
         val content: String,
         val variables: List<VariablePayload>,
-        val contextRequirement: ContextRequirementPayload?,
+        val contextRequirements: List<ContextRequirementPayload>,
         val state: String,
     )
 
@@ -36,6 +36,7 @@ internal data class PromptSnapshotPayload(
     data class VariablePayload(
         val name: String,
         val type: String,
+        val source: String,
         val required: Boolean,
         val default: Any?,
         val constraints: List<String>,
@@ -52,8 +53,8 @@ internal data class PromptSnapshotPayload(
                             semVer = version.semVer.toString(),
                             content = version.content.source,
                             variables = version.variables.map { it.toPayload() },
-                            contextRequirement =
-                                version.contextRequirement?.let {
+                            contextRequirements =
+                                version.contextRequirements.map {
                                     ContextRequirementPayload(it.scope, it.required, it.optional)
                                 },
                             state = version.state.toDbValue(),
@@ -65,6 +66,7 @@ internal data class PromptSnapshotPayload(
             VariablePayload(
                 name = name,
                 type = type.name,
+                source = source.name,
                 required = required,
                 default = default,
                 constraints = constraints,

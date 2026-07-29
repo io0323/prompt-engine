@@ -26,6 +26,7 @@ import promptengine.domain.template.Template
 import promptengine.domain.template.TemplateContent
 import promptengine.domain.template.TemplateKey
 import promptengine.domain.variable.VariableDefinition
+import promptengine.domain.variable.VariableSource
 import promptengine.domain.variable.VariableType
 import promptengine.infrastructure.persistence.JdbcTemplateRepository
 import promptengine.infrastructure.persistence.TemplateVersionConflictException
@@ -79,6 +80,7 @@ class JdbcTemplateRepositoryIntegrationTest {
                 VariableDefinition(
                     name = "tone",
                     type = VariableType.STRING,
+                    source = VariableSource.STATIC,
                     required = true,
                     default = "polite",
                     constraints = listOf("enum:polite,casual"),
@@ -88,6 +90,7 @@ class JdbcTemplateRepositoryIntegrationTest {
                 VariableDefinition(
                     name = "apiKeyRef",
                     type = VariableType.STRING,
+                    source = VariableSource.SECRET,
                     required = true,
                     default = null,
                     constraints = emptyList(),

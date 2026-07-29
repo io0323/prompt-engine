@@ -18,6 +18,6 @@ data class NewPromptVersion(
     val semVer: SemVer,
     val content: PromptContent,
     val variables: List<VariableDefinition> = emptyList(),
-    val contextRequirement: ContextRequirement? = null,
+    val contextRequirements: List<ContextRequirement> = emptyList(),
     val extends: ExtendsRef? = null,
 )

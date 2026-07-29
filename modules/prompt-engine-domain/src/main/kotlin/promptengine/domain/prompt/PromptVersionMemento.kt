@@ -17,7 +17,7 @@ data class PromptVersionMemento(
     val semVer: SemVer,
     val content: PromptContent,
     val variables: List<VariableDefinition>,
-    val contextRequirement: ContextRequirement?,
+    val contextRequirements: List<ContextRequirement>,
     val extends: ExtendsRef? = null,
     val state: LifecycleState,
 )

@@ -30,6 +30,7 @@ import promptengine.domain.shared.VersionRange
 import promptengine.domain.template.ExtendsRef
 import promptengine.domain.template.TemplateKey
 import promptengine.domain.variable.VariableDefinition
+import promptengine.domain.variable.VariableSource
 import promptengine.domain.variable.VariableType
 import promptengine.infrastructure.persistence.EventStorePromptRepository
 import promptengine.infrastructure.persistence.VersionConflictException
@@ -93,6 +94,7 @@ class EventStorePromptRepositoryIntegrationTest {
                 VariableDefinition(
                     name = "question",
                     type = VariableType.STRING,
+                    source = VariableSource.STATIC,
                     required = true,
                     default = "N/A",
                     constraints = listOf("maxLength:200"),
@@ -103,21 +105,22 @@ class EventStorePromptRepositoryIntegrationTest {
                 VariableDefinition(
                     name = "apiKeyRef",
                     type = VariableType.STRING,
+                    source = VariableSource.SECRET,
                     required = true,
                     default = null,
                     constraints = emptyList(),
                     sensitive = true,
                 ),
             )
-        val contextRequirement =
-            ContextRequirement(scope = "user", required = listOf("userId"), optional = listOf("locale"))
+        val contextRequirements =
+            listOf(ContextRequirement(scope = "user", required = listOf("userId"), optional = listOf("locale")))
         val extendsRef = ExtendsRef(TemplateKey("templates/base-assistant"), VersionRange.CaretMajor(2))
 
-        // Draft（variables/contextRequirement/extends（key+range）のround-tripも合わせて検証する。ADR-0009）
+        // Draft（variables/contextRequirements/extends（key+range）のround-tripも合わせて検証する。ADR-0009）
         val (created, createdEvent) =
             Prompt.create(
                 key,
-                NewPromptVersion(v1, PromptContent("Answer: {{question}}"), variables, contextRequirement, extendsRef),
+                NewPromptVersion(v1, PromptContent("Answer: {{question}}"), variables, contextRequirements, extendsRef),
                 context,
             )
         repository.save(created, listOf(createdEvent))
@@ -125,7 +128,7 @@ class EventStorePromptRepositoryIntegrationTest {
         reloaded.versions.single().state shouldBe LifecycleState.Draft
         reloaded.versions.single().content shouldBe PromptContent("Answer: {{question}}")
         reloaded.versions.single().variables shouldBe variables
-        reloaded.versions.single().contextRequirement shouldBe contextRequirement
+        reloaded.versions.single().contextRequirements shouldBe contextRequirements
         reloaded.versions.single().extends shouldBe extendsRef
 
         // InReview

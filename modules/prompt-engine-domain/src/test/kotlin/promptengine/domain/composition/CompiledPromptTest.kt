@@ -30,19 +30,19 @@ class CompiledPromptTest {
                 body = listOf(TextNode("hello")),
                 dependencies = listOf(dependency),
                 variables = listOf(variable),
-                contextRequirement = contextRequirement,
+                contextRequirements = listOf(contextRequirement),
             )
 
         compiled.body shouldBe listOf(TextNode("hello"))
         compiled.dependencies shouldBe listOf(dependency)
         compiled.variables shouldBe listOf(variable)
-        compiled.contextRequirement shouldBe contextRequirement
+        compiled.contextRequirements shouldBe listOf(contextRequirement)
     }
 
     @Test
     fun `同一リポジトリ状態から得た2つのCompiledPromptは構造的に等しい 決定性`() {
-        val a = CompiledPrompt(listOf(TextNode("x")), emptyList(), emptyList(), null)
-        val b = CompiledPrompt(listOf(TextNode("x")), emptyList(), emptyList(), null)
+        val a = CompiledPrompt(listOf(TextNode("x")), emptyList(), emptyList(), emptyList())
+        val b = CompiledPrompt(listOf(TextNode("x")), emptyList(), emptyList(), emptyList())
 
         a shouldBe b
     }

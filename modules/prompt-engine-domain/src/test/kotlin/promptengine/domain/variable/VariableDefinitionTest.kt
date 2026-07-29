@@ -56,4 +56,38 @@ class VariableDefinitionTest {
         definition.sensitive shouldBe true
         definition.default shouldBe null
     }
+
+    @Test
+    fun `source は省略時にSTATICになる`() {
+        val definition = VariableDefinition(name = "tone", type = VariableType.STRING)
+
+        definition.source shouldBe VariableSource.STATIC
+    }
+
+    @Test
+    fun `source=SECRETかつsensitive=falseだとIllegalArgumentExceptionを投げる`() {
+        shouldThrow<IllegalArgumentException> {
+            VariableDefinition(
+                name = "apiKeyRef",
+                type = VariableType.STRING,
+                source = VariableSource.SECRET,
+                sensitive = false,
+            )
+        }
+    }
+
+    @Test
+    fun `source=SECRETかつsensitive=trueなら生成できる`() {
+        val definition =
+            VariableDefinition(
+                name = "apiKeyRef",
+                type = VariableType.STRING,
+                source = VariableSource.SECRET,
+                required = true,
+                sensitive = true,
+            )
+
+        definition.source shouldBe VariableSource.SECRET
+        definition.sensitive shouldBe true
+    }
 }
