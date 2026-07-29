@@ -1,6 +1,8 @@
 package promptengine.engine.resolver
 
 import promptengine.domain.context.ContextRequirement
+import promptengine.domain.context.ContextResolver
+import promptengine.domain.shared.PromptRequest
 
 /**
  * 標準のContextResolver実装（設計書§16-3「7 scope標準」）。7スコープいずれも

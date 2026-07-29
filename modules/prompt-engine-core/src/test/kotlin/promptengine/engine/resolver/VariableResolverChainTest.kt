@@ -5,9 +5,11 @@ import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldNotContain
 import org.junit.jupiter.api.Test
+import promptengine.domain.shared.PromptRequest
 import promptengine.domain.shared.SensitiveValue
 import promptengine.domain.variable.SecretManagerAdapter
 import promptengine.domain.variable.VariableDefinition
+import promptengine.domain.variable.VariableResolverChain
 import promptengine.domain.variable.VariableSource
 import promptengine.domain.variable.VariableType
 import promptengine.domain.variable.VariableUnresolvedException
@@ -32,7 +34,7 @@ class VariableResolverChainTest {
     private fun chainWithSecrets(
         secrets: Map<String, String> = emptyMap(),
         failing: Set<String> = emptySet(),
-    ): VariableResolverChain = VariableResolverChain.standard(FakeSecretManagerAdapter(secrets, failing))
+    ): VariableResolverChain = VariableResolverChainImpl.standard(FakeSecretManagerAdapter(secrets, failing))
 
     // ---- 優先順位: 6種のResolverが競合する全組合せ ----
 
@@ -375,7 +377,7 @@ class VariableResolverChainTest {
     @Test
     fun `standardは6種のResolverを設計書§2 8の優先順位で組む`() {
         val chain =
-            VariableResolverChain.standard(
+            VariableResolverChainImpl.standard(
                 FakeSecretManagerAdapter(secrets = mapOf("apiKeyRef" to SECRET_VALUE)),
             )
         val definition =

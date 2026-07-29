@@ -2,7 +2,9 @@ package promptengine.engine.resolver
 
 import promptengine.domain.context.ContextBindingSet
 import promptengine.domain.context.ContextRequirement
+import promptengine.domain.context.ContextResolver
 import promptengine.domain.context.ContextUnavailableException
+import promptengine.domain.shared.PromptRequest
 
 /**
  * [ContextResolver]の7スコープをまとめて解決・マージする（設計書§3.3・§5.4シーケンス）。

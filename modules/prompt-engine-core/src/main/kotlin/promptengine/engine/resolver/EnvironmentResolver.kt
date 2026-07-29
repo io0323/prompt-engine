@@ -1,6 +1,8 @@
 package promptengine.engine.resolver
 
+import promptengine.domain.shared.PromptRequest
 import promptengine.domain.variable.VariableDefinition
+import promptengine.domain.variable.VariableResolver
 import promptengine.domain.variable.VariableSource
 
 /**

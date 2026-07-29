@@ -1,6 +1,8 @@
 package promptengine.engine.resolver
 
+import promptengine.domain.shared.PromptRequest
 import promptengine.domain.variable.VariableDefinition
+import promptengine.domain.variable.VariableResolver
 
 /**
  * 呼出パラメータによる明示的な値の上書き（設計書§2.8「Explicit Parameter」、最優先）。

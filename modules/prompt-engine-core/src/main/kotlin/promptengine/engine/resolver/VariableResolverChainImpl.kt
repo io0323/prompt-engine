@@ -1,13 +1,18 @@
 package promptengine.engine.resolver
 
+import promptengine.domain.shared.PromptRequest
 import promptengine.domain.shared.SensitiveValue
 import promptengine.domain.variable.BindingSet
 import promptengine.domain.variable.SecretManagerAdapter
 import promptengine.domain.variable.VariableDefinition
+import promptengine.domain.variable.VariableResolver
+import promptengine.domain.variable.VariableResolverChain
 import promptengine.domain.variable.VariableUnresolvedException
 
 /**
- * Variable Resolver Chain（Chain of Responsibility、設計書§3.3・§5.3シーケンス）。
+ * [VariableResolverChain]の実装（Chain of Responsibility、設計書§3.3・§5.3シーケンス）。
+ * Interfaceはdomain、実装はcoreという構成（ADR-0011決定4。
+ * [promptengine.engine.compiler.CompositionServiceImpl]と同じ形）。
  *
  * [resolvers] は先勝ちの優先順位で並んだ[VariableResolver]の列である。既定は
  * [standard]（Explicit Parameter → Static → User → Workflow → Environment → Secret、
@@ -27,10 +32,10 @@ import promptengine.domain.variable.VariableUnresolvedException
  * Resolver（特に[SecretResolver]）が投げた例外は捕捉せずそのまま伝播させる
  * （ADR-0011。Secret Manager自体のインフラ障害は`VARIABLE_UNRESOLVED`に混ぜない）。
  */
-class VariableResolverChain(
+class VariableResolverChainImpl(
     private val resolvers: List<VariableResolver>,
-) {
-    fun resolveAll(
+) : VariableResolverChain {
+    override fun resolveAll(
         definitions: List<VariableDefinition>,
         request: PromptRequest,
     ): BindingSet {
@@ -74,8 +79,8 @@ class VariableResolverChain(
 
     companion object {
         /** 設計書§2.8の6種標準Resolverを規定の優先順位で組んだ既定のChain。 */
-        fun standard(secretManagerAdapter: SecretManagerAdapter): VariableResolverChain =
-            VariableResolverChain(
+        fun standard(secretManagerAdapter: SecretManagerAdapter): VariableResolverChainImpl =
+            VariableResolverChainImpl(
                 listOf(
                     ExplicitParameterResolver(),
                     StaticResolver(),

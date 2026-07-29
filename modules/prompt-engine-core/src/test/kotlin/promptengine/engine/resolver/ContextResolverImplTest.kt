@@ -5,6 +5,7 @@ import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
 import promptengine.domain.context.ContextRequirement
 import promptengine.domain.context.ContextUnavailableException
+import promptengine.domain.shared.PromptRequest
 
 class ContextResolverImplTest {
     @Test

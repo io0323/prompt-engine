@@ -1,4 +1,4 @@
-package promptengine.engine.resolver
+package promptengine.domain.shared
 
 /**
  * Variable/Context解決に必要な呼出時入力（設計書§3.4 `PromptRequest`）。
@@ -18,6 +18,10 @@ package promptengine.engine.resolver
  *
  * Secret変数（`source=SECRET`）はこのRequestを経由せず、
  * [promptengine.domain.variable.SecretManagerAdapter] 経由で解決する。
+ *
+ * [promptengine.domain.variable.VariableResolver] / [promptengine.domain.variable.VariableResolverChain] /
+ * [promptengine.domain.context.ContextResolver] のいずれからも参照されるため
+ * `domain.shared` に置く（ADR-0011決定4）。
  */
 data class PromptRequest(
     val explicitParameters: Map<String, Any> = emptyMap(),
