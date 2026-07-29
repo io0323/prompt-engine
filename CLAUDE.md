@@ -53,6 +53,9 @@ Javaパッケージルートは `promptengine`。
 - 新規のpublicな振る舞いには必ずテストを書く。テストなしのPRは出さない。
 - Domain / Core はモック無しの純粋な単体テスト。Springコンテキストを起動しない。
 - Infrastructure は Testcontainers を使った統合テスト（`tests/integration`）。
+- domain の型は domain モジュール内のテストで直接検証する。core など他モジュールの
+  テスト経由で間接的に実行されるだけの状態にしない（モジュール別カバレッジでは
+  検出できず、未テストのまま見過ごされるため）。
 - 決定性が仕様の箇所（Render）は、同一入力から `renderHash` が一致することを検証する。
 - テスト名は日本語のバッククォート記法で意図を書く:
   `` fun `Published状態のVersionは内容を変更できない`() ``
