@@ -166,7 +166,7 @@ domain配置。§16拡張ポイント#13に対応するが§3.4に定義が無�
 Interfaceと同型で本ADRにて新設する）:
 
 ```kotlin
-interface TokenizerPlugin {
+fun interface TokenizerPlugin {
     fun estimate(text: String): TokenCount
 }
 ```
