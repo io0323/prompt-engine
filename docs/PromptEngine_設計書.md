@@ -283,7 +283,7 @@ Resolver Chain: `Explicit Parameter → Static → User → Workflow → Environ
 | User | Userスコープストア/呼出元 | 実行時 | CIAP Subject単位 |
 | Workflow | AACPから受領 | 実行時 | workflow実行ID単位 |
 
-全Variableは `type`（string/number/boolean/enum/array/object）、`required`、`default`、`constraints`（pattern/min/max/enum値）、`sensitive` を宣言する（§15.2）。
+全Variableは `type`（string/number/boolean/enum/array/object）、`source`（static/runtime/secret/environment/user/workflow）、`required`、`default`、`constraints`（pattern/min/max/enum値）、`sensitive` を宣言する（§15.2）。`source == secret` の変数は必ず `sensitive == true` でなければならない（ADR-0011）。
 
 ## 2.9 Rendering仕様
 
@@ -616,7 +616,7 @@ Experiment ──(勝者昇格要求)──> Prompt Authoring
 | SemVer | major.minor.patch |
 | VersionRef | 固定Version / `latest` / エイリアス名 |
 | PromptContent | DSLソース + contentHash(SHA-256) |
-| VariableDefinition | name/type/required/default/constraints/sensitive |
+| VariableDefinition | name/type/source/required/default/constraints/sensitive（ADR-0011） |
 | BindingSet | name→Value の不変Map（sensitive値はマスク表示） |
 | ContextRequirement | scope + required/optional + 参照path一覧 |
 | RenderedPrompt | messages[] / outputFormat / tokenEstimate / renderHash |
@@ -1179,7 +1179,7 @@ entity prompt_versions {
   * content_hash : CHAR(64)
   * status : VARCHAR
   change_note : TEXT
-  context_requirement : JSON  ' ADR-0006
+  context_requirements : JSON  ' ContextRequirementの配列。ADR-0006で追加、ADR-0011で複数形化
   extends_key : VARCHAR  ' extends先のTemplateKey（ADR-0009）
   extends_version_range : VARCHAR  ' extendsのVersion範囲（例: "^2"。ADR-0009）
   * created_by / created_at
@@ -1218,6 +1218,7 @@ entity template_variable_defs {
   --
   * version_id : UUID <<FK>>
   * name / type : VARCHAR
+  * source : VARCHAR  ' static/runtime/secret/environment/user/workflow（ADR-0011）
   * required : BOOL
   default_value : TEXT
   constraints : JSON
@@ -1247,6 +1248,7 @@ entity fragment_variable_defs {
   --
   * version_id : UUID <<FK>>
   * name / type : VARCHAR
+  * source : VARCHAR  ' static/runtime/secret/environment/user/workflow（ADR-0011）
   * required : BOOL
   default_value : TEXT
   constraints : JSON
@@ -1257,6 +1259,7 @@ entity variable_defs {
   --
   * version_id : UUID <<FK>>
   * name / type : VARCHAR
+  * source : VARCHAR  ' static/runtime/secret/environment/user/workflow（ADR-0011）
   * required : BOOL
   default_value : TEXT
   constraints : JSON
