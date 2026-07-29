@@ -227,8 +227,9 @@ class ArchitectureTest {
     @Test
     fun `Plugin実装は promptengine plugin-api と domain 以外のモジュールに依存しない`() {
         // パッケージ命名（promptengine.plugin.カテゴリ.名前）は docs/adr/0003-plugin-package-naming.md
-        // で確定。P0時点では plugins ディレクトリ配下にサブプロジェクトが存在せず検証対象0件のため
-        // allowEmptyShould(true)。P3で最初のPlugin実装が追加された時点から実効化される。
+        // で確定。P5（validator-policy、ADR-0012）で最初のPlugin実装が追加され、本テストの
+        // testImplementation(project(":plugins:validator-policy"))（bootstrap build.gradle.kts）
+        // 配線により検証対象が1件以上になったため、allowEmptyShould(true)を外し実効化した。
         noClasses()
             .that().resideInAPackage("promptengine.plugin..")
             .should().dependOnClassesThat()
@@ -239,7 +240,6 @@ class ArchitectureTest {
                 "promptengine.engine..",
                 "promptengine.bootstrap..",
             )
-            .allowEmptyShould(true)
             .check(importedClasses)
     }
 

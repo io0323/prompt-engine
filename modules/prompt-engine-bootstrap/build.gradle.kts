@@ -22,4 +22,7 @@ dependencies {
 
     testImplementation(libs.spring.boot.starter.test)
     testImplementation(libs.archunit.junit5)
+    // ArchitectureTestの規約6テストが検証対象を持つために必要（plugins/validator-policy、
+    // ADR-0003・ADR-0012）。テスト専用であり、本番のDI結線はP8/P9のConfigurationクラスで行う。
+    testImplementation(project(":plugins:validator-policy"))
 }
