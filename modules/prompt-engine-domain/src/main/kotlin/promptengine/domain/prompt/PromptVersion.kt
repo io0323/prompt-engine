@@ -17,13 +17,16 @@ import promptengine.domain.variable.VariableDefinition
  * [extends] はPromptがextendsするTemplateの参照（key + Version範囲）を保持する
  * （設計書§15.1/§15.3、ADR-0009）。PromptはTemplateしかextendsできないため、
  * 参照先は常に [promptengine.domain.template.TemplateKey]。
+ *
+ * [contextRequirements] はPromptが宣言する各Contextスコープの要求（scope単位で1件）の
+ * リストである（設計書§6クラス図、ADR-0011。P1〜P3c時点は単数の実装漏れがあった）。
  */
 @ConsistentCopyVisibility
 data class PromptVersion internal constructor(
     val semVer: SemVer,
     val content: PromptContent,
     val variables: List<VariableDefinition> = emptyList(),
-    val contextRequirement: ContextRequirement? = null,
+    val contextRequirements: List<ContextRequirement> = emptyList(),
     val extends: ExtendsRef? = null,
     val state: LifecycleState = LifecycleState.Draft,
 ) {

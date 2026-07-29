@@ -16,11 +16,11 @@ class PromptVersionTest {
     }
 
     @Test
-    fun `variables contextRequirement は省略時に空 null になる`() {
+    fun `variables contextRequirements は省略時に空リストになる`() {
         val version = PromptVersion(semVer = SemVer(0, 1, 0), content = content)
 
         version.variables shouldBe emptyList()
-        version.contextRequirement shouldBe null
+        version.contextRequirements shouldBe emptyList()
     }
 
     @Test

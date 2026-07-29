@@ -14,6 +14,7 @@ import promptengine.domain.fragment.FragmentVersion
 import promptengine.domain.fragment.FragmentVersionMemento
 import promptengine.domain.shared.PersistenceApi
 import promptengine.domain.variable.VariableDefinition
+import promptengine.domain.variable.VariableSource
 import promptengine.domain.variable.VariableType
 import java.sql.Timestamp
 import java.time.Instant
@@ -105,7 +106,7 @@ class JdbcFragmentRepository(
         } else {
             jdbcTemplate.query(
                 """
-                SELECT version_id, name, type, required, default_value, constraints, sensitive
+                SELECT version_id, name, type, source, required, default_value, constraints, sensitive
                 FROM fragment_variable_defs WHERE version_id IN (:versionIds)
                 """.trimIndent(),
                 MapSqlParameterSource("versionIds", versionIds),
@@ -114,6 +115,7 @@ class JdbcFragmentRepository(
                     VariableDefinition(
                         name = rs.getString("name"),
                         type = VariableType.valueOf(rs.getString("type")),
+                        source = VariableSource.valueOf(rs.getString("source")),
                         required = rs.getBoolean("required"),
                         default = rs.getString("default_value")?.let { objectMapper.readValue(it, Any::class.java) },
                         constraints =
@@ -216,6 +218,7 @@ class JdbcFragmentRepository(
                     .addValue("versionId", versionId)
                     .addValue("name", variable.name)
                     .addValue("type", variable.type.name)
+                    .addValue("source", variable.source.name)
                     .addValue("required", variable.required)
                     .addValue("defaultValue", variable.default?.let { objectMapper.writeValueAsString(it) })
                     .addValue("constraints", objectMapper.writeValueAsString(variable.constraints))
@@ -224,8 +227,9 @@ class JdbcFragmentRepository(
         jdbcTemplate.batchUpdate(
             """
             INSERT INTO fragment_variable_defs
-                (variable_id, version_id, name, type, required, default_value, constraints, sensitive)
-            VALUES (:variableId, :versionId, :name, :type, :required, :defaultValue, :constraints::json, :sensitive)
+                (variable_id, version_id, name, type, source, required, default_value, constraints, sensitive)
+            VALUES
+                (:variableId, :versionId, :name, :type, :source, :required, :defaultValue, :constraints::json, :sensitive)
             """.trimIndent(),
             batchParams,
         )
