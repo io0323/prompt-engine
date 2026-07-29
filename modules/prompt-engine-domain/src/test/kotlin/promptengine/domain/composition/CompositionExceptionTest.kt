@@ -98,4 +98,22 @@ class CompositionExceptionTest {
         exception.alias shouldBe "safety"
         exception.message shouldContain "safety"
     }
+
+    @Test
+    fun `IncludeRequiredVariableUnresolvedException はFragmentKeyと変数名をメッセージに含める`() {
+        val exception = IncludeRequiredVariableUnresolvedException(FragmentKey("fragments/greeting"), "name")
+
+        exception.fragmentKey shouldBe FragmentKey("fragments/greeting")
+        exception.variableName shouldBe "name"
+        exception.message shouldContain "fragments/greeting"
+        exception.message shouldContain "name"
+    }
+
+    @Test
+    fun `InvalidVariableSubstitutionException は変数名をメッセージに含める`() {
+        val exception = InvalidVariableSubstitutionException("k")
+
+        exception.variableName shouldBe "k"
+        exception.message shouldContain "k"
+    }
 }

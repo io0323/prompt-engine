@@ -7,7 +7,6 @@ import promptengine.domain.composition.CompositionSizeExceededException
 import promptengine.domain.composition.DraftReferenceNotAllowedException
 import promptengine.domain.composition.ResolvedDependency
 import promptengine.domain.composition.TemplateReferenceNotFoundException
-import promptengine.domain.shared.PublicationState
 import promptengine.domain.shared.SemVer
 import promptengine.domain.shared.VersionRange
 import promptengine.domain.template.ExtendsRef
@@ -95,6 +94,7 @@ class ReferenceResolver(
     /**
      * [key]のTemplateから、[range]にマッチし、かつ[mode]が許すStatusの中で最大のVersionを選ぶ。
      * 同じTemplateRepository状態に対しては常に同じ結果を返す純粋な選択（決定性、ADR-0009）。
+     * 選択ロジック自体は[VersionSelector]に委譲する（Fragment解決とも共有、ADR-0010）。
      */
     private fun resolveTemplateVersion(
         key: TemplateKey,
@@ -102,41 +102,29 @@ class ReferenceResolver(
         mode: CompositionMode,
     ): Pair<TemplateVersion, SemVer> {
         val template = templateRepository.findByKey(key) ?: throw TemplateReferenceNotFoundException(key, range)
-        val rangeMatches = requireRangeMatches(template.versions, key, range)
-        val eligible = requireEligibleStatus(rangeMatches, key, range, mode)
-        val selected = eligible.maxBy { it.semVer }
+        val selected =
+            VersionSelector.select(
+                versions = template.versions,
+                info = { VersionSelector.VersionInfo(it.semVer, it.state) },
+                query = VersionSelector.Query(range, mode),
+                handlers =
+                    VersionSelector.FailureHandlers(
+                        onNotFound = { failNotFound(key, range) },
+                        onDraftNotAllowed = { failDraftNotAllowed(key, range) },
+                    ),
+            )
         return selected to selected.semVer
     }
 
-    private fun requireRangeMatches(
-        versions: List<TemplateVersion>,
+    private fun failNotFound(
         key: TemplateKey,
         range: VersionRange,
-    ): List<TemplateVersion> {
-        val matches = versions.filter { range.matches(it.semVer) }
-        if (matches.isEmpty()) throw TemplateReferenceNotFoundException(key, range)
-        return matches
-    }
+    ): Nothing = throw TemplateReferenceNotFoundException(key, range)
 
-    private fun requireEligibleStatus(
-        rangeMatches: List<TemplateVersion>,
+    private fun failDraftNotAllowed(
         key: TemplateKey,
         range: VersionRange,
-        mode: CompositionMode,
-    ): List<TemplateVersion> {
-        val allowedStatuses =
-            if (mode == CompositionMode.COMPILE_ONLY) {
-                setOf(PublicationState.Published, PublicationState.Draft)
-            } else {
-                setOf(PublicationState.Published)
-            }
-        val eligible = rangeMatches.filter { it.state in allowedStatuses }
-        if (eligible.isNotEmpty()) return eligible
-        if (rangeMatches.any { it.state == PublicationState.Draft }) {
-            throw DraftReferenceNotAllowedException("${key.value}@${range.toRangeText() ?: "latest"}")
-        }
-        throw TemplateReferenceNotFoundException(key, range)
-    }
+    ): Nothing = throw DraftReferenceNotAllowedException("${key.value}@${range.toRangeText() ?: "latest"}")
 
     companion object {
         /** 設計書§15.5の深さ上限（extends/import/include/macro解決チェーンの通算、ADR-0009決定2）。 */
