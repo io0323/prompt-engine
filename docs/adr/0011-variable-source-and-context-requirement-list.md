@@ -53,6 +53,22 @@ SecretResolverが失敗する経路には性質の異なる2種類がある。
 畳み込むと、Secret Manager全体が落ちているときに「個々の変数が未設定」という
 誤ったエラーメッセージを返すことになり、障害調査を妨げる。
 
+### 4. Resolver系Interfaceがcoreに置かれ、applicationから参照できない
+
+P4実装当初、`VariableResolver` / `ContextResolver`（拡張ポイントInterface）と、
+Chain全体のファサードに相当する型を、実装（6種標準Resolver・`ContextResolverImpl`）と
+まとめて`prompt-engine-core`（`promptengine.engine.resolver`）に置いていた。
+
+しかし`CompositionService`（設計書§4.5「Domain Service」）は「Interfaceはdomain、
+実装はcore」という配置になっており（`domainはDSL Parserに依存できないため`、ADR-0010決定9）、
+これは`prompt-engine-application`が`prompt-engine-domain`にしか依存できないという
+モジュール依存の絶対規約（CLAUDE.md、`ArchitectureTest`で機械強制）から導かれる配置である。
+Resolver系Interfaceを`core`に置いたままだと、P8（Pipeline Orchestrator）が
+Variable/Context解決を呼び出す際に`prompt-engine-application`が`prompt-engine-core`へ
+依存せざるを得ず、規約に違反する。`CompositionService`と異なる配置にする理由（domainが
+依存できない外部技術へのInterface依存）がResolver系には存在しないため、これは設計上の
+一貫性の欠如であり、素直に`CompositionService`と同じ形に揃えるべきである。
+
 ## 決定
 
 ### 1. VariableSourceを追加する
@@ -107,14 +123,45 @@ Resolver Chainの各Resolverは「`def.source`が自分の担当種別と一致�
 この区別は`SecretManagerAdapter`と`SecretResolver`双方のKDocに明記し、両方の経路を
 個別のテストで固定する。
 
+### 4. Engine系のInterfaceはdomainに、実装はcoreに置く
+
+`CompositionService`/`CompositionServiceImpl`と同じ形に揃える。
+
+- `VariableResolver`（Interface）→ `domain.variable`
+- `VariableResolverChain`（Chainのファサード、新設Interface。`fun resolveAll(definitions,
+  request): BindingSet` のみを持つ）→ `domain.variable`
+- `ContextResolver`（Interface）→ `domain.context`
+- `PromptRequest`（上記3つのInterfaceが共通して参照するVO）→ `domain.shared`
+  （`VariableResolver`/`VariableResolverChain`/`ContextResolver`いずれもdomainからしか
+  参照できないため、これらがパラメータに取る`PromptRequest`もdomainに置かざるを得ない。
+  variable/context双方から参照されるため`domain.shared`とする）
+- 実装（6種標準Resolver、Chainの実装（`VariableResolverChainImpl`に改称）、
+  `ContextResolverImpl`、7スコープ標準の`StandardContextResolver`）は
+  `prompt-engine-core`（`promptengine.engine.resolver`）に残す
+
+`ContextResolverImpl`自体（Context解決のオーケストレーション）にはdomain向けの
+ファサードInterfaceを設けない。Variable側の`VariableResolverChain`と非対称になるが、
+これはP8（Pipeline Orchestrator）でのApplication層からの呼び出し方式全体を設計する際に
+併せて決定する（現時点でファサードの形を先取りで確定させると、P8の実際の要件と
+食い違うリスクがある）。
+
+`prompt-engine-application`が`prompt-engine-core`（`promptengine.engine..`）に依存しないことは
+`ArchitectureTest`の既存ルール（`prompt-engine-application は prompt-engine-domain のみに
+依存する`）で既に検証されており、新規ルールの追加は不要（P0時点で追加済み。
+`prompt-engine-application`に実クラスが存在しないため現状は`allowEmptyShould(true)`で
+実質未検証だが、P8で実クラスが追加された時点から実効化される）。
+
 ## 影響範囲
 
 - `prompt-engine-domain`: `VariableSource`追加、`VariableDefinition`に`source`+不変条件、
   `PromptVersion`/`NewPromptVersion`/`PromptVersionMemento`/`CompiledPrompt`の
   `contextRequirement`→`contextRequirements`化、`Prompt`の3呼出箇所、
-  `SecretManagerAdapter`インターフェース新設（`domain.variable`）
+  `SecretManagerAdapter`インターフェース新設（`domain.variable`）、
+  `VariableResolver`/`VariableResolverChain`（`domain.variable`）、
+  `ContextResolver`（`domain.context`）、`PromptRequest`（`domain.shared`）の新設・移設
 - `prompt-engine-core`: `CompositionServiceImpl`の`contextRequirements`追随、
-  P4 Resolver一式（別コミット）
+  P4 Resolver一式（別コミット）、`VariableResolverChain`→`VariableResolverChainImpl`への
+  改称と`domain.variable.VariableResolverChain`実装化、各Resolverのimport更新
 - `prompt-engine-infrastructure`: Flyway V4、`EventStorePromptRepository` /
   `JdbcTemplateRepository` / `JdbcFragmentRepository` / `PromptSnapshotPayload`の
   `source`列・`context_requirements`配列対応、`SecretManagerAdapter`のM1環境変数実装
