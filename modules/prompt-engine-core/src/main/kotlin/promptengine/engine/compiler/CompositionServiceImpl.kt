@@ -96,6 +96,7 @@ class CompositionServiceImpl(
             dependencies = dependencies,
             variables = resolveVariables(promptVersion, ancestorVersions, dedupedFragmentDeps),
             contextRequirements = promptVersion.contextRequirements,
+            validation = promptVersion.validation,
         )
     }
 
