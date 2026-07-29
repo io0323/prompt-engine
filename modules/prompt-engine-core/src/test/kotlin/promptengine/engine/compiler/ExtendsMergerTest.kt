@@ -7,8 +7,14 @@ import promptengine.domain.composition.DuplicateSuperCallException
 import promptengine.domain.composition.SuperWithoutParentBlockException
 import promptengine.domain.template.ast.BlockNode
 import promptengine.domain.template.ast.BlockRole
+import promptengine.domain.template.ast.BooleanLiteral
+import promptengine.domain.template.ast.EachNode
+import promptengine.domain.template.ast.Expression
+import promptengine.domain.template.ast.IfNode
 import promptengine.domain.template.ast.MacroCallNode
+import promptengine.domain.template.ast.NumberLiteral
 import promptengine.domain.template.ast.PromptAst
+import promptengine.domain.template.ast.PropertyRef
 import promptengine.domain.template.ast.TextNode
 
 /**
@@ -117,6 +123,75 @@ class ExtendsMergerTest {
         shouldThrow<DuplicateSuperCallException> {
             merger.merge(listOf(parent), leaf)
         }.role shouldBe BlockRole.SYSTEM
+    }
+
+    @Test
+    fun `super は if の thenBranch elseBranch 内にネストしても検出・置換される`() {
+        val parent = listOf(block(BlockRole.SYSTEM, "parent"))
+        val condition = Expression(BooleanLiteral(true))
+        val leaf =
+            listOf(
+                BlockNode(
+                    BlockRole.SYSTEM,
+                    listOf(IfNode(condition, thenBranch = listOf(superCall()), elseBranch = listOf(TextNode("else")))),
+                ),
+            )
+
+        val result = merger.merge(listOf(parent), leaf)
+
+        result shouldBe
+            listOf(
+                BlockNode(
+                    BlockRole.SYSTEM,
+                    listOf(
+                        IfNode(
+                            condition,
+                            thenBranch = listOf(TextNode("parent")),
+                            elseBranch = listOf(TextNode("else")),
+                        ),
+                    ),
+                ),
+            )
+    }
+
+    @Test
+    fun `super は each の body 内にネストしても検出・置換される`() {
+        val parent = listOf(block(BlockRole.SYSTEM, "parent"))
+        val iterable = Expression(PropertyRef(listOf("items")))
+        val leaf = listOf(BlockNode(BlockRole.SYSTEM, listOf(EachNode(iterable, "i", listOf(superCall())))))
+
+        val result = merger.merge(listOf(parent), leaf)
+
+        result shouldBe
+            listOf(BlockNode(BlockRole.SYSTEM, listOf(EachNode(iterable, "i", listOf(TextNode("parent"))))))
+    }
+
+    @Test
+    fun `if の thenBranch と elseBranch に分かれた super も複数回呼出として検出する`() {
+        val parent = listOf(block(BlockRole.SYSTEM, "parent"))
+        val condition = Expression(BooleanLiteral(true))
+        val leaf =
+            listOf(
+                BlockNode(
+                    BlockRole.SYSTEM,
+                    listOf(IfNode(condition, thenBranch = listOf(superCall()), elseBranch = listOf(superCall()))),
+                ),
+            )
+
+        shouldThrow<DuplicateSuperCallException> {
+            merger.merge(listOf(parent), leaf)
+        }.role shouldBe BlockRole.SYSTEM
+    }
+
+    @Test
+    fun `引数付きの super はsuper挿入として扱わずそのまま残る`() {
+        val parent = listOf(block(BlockRole.SYSTEM, "parent"))
+        val argedSuper = MacroCallNode("super", mapOf("x" to Expression(NumberLiteral(1.0))))
+        val leaf = listOf(BlockNode(BlockRole.SYSTEM, listOf(argedSuper)))
+
+        val result = merger.merge(listOf(parent), leaf)
+
+        result shouldBe listOf(BlockNode(BlockRole.SYSTEM, listOf(argedSuper)))
     }
 
     @Test

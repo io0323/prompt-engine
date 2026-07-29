@@ -17,6 +17,14 @@ data class ImportDeclaration(
  * リストへ変換する唯一の経路（[ExtendsFieldMapper]と同型のパターン、ADR-0010決定7）。
  */
 object ImportsFieldMapper {
+    /**
+     * [rawImports]が`null`なら空リストを返す。各エントリは`alias`/`ref`を持つマッピングで
+     * なければならない。
+     *
+     * @throws IllegalArgumentException [rawImports]がリストでない、エントリがマッピングでない、
+     *   または`alias`/`ref`が欠落・空である場合。
+     * @throws DuplicateImportAliasException 同一`alias`が2回以上宣言された場合。
+     */
     fun parse(rawImports: Any?): List<ImportDeclaration> {
         if (rawImports == null) return emptyList()
         require(rawImports is List<*>) { "imports front matter field must be a list: $rawImports" }

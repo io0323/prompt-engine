@@ -1608,6 +1608,11 @@ variables:
 
 - `extends: <templateKey>[@versionRange]`: 単一継承のみ。親の `{{#block}}` を子が同名blockで上書き。上書きしないblockは親を継承。`{{ super() }}` で親block内容を子block内に挿入可。
 - Nested Prompt: `{{> prompt:other/prompt-key@1 param1=value }}` で他PromptをFragment同様に埋め込み可（Published限定、深さ上限5）。
+  **実装状況**: P3c（CompositionService）時点では未実装であり、`target`が`prompt:`で
+  始まるIncludeを検出した場合は`NestedPromptNotSupportedException`を投げる
+  （ADR-0009決定3で明示的にスコープ外と確認済み、GitHub Issue「Nested Promptを
+  実装する」で次フェーズへの回収を追跡）。上記の構文自体は仕様として維持し、
+  実装が追いついていないことをここに明記する。
 - Composition解決順: extends → import → include → macro展開。
 
 多段継承のマージは根本（`extends`を持たないTemplate）から直近の親、そして実際に
