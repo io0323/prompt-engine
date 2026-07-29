@@ -88,3 +88,12 @@ class IncludeRequiredVariableUnresolvedException(val fragmentKey: FragmentKey, v
  */
 class InvalidVariableSubstitutionException(val variableName: String) :
     CompositionException("cannot access a property of a literal-bound variable: $variableName")
+
+/**
+ * macroのスコープはPrompt/Template/Fragmentそれぞれの宣言単位に閉じる（設計書§15.6、
+ * ADR-0010決定5）。宣言単位のどのmacro定義にも一致しないmacro呼出はこの例外を投げる
+ * （`{{ super() }}` がblockの外や親の無い箇所に現れ、`super`という名前のmacroも
+ * 定義されていない場合も同様にこの例外になる）。
+ */
+class MacroNotFoundException(val macroName: String) :
+    CompositionException("macro not found in the declaring unit's own scope: $macroName")
