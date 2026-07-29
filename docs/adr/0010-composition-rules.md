@@ -256,6 +256,76 @@ core側に閉じる必要がある。ADR-0008のFragment循環検出非対応の
     （PR1で確立済みの仕組みをそのまま使う、という指示に対応。公開APIは変更しない）
   - `promptengine.engine.compiler.CompositionServiceImpl`（決定9）を新設
 
+## 追記（2026-07-29、feat/p3c-followup-semantics）
+
+実装（`CompositionServiceImpl`）を書いた時点で、決定9が「解決順序 extends→import→
+include→macro の結線」とだけ述べていた部分が、実際には`{{ super() }}`の解決タイミング
+制約により2パスのmacro展開に分かれることが判明した。実装したPRのコミットメッセージ
+にしか残っていなかったため、本ADRと設計書§15.3（該当箇所を参照）の両方に、実際の
+解決アルゴリズムを転記して明記する（CLAUDE.md「やってはいけないこと」に追加した
+「設計上の決定をコミットメッセージやコードコメントにのみ記録しない」の適用第1号）。
+
+### 実際の解決アルゴリズム（擬似コード）
+
+```
+fun compile(promptKey, promptVersion, mode): CompiledPrompt
+  extendsChain = ReferenceResolver.resolveExtendsChain(...)   // 直近の親→…→根本
+  ancestorVersions = extendsChain.map { fetchTemplateVersion(it) }
+  staticScope = promptVersion.variables ∪ ancestorVersions全体の.variables
+
+  // ここまでは各階層「独立」に処理する（宣言単位ごとにimport/include解決 → 1回目のmacro展開）
+  for each unit in [ancestorVersions（直近の親→根本の順）, promptVersion（リーフ）]:
+    document = parse(unit.content.source)
+    includeResolved = FragmentResolver.resolve(document.body, unit自身のimports, staticScope, mode)
+      // ここでFragmentごとに: 自身のimport/include解決 → 自身のmacro展開（passThrough無し）
+      // を完了させてから呼出元へ返す（Fragmentのmacroスコープが呼出元に漏れない、決定5）
+    unitBody[unit] = MacroExpander(passThroughBareSuperCalls = true)
+                       .expand(includeResolved.body, unit自身のmacros)
+      // 引数無し super() だけは展開せずそのまま残す（extendsマージでのみ解決するため）
+
+  // extendsマージ（super()の解決はここでのみ行われる）
+  mergedBody = ExtendsMerger.merge(
+      ancestorBodiesNearestFirst = [unitBody[各祖先Template]],  // 直近の親→根本の順
+      leafBody = unitBody[promptVersion],
+  )
+
+  // 2回目（最終）のmacro展開: block外に残った（＝マージが解決できなかった）super()呼出を
+  // 通常の未定義macro呼出として検出する。リーフ自身のmacroスコープを使う
+  // （このパスで新たに展開されるmacro呼出は実質存在しない。1回目のパスで
+  //   各階層自身のmacroは既に展開済みのため）。
+  finalBody = MacroExpander(passThroughBareSuperCalls = false)
+                .expand(mergedBody, promptVersion自身のmacros)
+
+  return CompiledPrompt(finalBody, dependencies, variables, contextRequirement)
+```
+
+### なぜmacro展開が1回で完結しないか
+
+`{{ super() }}`（引数無し）は「直近の親が確定した時点でのそのroleのblock内容」を
+子block内に挿入する構文であり、その「親が確定した内容」を作れるのはextendsマージ
+自身だけである。一方、macroのスコープは宣言単位に閉じる（決定5）ため、各階層自身の
+（`super()`以外の）macro呼出は、その階層の内容が他の階層とマージされる**前**に、
+その階層自身のmacroスコープで完全に解決しておく必要がある（マージ後に一括展開すると、
+どのMacroCallNodeがどの階層の宣言に由来するか区別できなくなり、スコープ閉鎖が保証
+できなくなるため）。この2つの制約（super()はマージ後にしか解決できない／他のmacroは
+マージ前に解決しなければならない）を両立させるため、`{{ super() }}`だけをマージ前の
+macro展開で素通しし、マージ後の最終展開で改めて処理する2パス構成にした。
+
+### 確定した意味論（テストで固定、`CompositionServiceImplTest`参照）
+
+- **a. 親テンプレートで定義したmacroは、`super()`で差し込まれた親由来の内容の中で
+  展開される。** 親自身の1回目のmacro展開（マージより前）で、親のmacro呼出は
+  親自身のスコープで完全に展開されるため。
+- **b. 子テンプレートで定義した同名macroは、既に確定した親由来の内容には影響しない。**
+  親由来の内容は親自身の1回目のmacro展開の時点で確定しており、マージ後に
+  再解釈されることはない。
+- **c. 親子で同名macroを定義した場合、優先順位という概念は存在しない。** 各macro呼出は
+  それが書かれた宣言単位自身のmacro定義でのみ解決される（親自身の呼出は常に親の定義、
+  子自身の呼出は常に子の定義）。どちらか一方が他方を上書きする関係にはない。
+- **d.（ADR-0010決定5の再確認）** Fragment内のmacro呼出は、呼出元（Prompt/Template）が
+  同名macroを定義していても、Fragment自身が定義したものでなければ
+  `MacroNotFoundException`になる。挙動に変化は無い。
+
 ## 参照
 
 - [PromptEngine_設計書.md §2.6 / §15.3 / §15.4 / §15.5 / §15.6](../PromptEngine_設計書.md)

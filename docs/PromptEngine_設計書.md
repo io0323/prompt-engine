@@ -1613,7 +1613,15 @@ variables:
   （ADR-0009決定3で明示的にスコープ外と確認済み、GitHub Issue「Nested Promptを
   実装する」で次フェーズへの回収を追跡）。上記の構文自体は仕様として維持し、
   実装が追いついていないことをここに明記する。
-- Composition解決順: extends → import → include → macro展開。
+- Composition解決順: extends → import → include → macro展開。この順序は「各宣言単位
+  （Prompt/Template自身、およびimport/includeされた各Fragment）が、自身のimport/include
+  解決を終えたあとmacro展開まで完了させてから、初めて呼出元／extendsマージへ渡される」
+  という**宣言単位ごとの順序**を指す。extendsマージだけは`{{ super() }}`の解決のため
+  例外的に2段階に分かれる: `{{ super() }}`（引数無し）を除く各階層自身のmacro呼出は
+  extendsマージの**前**に展開し、`{{ super() }}`自体はマージ**後**（block外に残った
+  場合は通常の未定義macro呼出として）に解決する。`{{ super() }}`は親block内容の挿入
+  であり、それを解決できるのはextendsマージ自身だけであるため、macro展開を1回で
+  完結させることができない（実際の解決アルゴリズムはADR-0010「追記」参照）。
 
 多段継承のマージは根本（`extends`を持たないTemplate）から直近の親、そして実際に
 コンパイルするPrompt/Templateへ向かって順に行う（ADR-0010）。`{{ super() }}` が

@@ -212,6 +212,98 @@ class CompositionServiceImplTest {
     }
 
     @Test
+    fun `親テンプレートで定義したmacroはsuperで差し込まれた親由来の内容の中で展開される`() {
+        val templateRepo = FakeTemplateRepository()
+        val fragmentRepo = FakeFragmentRepository()
+        templateRepo.addPublishedFromSource(
+            TemplateKey("templates/base"),
+            SemVer(1, 0, 0),
+            """
+            ---
+            pe: "1"
+            kind: template
+            key: templates/base
+            macros:
+              - name: shout
+                params: [text]
+                body: '{{ text }}!!!'
+            ---
+            {{#block system}}{{ shout(text="hi") }}{{/block}}
+            """.trimIndent(),
+        )
+        val service = CompositionServiceImpl(templateRepo, fragmentRepo)
+        val promptKey = PromptKey("support/faq")
+        val promptVersion =
+            promptVersion(
+                promptKey,
+                "{{#block system}}{{ super() }}{{/block}}",
+                extends = ExtendsRef(TemplateKey("templates/base")),
+            )
+
+        val result = service.compile(promptKey, promptVersion, CompositionMode.STANDARD)
+
+        result.body shouldBe
+            listOf(BlockNode(BlockRole.SYSTEM, listOf(ExprNode(Expression(StringLiteral("hi"))), TextNode("!!!"))))
+    }
+
+    @Test
+    fun `子で同名macroを再定義しても既に確定した親由来の内容には影響しない`() {
+        val templateRepo = FakeTemplateRepository()
+        val fragmentRepo = FakeFragmentRepository()
+        templateRepo.addPublishedFromSource(
+            TemplateKey("templates/base"),
+            SemVer(1, 0, 0),
+            """
+            ---
+            pe: "1"
+            kind: template
+            key: templates/base
+            macros:
+              - name: shout
+                params: [text]
+                body: '{{ text }}!!!'
+            ---
+            {{#block system}}{{ shout(text="hi") }}{{/block}}
+            """.trimIndent(),
+        )
+        val service = CompositionServiceImpl(templateRepo, fragmentRepo)
+        val promptKey = PromptKey("support/faq")
+        val source =
+            """
+            ---
+            pe: "1"
+            kind: prompt
+            key: support/faq
+            macros:
+              - name: shout
+                params: [text]
+                body: '{{ text }}???'
+            ---
+            {{#block system}}{{ super() }}-{{ shout(text="bye") }}{{/block}}
+            """.trimIndent()
+        val promptVersion = promptVersionFromSource(promptKey, source, ExtendsRef(TemplateKey("templates/base")))
+
+        val result = service.compile(promptKey, promptVersion, CompositionMode.STANDARD)
+
+        // superで差し込まれた"hi!!!"は親自身のshout（!!!）のまま、子の呼出"bye"だけが子自身のshout（???）で
+        // 展開される。同名macroに「優先順位」は存在せず、呼出が書かれた宣言単位自身のmacroで解決される
+        // （c: 親子で同名macroを定義した場合の実際の挙動）。
+        result.body shouldBe
+            listOf(
+                BlockNode(
+                    BlockRole.SYSTEM,
+                    listOf(
+                        ExprNode(Expression(StringLiteral("hi"))),
+                        TextNode("!!!"),
+                        TextNode("-"),
+                        ExprNode(Expression(StringLiteral("bye"))),
+                        TextNode("???"),
+                    ),
+                ),
+            )
+    }
+
+    @Test
     fun `ブロック外に残ったsuper呼出は未定義macro扱いになる`() {
         val templateRepo = FakeTemplateRepository()
         val fragmentRepo = FakeFragmentRepository()
@@ -257,9 +349,16 @@ class CompositionServiceImplTest {
             semVer: SemVer,
             bodyText: String,
             variables: List<VariableDefinition> = emptyList(),
+        ) = addPublishedFromSource(key, semVer, wrap(key.value, "template", bodyText), variables)
+
+        /** `macros:`/`imports:`など、フロントマターを自前で指定したい場合に使う。 */
+        fun addPublishedFromSource(
+            key: TemplateKey,
+            semVer: SemVer,
+            fullSource: String,
+            variables: List<VariableDefinition> = emptyList(),
         ) {
-            val source = wrap(key.value, "template", bodyText)
-            val newVersion = NewTemplateVersion(semVer, TemplateContent(source), variables)
+            val newVersion = NewTemplateVersion(semVer, TemplateContent(fullSource), variables)
             var template = templates[key]?.newVersion(newVersion) ?: Template.create(key, newVersion)
             template = template.publish(semVer)
             templates[key] = template
