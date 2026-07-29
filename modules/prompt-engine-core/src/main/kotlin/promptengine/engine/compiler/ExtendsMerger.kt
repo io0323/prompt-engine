@@ -116,6 +116,4 @@ class ExtendsMerger {
                 else -> listOf(node)
             }
         }
-
-    private fun isSuperCall(node: MacroCallNode): Boolean = node.name == "super" && node.arguments.isEmpty()
 }

@@ -25,9 +25,11 @@ import promptengine.engine.parser.PromptDslParser
  * extends（[ReferenceResolver]）とは独立に、Fragment参照のキー参照グラフをDFSで解決し、
  * 変数束縛を適用しながらFragment本体を呼出箇所へ展開する。
  *
- * macro呼出（`{{ name(...) }}`）はこのクラスでは一切展開しない（設計書§15.3の解決順どおり
- * macro展開は最後の段階であり、`CompositionServiceImpl`（PR2c）がこのクラスの結果に対して
- * macro展開を適用する）。
+ * 各Fragment自身のmacro呼出（`{{ name(...) }}`）は、そのFragment自身が宣言した
+ * macroスコープ（設計書§15.6、ADR-0010決定5）で、呼出元へ展開・挿入する前に完全に解決する
+ * （呼出元の`{{> frag k=v }}`変数束縛の適用よりも先。呼出側の macro スコープが
+ * Fragment内部に漏れ込むことを防ぐ）。したがって呼出元（`CompositionServiceImpl`）が
+ * 受け取る本体には、Fragmentが自ら展開したmacroは一切残らない。
  */
 class FragmentResolver(
     private val fragmentRepository: FragmentRepository,
@@ -35,6 +37,7 @@ class FragmentResolver(
     private val maxExpandedSizeBytes: Int = ReferenceResolver.DEFAULT_MAX_EXPANDED_SIZE_BYTES,
 ) {
     private val parser = PromptDslParser()
+    private val macroExpander = MacroExpander()
     private val memo = mutableMapOf<Pair<FragmentKey, SemVer>, MemoizedFragment>()
 
     data class Result(
@@ -153,8 +156,10 @@ class FragmentResolver(
             )
         val document = parser.parse(ref.fragmentVersion.content.source)
         val ownImports = ImportsFieldMapper.parse(document.frontMatter.fields["imports"])
+        val ownMacros = MacrosFieldMapper.parse(document.frontMatter.fields["macros"])
         val ownScope = ref.fragmentVersion.variables.map { it.name }.toSet()
-        val ownBody = resolveNodes(document.body, ownImports, ownScope, mode, state)
+        val ownIncludesResolved = resolveNodes(document.body, ownImports, ownScope, mode, state)
+        val ownBody = macroExpander.expand(ownIncludesResolved, ownMacros)
 
         state.ancestorPath.removeAt(state.ancestorPath.size - 1)
         val result = MemoizedFragment(ownBody, dependency)

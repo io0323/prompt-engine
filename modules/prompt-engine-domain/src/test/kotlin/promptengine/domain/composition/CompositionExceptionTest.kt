@@ -116,4 +116,12 @@ class CompositionExceptionTest {
         exception.variableName shouldBe "k"
         exception.message shouldContain "k"
     }
+
+    @Test
+    fun `MacroNotFoundException はmacro名をメッセージに含める`() {
+        val exception = MacroNotFoundException("bulletList")
+
+        exception.macroName shouldBe "bulletList"
+        exception.message shouldContain "bulletList"
+    }
 }
