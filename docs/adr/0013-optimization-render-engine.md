@@ -217,7 +217,10 @@ ModelProfile」という表現も、§3.4 `PipelineContext`が`ast`/`variableBin
 渡されない）。これも同様に疑似コードの省略と判断し、`applicable`に`estimatedTokens`と
 `budget`を追加する。これらは`OptimizationEngine`が（`variableBindings`も使って）算出し、
 各Ruleへ引き渡す値であり、Rule自身が独自に見積りを再計算する必要はない
-（見積りロジックを各Rule実装に重複させない）。
+（見積りロジックを各Rule実装に重複させない）。同じ理由で`optimize`にも`estimatedTokens`・
+`budget`を渡す（`Compression`は「どこまで切り詰めれば`budget`以内に収まるか」を
+自身の`optimize`呼出内で判断する必要があり、`applicable`だけが知っていても`optimize`側で
+再度算出し直すのは重複になるため）。
 
 ```kotlin
 // domain.optimization
@@ -234,6 +237,8 @@ interface OptimizationRule {
         compiled: CompiledPrompt,
         contextBindings: ContextBindingSet,
         profile: ModelProfile,
+        estimatedTokens: TokenCount,
+        budget: TokenCount,
     ): RuleOptimizationResult
 }
 
