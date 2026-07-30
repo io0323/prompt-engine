@@ -289,7 +289,8 @@ Resolver Chain: `Explicit Parameter → Static → User → Workflow → Environ
 
 - Template EngineはPlugin（既定: PE標準エンジン `pe-tmpl/1`）。
 - 決定性: 同一（AST, Bindings, ModelProfile, EngineVersion）→ バイト同一出力。乱数・現在時刻はContext経由でのみ注入可。
-- 出力は `RenderedPrompt { messages: [{role, content}], outputFormat, modelHints, tokenEstimate, renderHash }`。roleは system/user/assistant/tool の抽象role（Provider方言はAPAPが吸収）。
+- 出力は `RenderedPrompt { messages: [{role, content}], outputFormat, tokenEstimate, renderHash }`。roleは system/user/assistant/tool の抽象role（`BlockNode`が持つDSL上のrole、system/user/assistantの3値とは別レイヤーの型。Provider方言はAPAPが吸収）。`modelHints`はM1では持たない（APAP連携が具体化するP7以降で追加を検討する、ADR-0013決定6）。
+  `renderHash`の正規化規則・`BlockNode`→`messages`変換規則・非決定性要因の構造的排除方針はADR-0013を参照。
 
 ## 2.10 Validation仕様
 
@@ -320,7 +321,7 @@ severity決定規則・各RuleのAST走査規則はADR-0012を参照。
 | Expansion | Few-shot例・詳細指示の追加 | ModelProfileが指示追従弱と定義する場合 |
 | Context Optimization | 参照されないContextスコープの除去 | 常時 |
 
-Model Profile（APAPのモデルメタデータを参照して構成）: `{ maxContextTokens, tokenizerPlugin, costPerToken, capabilities }`。Optimizationは意味保存が原則で、変更内容はOptimizationReportとしてAuditに残す。
+Model Profile（APAPのモデルメタデータを参照して構成）: `{ maxContextTokens, tokenizerPlugin, costPerToken, capabilities }`。`capabilities`の型・M1での要約(Compression)スコープ・OptimizationRule/OptimizationEngineの具体的な型定義はADR-0013を参照。Optimizationは意味保存が原則で、変更内容はOptimizationReportとしてAuditに残す。
 
 ## 2.12 Evaluation仕様
 
@@ -626,8 +627,8 @@ Experiment ──(勝者昇格要求)──> Prompt Authoring
 | VariableDefinition | name/type/source/required/default/constraints/sensitive（ADR-0011） |
 | BindingSet | name→Value の不変Map（sensitive値はマスク表示） |
 | ContextRequirement | scope + required/optional + 参照path一覧 |
-| RenderedPrompt | messages[] / outputFormat / tokenEstimate / renderHash |
-| ModelProfile | maxContextTokens / tokenizerId / costPerToken / capabilities |
+| RenderedPrompt | messages[] / outputFormat / tokenEstimate / renderHash（具体型はADR-0013） |
+| ModelProfile | maxContextTokens / tokenizerId / costPerToken / capabilities（具体型はADR-0013） |
 | TokenCount / Cost / LatencyMs | 数値VO（負値禁止） |
 | MetricScore | metricType + value(0..1 or 実数) + method |
 | TrafficPolicy | variant→重み(%)、sticky key（userId等） |
