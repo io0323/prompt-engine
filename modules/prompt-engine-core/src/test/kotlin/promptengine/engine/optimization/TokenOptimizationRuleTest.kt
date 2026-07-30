@@ -97,6 +97,46 @@ class TokenOptimizationRuleTest {
     }
 
     @Test
+    fun `最後のノード以外の絶対末尾の空白は隣接ノードとの区切りとして保持する`() {
+        // CodeRabbitレビュー指摘: 各ノードを独立に絶対末尾トリムすると
+        // "hello " + "world" が "helloworld" のように単語連結してしまう
+        val rule = TokenOptimizationRule(tokenizer)
+        val compiled = compiledPrompt(TextNode("hello "), TextNode("world"))
+
+        val result = rule.optimize(compiled, ContextBindingSet.empty(), profile, TokenCount(0), TokenCount(100))
+
+        result.compiled.body shouldBe listOf(TextNode("hello "), TextNode("world"))
+    }
+
+    @Test
+    fun `列内で最後のノードの絶対末尾の空白は除去する`() {
+        val rule = TokenOptimizationRule(tokenizer)
+        val compiled = compiledPrompt(TextNode("hello"), TextNode("world   "))
+
+        val result = rule.optimize(compiled, ContextBindingSet.empty(), profile, TokenCount(0), TokenCount(100))
+
+        result.compiled.body shouldBe listOf(TextNode("hello"), TextNode("world"))
+    }
+
+    @Test
+    fun `EachNodeが列内で最後でも本文の絶対末尾トリムは反復間の区切りを壊すため行わない`() {
+        val rule = TokenOptimizationRule(tokenizer)
+        val compiled =
+            compiledPrompt(
+                EachNode(
+                    iterable = Expression(PropertyRef(listOf("items"))),
+                    itemName = "item",
+                    body = listOf(TextNode("item ")),
+                ),
+            )
+
+        val result = rule.optimize(compiled, ContextBindingSet.empty(), profile, TokenCount(0), TokenCount(100))
+
+        val eachNode = result.compiled.body.single() as EachNode
+        (eachNode.body.single() as TextNode).text shouldBe "item "
+    }
+
+    @Test
     fun `隣接していても内容が異なるTextNodeは両方保持する`() {
         val rule = TokenOptimizationRule(tokenizer)
         val compiled = compiledPrompt(TextNode("first"), TextNode("second"))
