@@ -12,7 +12,7 @@ import promptengine.domain.validation.ValidationSettings
 import promptengine.domain.variable.BindingSet
 
 class LengthValidationRuleTest {
-    private val tokenizer = NaiveTokenizerPlugin()
+    private val tokenizer = TokenizerPlugin { text -> TokenCount(text.length) }
     private val rule = LengthValidationRule(tokenizer)
 
     private fun compiledPrompt(
