@@ -303,6 +303,16 @@ TOKEN_BUDGET_EXCEEDED）」と、予算超過時点をパイプライン続行�
 （`engine.validation`）が`compiled.body`から収集した`context.*`参照パスのスコープ集合に
 含まれない`contextBindings.values`のキーを除去する。
 
+**`Expansion`はM1では「詳細指示の追加」のみを実装し、「Few-shot例の追加」は対象外とする。**
+§2.11は`Expansion`を「Few-shot例・詳細指示の追加」と定義するが、Few-shot例をASTへ注入するには
+テンプレート単位の「例データ」の供給元が必要であり、現行のドメインモデル（`CompiledPrompt`/
+`PromptVersion`/`TemplateVersion`/`FragmentVersion`）にはそのような供給元
+（`examples:`DSL宣言、専用Fragment参照種別等）が一切定義されていない。存在しない型・宣言を
+推測で新設することはCLAUDE.md「設計書にない...を勝手に追加しない」に反するため、供給元の設計は
+別途ユーザーと合意の上でADRを起こす（追跡: [Issue #29](https://github.com/io0323/prompt-engine/issues/29)）。
+M1の`ExpansionRule`は`profile.capabilities`が`WEAK_INSTRUCTION_FOLLOWING`を含む場合に
+固定の指示文（詳細指示）をSYSTEMブロックへ追記するのみ。
+
 ### 10. `RenderEngine`/`TemplateEngine`
 
 ```kotlin

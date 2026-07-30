@@ -318,7 +318,7 @@ severity決定規則・各RuleのAST走査規則はADR-0012を参照。
 |---|---|---|
 | Token Optimization | 冗長表現の正規化（空白・重複指示の削減） | 常時（無効化可） |
 | Compression | 会話履歴・Contextの要約/切詰（優先度: conversation古い順→memory） | tokenEstimate > budget |
-| Expansion | Few-shot例・詳細指示の追加 | ModelProfileが指示追従弱と定義する場合 |
+| Expansion | Few-shot例・詳細指示の追加（M1は詳細指示の追加のみ実装。Few-shot例の注入は例データの供給元が未設計のため対象外、ADR-0013・[Issue #29](https://github.com/io0323/prompt-engine/issues/29)） | ModelProfileが指示追従弱と定義する場合 |
 | Context Optimization | 参照されないContextスコープの除去 | 常時 |
 
 Model Profile（APAPのモデルメタデータを参照して構成）: `{ maxContextTokens, tokenizerPlugin, costPerToken, capabilities }`。`capabilities`の型・M1での要約(Compression)スコープ・OptimizationRule/OptimizationEngineの具体的な型定義はADR-0013を参照。Optimizationは意味保存が原則で、変更内容はOptimizationReportとしてAuditに残す。
