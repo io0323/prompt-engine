@@ -3,6 +3,7 @@ package promptengine.domain.prompt
 import promptengine.domain.context.ContextRequirement
 import promptengine.domain.shared.SemVer
 import promptengine.domain.template.ExtendsRef
+import promptengine.domain.validation.ValidationSettings
 import promptengine.domain.variable.VariableDefinition
 
 /**
@@ -23,6 +24,9 @@ import promptengine.domain.variable.VariableDefinition
  * 同一scopeを2件以上含めることはできない（[init]で検証。`ContextResolverImpl`は
  * scope→requirementの`associateBy`でマージするため、重複を許すと一方が無言で
  * 消え、宣言したrequired/optional pathが検証対象から漏れてしまう）。
+ *
+ * [validation] はDSL `validation:`宣言（設計書§15.7、ADR-0012）の解決結果。
+ * `contextRequirements`と同様Template/Fragmentとはマージせず、Prompt自身の宣言のみ有効。
  */
 @ConsistentCopyVisibility
 data class PromptVersion internal constructor(
@@ -31,6 +35,7 @@ data class PromptVersion internal constructor(
     val variables: List<VariableDefinition> = emptyList(),
     val contextRequirements: List<ContextRequirement> = emptyList(),
     val extends: ExtendsRef? = null,
+    val validation: ValidationSettings = ValidationSettings(),
     val state: LifecycleState = LifecycleState.Draft,
 ) {
     init {

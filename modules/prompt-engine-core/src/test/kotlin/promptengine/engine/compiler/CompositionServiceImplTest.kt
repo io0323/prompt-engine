@@ -32,6 +32,8 @@ import promptengine.domain.template.ast.ExprNode
 import promptengine.domain.template.ast.Expression
 import promptengine.domain.template.ast.StringLiteral
 import promptengine.domain.template.ast.TextNode
+import promptengine.domain.validation.PlaceholderMode
+import promptengine.domain.validation.ValidationSettings
 import promptengine.domain.variable.VariableDefinition
 import promptengine.domain.variable.VariableType
 import java.time.Instant
@@ -58,6 +60,23 @@ class CompositionServiceImplTest {
         result.body shouldBe listOf(BlockNode(BlockRole.USER, listOf(TextNode("hello"))))
         result.dependencies shouldBe emptyList()
         result.variables shouldBe emptyList()
+        result.validation shouldBe ValidationSettings()
+    }
+
+    @Test
+    fun `PromptVersionのvalidationはそのままCompiledPromptへ引き継がれる ADR-0012`() {
+        val templateRepo = FakeTemplateRepository()
+        val fragmentRepo = FakeFragmentRepository()
+        val service = CompositionServiceImpl(templateRepo, fragmentRepo)
+        val promptKey = PromptKey("support/faq")
+        val settings = ValidationSettings(maxLength = 32000, placeholders = PlaceholderMode.STRICT)
+        val source = wrap(promptKey.value, "prompt", "hello")
+        val newVersion = NewPromptVersion(SemVer(1, 0, 0), PromptContent(source), validation = settings)
+        val promptVersion = Prompt.create(promptKey, newVersion, eventContext).first.versions.first()
+
+        val result = service.compile(promptKey, promptVersion, CompositionMode.STANDARD)
+
+        result.validation shouldBe settings
     }
 
     @Test

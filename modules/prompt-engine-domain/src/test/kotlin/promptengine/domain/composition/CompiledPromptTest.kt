@@ -8,6 +8,8 @@ import promptengine.domain.shared.SemVer
 import promptengine.domain.shared.VersionRange
 import promptengine.domain.template.TemplateKey
 import promptengine.domain.template.ast.TextNode
+import promptengine.domain.validation.PlaceholderMode
+import promptengine.domain.validation.ValidationSettings
 import promptengine.domain.variable.VariableDefinition
 import promptengine.domain.variable.VariableType
 
@@ -37,6 +39,23 @@ class CompiledPromptTest {
         compiled.dependencies shouldBe listOf(dependency)
         compiled.variables shouldBe listOf(variable)
         compiled.contextRequirements shouldBe listOf(contextRequirement)
+        compiled.validation shouldBe ValidationSettings()
+    }
+
+    @Test
+    fun `validation を明示的に指定して保持できる`() {
+        val settings = ValidationSettings(maxLength = 500, placeholders = PlaceholderMode.STRICT)
+
+        val compiled =
+            CompiledPrompt(
+                body = listOf(TextNode("hello")),
+                dependencies = emptyList(),
+                variables = emptyList(),
+                contextRequirements = emptyList(),
+                validation = settings,
+            )
+
+        compiled.validation shouldBe settings
     }
 
     @Test

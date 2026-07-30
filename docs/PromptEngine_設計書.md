@@ -304,6 +304,13 @@ Rule Chain（全Rule実行→Report集約。severity: error/warning/info）:
 | PolicyValidation | 禁止語・PII混入・組織ポリシー準拠（Rule Plugin） |
 | DependencyValidation | 参照Fragment/TemplateのStatus検証（Published以外の参照を拒否、Draft相互参照はCompile-onlyで許可） |
 
+Rule Chainが受け取る「AST」は`CompiledPrompt.body`（P3c Composition解決済み、extends/import/
+include/macro展開後）を指す。DSL内`validation:`宣言（§15.7）は`PromptVersion`/`CompiledPrompt`の
+`validation: ValidationSettings`として保持し、`DependencyValidation`のStatus拒否自体はP3c
+CompositionServiceが解決時点で行う（Validationは既に確定したStatusを報告するのみ、
+リポジトリを再度引かない）。ValidationRule/Finding/ValidationEngineの具体的な型・
+severity決定規則・各RuleのAST走査規則はADR-0012を参照。
+
 ## 2.11 Optimization仕様
 
 | 手法 | 内容 | 適用条件 |
@@ -1182,6 +1189,7 @@ entity prompt_versions {
   context_requirements : JSON  ' ContextRequirementの配列。ADR-0006で追加、ADR-0011で複数形化
   extends_key : VARCHAR  ' extends先のTemplateKey（ADR-0009）
   extends_version_range : VARCHAR  ' extendsのVersion範囲（例: "^2"。ADR-0009）
+  validation : JSON  ' ValidationSettings（maxLength/maxTokens/policies/placeholders）。ADR-0012で追加
   * created_by / created_at
   <<UQ prompt_id+version>>
 }
@@ -1585,13 +1593,13 @@ variables:
     type: string                # string|number|boolean|enum|array|object
     source: runtime             # static|runtime|secret|environment|user|workflow
     required: true
-    constraints: { maxLength: 100, pattern: "^[^<>]*$" }
+    constraints: ["maxLength:100", "pattern:^[^<>]*$"]
   - name: tone
     type: enum
     source: runtime
     required: false
     default: "polite"
-    constraints: { values: [polite, formal, casual] }
+    constraints: ["enum:polite,formal,casual"]
   - name: apiKeyRef
     type: string
     source: secret              # 値はSecret Manager参照名。実値はRender直前解決・全ログでマスク
@@ -1606,6 +1614,11 @@ variables:
 `source: secret`（`sensitive: true`）の変数はSecret Managerの参照名のみを保持し、
 リテラルの`default`を持てない（ADR-0007）。実値はRender直前にSecret Managerから
 解決されるものであり、平文の既定値をDSL・DBのいずれにも保持しない。
+
+`constraints`の具体的な文字列表現（`VariableDefinition.constraints: List<String>`）は
+`<key>:<value>`形式に統一する（ADR-0012）: `pattern:<regex>` / `min:<number>` /
+`max:<number>` / `enum:<comma区切りの値>` / `maxLength:<number>`。未知のキーは
+`ParameterValidation`（§2.10）が無視する。
 
 ## 15.3 Composition / Inheritance仕様
 
@@ -1719,6 +1732,12 @@ validation:
   policies: [no-pii, corporate-tone]   # 登録済Policy Rule ID
   placeholders: strict        # strict=未束縛/未使用を共にERROR, lenient=WARNING
 ```
+
+このブロックは`PromptVersion`/`CompiledPrompt`の`validation: ValidationSettings`
+（`maxLength: Int?`, `maxTokens: Int?`, `policies: List<String>`,
+`placeholders: PlaceholderMode`）に対応する（ADR-0012）。省略時の既定値は
+無制限・`placeholders: lenient`（既存Promptの挙動を変えないための後方互換な既定）。
+Template/Fragmentの`validation`とはマージせず、Prompt自身の宣言のみが有効。
 
 # 16. 拡張ポイント
 
