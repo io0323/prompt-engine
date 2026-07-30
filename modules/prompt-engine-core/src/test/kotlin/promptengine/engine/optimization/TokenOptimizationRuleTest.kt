@@ -87,6 +87,16 @@ class TokenOptimizationRuleTest {
     }
 
     @Test
+    fun `改行が無いテキスト末尾の空白も除去する`() {
+        val rule = TokenOptimizationRule(tokenizer)
+        val compiled = compiledPrompt(TextNode("hello   "))
+
+        val result = rule.optimize(compiled, ContextBindingSet.empty(), profile, TokenCount(0), TokenCount(100))
+
+        (result.compiled.body.single() as TextNode).text shouldBe "hello"
+    }
+
+    @Test
     fun `隣接していても内容が異なるTextNodeは両方保持する`() {
         val rule = TokenOptimizationRule(tokenizer)
         val compiled = compiledPrompt(TextNode("first"), TextNode("second"))

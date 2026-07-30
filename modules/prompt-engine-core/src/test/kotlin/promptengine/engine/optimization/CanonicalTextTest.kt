@@ -39,4 +39,13 @@ class CanonicalTextTest {
 
         canonicalString(message) shouldBe "role=user,tags=x,y"
     }
+
+    @Test
+    fun `Setは要素をソートしてSetの反復順に依存しない`() {
+        val orderA = linkedSetOf("b", "a", "c")
+        val orderB = linkedSetOf("c", "a", "b")
+
+        canonicalString(orderA) shouldBe canonicalString(orderB)
+        canonicalString(orderA) shouldBe "a,b,c"
+    }
 }

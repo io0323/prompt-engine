@@ -59,6 +59,11 @@ class OptimizationEngineImpl(
             throw TokenBudgetExceededException(finalEstimate, budget)
         }
 
-        return OptimizationOutcome(currentCompiled, currentContext, OptimizationReport(appliedNotes, truncations))
+        return OptimizationOutcome(
+            currentCompiled,
+            currentContext,
+            finalEstimate,
+            OptimizationReport(appliedNotes, truncations),
+        )
     }
 }

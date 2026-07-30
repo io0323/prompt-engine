@@ -66,7 +66,7 @@ class ExpansionRuleTest {
 
         val block = result.compiled.body.single() as BlockNode
         block.role shouldBe BlockRole.SYSTEM
-        block.body shouldBe listOf(TextNode("base instruction"), TextNode("be precise"))
+        block.body shouldBe listOf(TextNode("base instruction"), TextNode("\n\nbe precise"))
     }
 
     @Test
@@ -107,6 +107,6 @@ class ExpansionRuleTest {
         val result = rule.optimize(compiled, ContextBindingSet.empty(), profile, TokenCount(0), TokenCount(100))
 
         val block = result.compiled.body[1] as BlockNode
-        block.body shouldBe listOf(TextNode("base instruction"), TextNode("be precise"))
+        block.body shouldBe listOf(TextNode("base instruction"), TextNode("\n\nbe precise"))
     }
 }

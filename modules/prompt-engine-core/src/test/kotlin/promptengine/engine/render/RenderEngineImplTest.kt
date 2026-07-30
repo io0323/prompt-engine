@@ -176,6 +176,33 @@ class RenderEngineImplTest {
     }
 
     @Test
+    fun `区切り文字と紛らわしい内容でもmessages構成が異なればrenderHashは異なる`() {
+        // 単純な区切り文字（例: 空白）でフィールドを連結すると、下記2構成は区切り文字方式次第で
+        // バイト列が一致しうる（"SYSTEM"+区切り+"hi"+区切り+"USER"+区切り+"there"+区切り
+        // vs "SYSTEM"+区切り+"hi USER there"+区切り）。長さプレフィックス方式ならフィールド境界が
+        // 曖昧にならないため、この2構成のrenderHashは必ず異なる。
+        val twoMessages =
+            compiledPrompt(
+                BlockNode(BlockRole.SYSTEM, listOf(TextNode("hi"))),
+                BlockNode(BlockRole.USER, listOf(TextNode("there"))),
+            )
+        val oneMessageWithRoleLikeContent =
+            compiledPrompt(BlockNode(BlockRole.SYSTEM, listOf(TextNode("hi USER there"))))
+
+        val hashTwoMessages =
+            engine.render(twoMessages, BindingSet.empty(), ContextBindingSet.empty(), OutputFormat.TEXT).renderHash
+        val hashOneMessage =
+            engine.render(
+                oneMessageWithRoleLikeContent,
+                BindingSet.empty(),
+                ContextBindingSet.empty(),
+                OutputFormat.TEXT,
+            ).renderHash
+
+        hashTwoMessages shouldNotBe hashOneMessage
+    }
+
+    @Test
     fun `messages roleとoutputFormatを保持する`() {
         val compiled = compiledPrompt(BlockNode(BlockRole.ASSISTANT, listOf(TextNode("hi"))))
 

@@ -58,7 +58,7 @@ private fun evaluateEachAsText(
     return if (list != null) {
         list.joinToString(
             separator = "",
-        ) { item -> evaluateText(node.body, scope.withLocal(node.itemName, item ?: Unit)) }
+        ) { item -> evaluateText(node.body, scope.withLocal(node.itemName, item)) }
     } else {
         // Compile-onlyや型不一致で反復対象が解決できない場合は1回分として扱う
         // （AstTextEstimatorの「1回分として扱う」という既存の安全側の扱いと整合させる、ADR-0013決定10）。

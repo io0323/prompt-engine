@@ -30,4 +30,19 @@ class OptimizationReportTest {
         report.appliedRules shouldBe emptyList()
         report.truncations shouldBe emptyList()
     }
+
+    @Test
+    fun `構築後に呼出元のMutableListを変更してもappliedRules truncationsは影響を受けない`() {
+        val note = OptimizationNote("TokenOptimization", TokenCount(10), "detail")
+        val truncation = TruncationNote("conversation", TokenCount(100), TokenCount(40), "summary")
+        val appliedRulesSource = mutableListOf(note)
+        val truncationsSource = mutableListOf(truncation)
+
+        val report = OptimizationReport(appliedRulesSource, truncationsSource)
+        appliedRulesSource.clear()
+        truncationsSource.clear()
+
+        report.appliedRules shouldBe listOf(note)
+        report.truncations shouldBe listOf(truncation)
+    }
 }

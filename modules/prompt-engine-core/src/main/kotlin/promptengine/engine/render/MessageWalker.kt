@@ -65,7 +65,7 @@ internal class MessageWalker(private val rootScope: Scope) {
     ) {
         val list = resolveIterableList(node, scope)
         if (list != null) {
-            list.forEach { item -> visitAll(node.body, scope.withLocal(node.itemName, item ?: Unit)) }
+            list.forEach { item -> visitAll(node.body, scope.withLocal(node.itemName, item)) }
         } else {
             visitAll(node.body, scope)
         }

@@ -45,4 +45,14 @@ class RenderedPromptTest {
             )
         }
     }
+
+    @Test
+    fun `構築後に呼出元のMutableListを変更してもmessagesは影響を受けない`() {
+        val source = mutableListOf(RenderedMessage(MessageRole.USER, "hello"))
+        val prompt = RenderedPrompt(source, OutputFormat.TEXT, TokenCount(2), "abc123")
+
+        source += RenderedMessage(MessageRole.SYSTEM, "injected")
+
+        prompt.messages shouldBe listOf(RenderedMessage(MessageRole.USER, "hello"))
+    }
 }

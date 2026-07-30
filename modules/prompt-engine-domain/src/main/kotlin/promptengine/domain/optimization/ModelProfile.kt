@@ -10,13 +10,24 @@ import promptengine.domain.shared.TokenCount
  * （CLAUDE.md「特定のAIプロバイダ名・モデル名をコードに直接書かない」）。実際の
  * [promptengine.domain.tokenizer.TokenizerPlugin]実装への解決はDI結線側の責務。
  */
-data class ModelProfile(
+@ConsistentCopyVisibility
+data class ModelProfile private constructor(
     val maxContextTokens: TokenCount,
     val tokenizerId: String,
     val costPerToken: Cost,
-    val capabilities: Set<ModelCapability> = emptySet(),
+    val capabilities: Set<ModelCapability>,
 ) {
     init {
         require(tokenizerId.isNotBlank()) { "tokenizerId must not be blank" }
+    }
+
+    companion object {
+        /** [capabilities]を不変コピー（[Set.toSet]）してから保持する（呼出元のMutableSet変更から隔離）。 */
+        operator fun invoke(
+            maxContextTokens: TokenCount,
+            tokenizerId: String,
+            costPerToken: Cost,
+            capabilities: Set<ModelCapability> = emptySet(),
+        ): ModelProfile = ModelProfile(maxContextTokens, tokenizerId, costPerToken, capabilities.toSet())
     }
 }

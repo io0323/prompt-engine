@@ -88,7 +88,7 @@ class TokenOptimizationRule(
 
     private fun normalizeText(text: String): String =
         text
-            .replace(TRAILING_WHITESPACE, "\n")
+            .replace(TRAILING_WHITESPACE, "")
             .replace(HORIZONTAL_WHITESPACE_RUN, " ")
             .replace(EXCESS_BLANK_LINES, "\n\n")
 
@@ -104,7 +104,11 @@ class TokenOptimizationRule(
 
     private companion object {
         const val RULE_ID = "TokenOptimization"
-        val TRAILING_WHITESPACE = Regex("[ \t]+\n")
+
+        // 行末（次の"\n"の直前）だけでなく文字列の絶対末尾（"\n"が無いテキストの終端）の
+        // 空白/タブも対象にする（`(?=\n|$)`の先読みで両方にマッチさせ、マッチ自体には
+        // 改行文字を含めないため置換後は単に除去するだけでよい）。
+        val TRAILING_WHITESPACE = Regex("""[ \t]+(?=\n|$)""")
         val HORIZONTAL_WHITESPACE_RUN = Regex("[ \t]+")
         val EXCESS_BLANK_LINES = Regex("\n{3,}")
     }

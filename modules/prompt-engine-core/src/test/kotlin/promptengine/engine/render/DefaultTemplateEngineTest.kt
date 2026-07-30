@@ -357,7 +357,7 @@ class DefaultTemplateEngineTest {
     }
 
     @Test
-    fun `トップレベルのEachNodeでnull要素はUnitとして束縛される`() {
+    fun `トップレベルのEachNodeでnull要素は空文字として扱われる`() {
         val body =
             listOf(
                 EachNode(
@@ -370,11 +370,11 @@ class DefaultTemplateEngineTest {
 
         val result = engine.expand(body, bindings, ContextBindingSet.empty())
 
-        result shouldBe listOf(RenderedMessage(MessageRole.USER, "akotlin.Unit"))
+        result shouldBe listOf(RenderedMessage(MessageRole.USER, "a"))
     }
 
     @Test
-    fun `Block本文の入れ子EachNodeでnull要素はUnitとして束縛される`() {
+    fun `Block本文の入れ子EachNodeでnull要素は空文字として扱われる`() {
         val body =
             listOf(
                 BlockNode(
@@ -392,7 +392,7 @@ class DefaultTemplateEngineTest {
 
         val result = engine.expand(body, bindings, ContextBindingSet.empty())
 
-        result shouldBe listOf(RenderedMessage(MessageRole.SYSTEM, "akotlin.Unit"))
+        result shouldBe listOf(RenderedMessage(MessageRole.SYSTEM, "a"))
     }
 
     @Test

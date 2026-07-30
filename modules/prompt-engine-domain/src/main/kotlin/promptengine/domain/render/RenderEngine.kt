@@ -16,6 +16,15 @@ import promptengine.domain.variable.BindingSet
  * （ADR-0013決定10）。
  */
 interface RenderEngine {
+    /**
+     * [compiled]を[variableBindings]・[contextBindings]で束縛して[RenderedPrompt]へ展開する。
+     *
+     * 同一の([compiled], [variableBindings], [contextBindings], [outputFormat],
+     * EngineVersion)からは常にバイト同一の[RenderedPrompt.renderHash]を返す
+     * （設計書§2.9、ADR-0013決定1）。[outputFormat]はM1では[RenderedPrompt]へ素通しするのみで、
+     * `OutputFormatter.instruction()`によるフォーマット指示文の注入は行わない（P7スコープ、
+     * ADR-0013決定10）。
+     */
     fun render(
         compiled: CompiledPrompt,
         variableBindings: BindingSet,

@@ -59,6 +59,18 @@ class OptimizationEngineImplTest {
     }
 
     @Test
+    fun `tokenEstimateは最終見積りを保持する`() {
+        val engine = OptimizationEngineImpl(listOf(TokenOptimizationRule(tokenizer)), tokenizer)
+        val compiled = CompiledPrompt(listOf(TextNode("a    b")), emptyList(), emptyList(), emptyList())
+
+        val outcome =
+            engine.optimize(compiled, BindingSet.empty(), ContextBindingSet.empty(), profile, TokenCount(100))
+
+        // "a    b"(6トークン) -> TokenOptimizationで"a b"(3トークン)へ縮小された後の最終見積り
+        outcome.tokenEstimate shouldBe TokenCount(3)
+    }
+
+    @Test
     fun `Rule適用後の見積りを使って後続Ruleのapplicableを判定する`() {
         // "a    a"(6トークン)はbudget=4を超えるためCompressionも一見適用対象に見えるが、
         // TokenOptimizationが先に"a a"(3トークン)へ縮小するため、Compressionはもはや不要になる

@@ -37,4 +37,21 @@ class ModelProfileTest {
             ModelProfile(TokenCount(8000), "", Cost(BigDecimal.ZERO))
         }
     }
+
+    @Test
+    fun `tokenizerIdが空白のみだと例外を投げる`() {
+        shouldThrow<IllegalArgumentException> {
+            ModelProfile(TokenCount(8000), "   ", Cost(BigDecimal.ZERO))
+        }
+    }
+
+    @Test
+    fun `構築後に呼出元のMutableSetを変更してもcapabilitiesは影響を受けない`() {
+        val source = mutableSetOf(ModelCapability.WEAK_INSTRUCTION_FOLLOWING)
+        val profile = ModelProfile(TokenCount(8000), "approx-v1", Cost(BigDecimal.ZERO), source)
+
+        source.clear()
+
+        profile.capabilities shouldBe setOf(ModelCapability.WEAK_INSTRUCTION_FOLLOWING)
+    }
 }

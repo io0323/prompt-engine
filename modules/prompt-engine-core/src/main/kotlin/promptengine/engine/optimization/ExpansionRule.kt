@@ -20,8 +20,11 @@ import promptengine.domain.template.ast.TextNode
  * その供給元が定義されていない。M1では「詳細指示の追加」のみを実装し、Few-shot例の追加は
  * 供給元が定義されるまで対象外とする。
  *
- * 最初に見つかった`SYSTEM`roleの[BlockNode]の末尾へ[supplementalInstruction]を追記する。
- * `SYSTEM`ブロックが1つも無ければ、本文先頭に新規`SYSTEM`ブロックとして追加する。
+ * 最初に見つかった`SYSTEM`roleの[BlockNode]の末尾へ、既存本文と連結して読めるよう
+ * 空行区切り（`"\n\n"`）を挟んで[supplementalInstruction]を追記する（区切りが無いと
+ * 既存テキストと単語が直接くっつき、例えば`"base instruction"`+`"be precise"`が
+ * `"base instructionbe precise"`のように読めなくなる）。`SYSTEM`ブロックが1つも無ければ、
+ * 本文先頭に新規`SYSTEM`ブロックとして追加する（この場合は区切り不要）。
  */
 class ExpansionRule(
     private val supplementalInstruction: String = DEFAULT_INSTRUCTION,
@@ -49,7 +52,7 @@ class ExpansionRule(
             if (systemIndex >= 0) {
                 val block = body[systemIndex] as BlockNode
                 body.toMutableList().apply {
-                    this[systemIndex] = block.copy(body = block.body + TextNode(supplementalInstruction))
+                    this[systemIndex] = block.copy(body = block.body + TextNode("\n\n$supplementalInstruction"))
                 }
             } else {
                 listOf(BlockNode(BlockRole.SYSTEM, listOf(TextNode(supplementalInstruction)))) + body

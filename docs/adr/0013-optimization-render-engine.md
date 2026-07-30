@@ -57,11 +57,24 @@ system/user/assistant/toolの抽象role」と`RenderedPrompt.messages[].role`に
 
 ### 1. `renderHash`の入力と正規化
 
-```
-renderHash = SHA-256(normalize(messages) + " " + engineId + " " + engineVersion)
+```text
+renderHash = SHA-256(
+  for each message: lengthPrefix(role.name) + lengthPrefix(content)
+  + lengthPrefix(outputFormat.name) + lengthPrefix(engineId) + lengthPrefix(engineVersion)
+)
 ```
 
-を16進文字列として`RenderedPrompt.renderHash`に格納する。
+を16進文字列として`RenderedPrompt.renderHash`に格納する。`lengthPrefix(s)`は`s`のUTF-8
+バイト長（4バイトbig-endian）+ `s`自身のUTF-8バイト列。
+
+**単純な区切り文字（空白等）ではなく長さプレフィックス方式にした理由（実装レビューで発見）**:
+区切り文字方式だと、区切り文字自身が`content`の内部に出現しうるため、構造の異なる
+messages列が偶然同じバイト列になりうる。例えば`role="SYSTEM", content="hi"`と
+`role="USER", content="there"`の2メッセージは、区切り文字`" "`で連結すると
+`"SYSTEM hi USER there "`になるが、これは単一メッセージ`role="SYSTEM",
+content="hi USER there"`（`"SYSTEM hi USER there "`）と区切り文字方式では区別できない。
+長さを明示することでフィールド境界を曖昧性なく復元可能にし、この衝突経路を構造的に
+排除する。
 
 - **messages**: `BlockNode`から変換された`List<{role: MessageRole, content: String}>`
   （順序は決定3のBlockNode変換規則により、AST走査順＝決定的）。
@@ -72,14 +85,13 @@ renderHash = SHA-256(normalize(messages) + " " + engineId + " " + engineVersion)
   最終テキストに対して適用する（属性値の混入経路によらず一意に正規化するため）。
 - **role**: enum名の文字列（`"SYSTEM"`/`"USER"`/`"ASSISTANT"`/`"TOOL"`）としてハッシュに含める。
 - **engineId / engineVersion**: `TemplateEngine.id()`（例: `"pe-tmpl/1"`）と`RenderEngine`が持つ
-  バージョン定数を、`messages`とは別セグメントとしてハッシュ入力に連結する
-  （区切りに`" "`を用い、`content`内の文字列が偶然`engineId`と結合して衝突することを防ぐ）。
+  バージョン定数を、`messages`とは別セグメントとしてハッシュ入力に連結する。
 - **sensitive値**: `SensitiveValue.expose()`（生値）をハッシュ計算に使う。`toString()`
   （`"***"`）は使わない。マスクはログ・キャッシュキー・Audit出力の境界でのみ行い、
   `RenderEngine`自体は生値を保持したまま返す（実行に必要なため、実装ガイド§6.7の指示どおり）。
-- **outputFormat**: ハッシュに含める（`enum`名の文字列）。`OutputFormatter.instruction(schema)`が
-  生成する指示文はすでに`messages`の内容として連結されるため、`outputSchemaRef`自体を
-  別セグメントとして追加はしない（重複した入力を避ける）。
+- **outputFormat**: ハッシュに含める（`enum`名の文字列、上記の式に明記）。
+  `OutputFormatter.instruction(schema)`が生成する指示文はすでに`messages`の内容として
+  連結されるため、`outputSchemaRef`自体を別セグメントとして追加はしない（重複した入力を避ける）。
 
 ### 2. 非決定性要因の構造的排除
 
@@ -262,6 +274,7 @@ interface OptimizationEngine {
 data class OptimizationOutcome(
     val compiled: CompiledPrompt,
     val contextBindings: ContextBindingSet,
+    val tokenEstimate: TokenCount,
     val report: OptimizationReport,
 )
 

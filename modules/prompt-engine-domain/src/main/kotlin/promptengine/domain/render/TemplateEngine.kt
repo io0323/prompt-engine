@@ -20,6 +20,12 @@ interface TemplateEngine {
     /** このTemplate Engineを一意に識別するID（例: `"pe-tmpl/1"`）。[RenderedPrompt.renderHash]に混入する。 */
     fun id(): String
 
+    /**
+     * [body]（Composition解決済みAST）を[variableBindings]・[contextBindings]で束縛して
+     * [RenderedMessage]列へ展開する。BlockNodeからmessagesへの変換規則（同一role複数Block・
+     * Block無し・出現順の扱い）はADR-0013決定4を参照。同一の入力からは常に同一の結果を
+     * 返さなければならない（決定性、クラス自体のKDoc参照）。
+     */
     fun expand(
         body: List<PromptAst>,
         variableBindings: BindingSet,

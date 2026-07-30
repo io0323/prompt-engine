@@ -18,6 +18,17 @@ import promptengine.domain.variable.BindingSet
  * 受け取る。
  */
 interface OptimizationEngine {
+    /**
+     * [compiled]を[profile]・[budget]に基づき最適化する。
+     *
+     * @param compiled 最適化対象のCompiledPrompt（AST）。
+     * @param variableBindings TokenEstimate算出にのみ使う呼出パラメータ束縛（各Ruleへは渡さない）。
+     * @param contextBindings `Compression`/`ContextOptimization`が書き換えうるContext束縛。
+     * @param profile 適用可否判定・TokenEstimate算出に使うモデル特性。
+     * @param budget 最終的な見積りTokenがこれを超えてはならない上限。
+     * @return 最適化後のCompiledPrompt・ContextBindingSet・最終見積り・適用記録。
+     * @throws TokenBudgetExceededException 全Rule適用後もなお見積りが[budget]を超える場合。
+     */
     fun optimize(
         compiled: CompiledPrompt,
         variableBindings: BindingSet,

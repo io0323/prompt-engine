@@ -12,7 +12,8 @@ import promptengine.domain.shared.TokenCount
  * [renderHash]は`SHA-256(normalize(messages) + engineId + engineVersion)`
  * （正規化規則・sensitive値の扱いはADR-0013決定1、[promptengine.domain.render.RenderEngine]参照）。
  */
-data class RenderedPrompt(
+@ConsistentCopyVisibility
+data class RenderedPrompt private constructor(
     val messages: List<RenderedMessage>,
     val outputFormat: OutputFormat,
     val tokenEstimate: TokenCount,
@@ -21,5 +22,19 @@ data class RenderedPrompt(
     init {
         require(messages.isNotEmpty()) { "messages must not be empty" }
         require(renderHash.isNotBlank()) { "renderHash must not be blank" }
+    }
+
+    companion object {
+        /**
+         * [messages]を不変コピー（[List.toList]）してから保持する。呼出元が渡した
+         * `MutableList`を構築後に変更しても、このインスタンスの[messages]・[renderHash]は
+         * 影響を受けない。
+         */
+        operator fun invoke(
+            messages: List<RenderedMessage>,
+            outputFormat: OutputFormat,
+            tokenEstimate: TokenCount,
+            renderHash: String,
+        ): RenderedPrompt = RenderedPrompt(messages.toList(), outputFormat, tokenEstimate, renderHash)
     }
 }
