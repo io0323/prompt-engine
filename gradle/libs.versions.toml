@@ -11,6 +11,7 @@ mockk = "1.13.13"
 testcontainers = "1.20.4"
 flyway = "10.20.1"
 snakeyaml = "2.6"
+jackson = "2.18.2"
 
 [libraries]
 kotlin-reflect = { module = "org.jetbrains.kotlin:kotlin-reflect", version.ref = "kotlin" }
@@ -50,6 +51,10 @@ flyway-postgresql = { module = "org.flywaydb:flyway-database-postgresql", versio
 # 実装時のコミット参照）。
 postgresql = { module = "org.postgresql:postgresql" }
 jackson-module-kotlin = { module = "com.fasterxml.jackson.module:jackson-module-kotlin" }
+
+# plugins/formatter-json用。Spring BOM管理下ではない単体プロジェクトのため、
+# snakeyamlと同じ方針でバージョンを明示指定する（ADR-0014）。
+jackson-databind = { module = "com.fasterxml.jackson.core:jackson-databind", version.ref = "jackson" }
 
 # 注意: 以下の [plugins] エントリはドキュメント目的で定義しているが、モジュールの build.gradle.kts から
 # alias(libs.plugins.*) では参照しない。buildSrc（kotlin-dsl）が Kotlin Gradle Plugin を暗黙提供しており、

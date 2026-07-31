@@ -254,6 +254,12 @@ Pipelineは12ステージの直列実行。各ステージは `PipelineStage` In
 
 **実行モード**: (a) Render-only（1〜8。クライアントが自分で実行）、(b) Full-execution（1〜12。PEがAPAP経由で実行委譲）、(c) Compile-only（1〜3+6。CI検証用）。
 
+`ExecutionPolicy`/`RawResponse`/`OutputSchema`/`ParsedOutput`の具体的な型定義、リトライ対象エラーの
+分類（`ExecutionErrorType`、タイムアウトを接続確立前/応答待機中で区別）、parseRepairの既定値・
+再実行方式、リトライ責務の暫定境界（M1はPE側で一元化、M2でAPAPとの重複を再確認）はADR-0014を
+参照。`OutputSchema`はM1では`output.schemaRef`（§15.1）から自動解決されず、呼出側が明示的に
+渡す値である（DSLからの回収は[Issue #32](https://github.com/io0323/prompt-engine/issues/32)）。
+
 ## 2.7 Context Flow
 
 Contextは名前空間付きの読み取り専用データとしてPromptから `{{ context.<scope>.<path> }}` で参照する。
@@ -291,6 +297,9 @@ Resolver Chain: `Explicit Parameter → Static → User → Workflow → Environ
 - 決定性: 同一（AST, Bindings, ModelProfile, EngineVersion）→ バイト同一出力。乱数・現在時刻はContext経由でのみ注入可。
 - 出力は `RenderedPrompt { messages: [{role, content}], outputFormat, tokenEstimate, renderHash }`。roleは system/user/assistant/tool の抽象role（`BlockNode`が持つDSL上のrole、system/user/assistantの3値とは別レイヤーの型。Provider方言はAPAPが吸収）。`modelHints`はM1では持たない（APAP連携が具体化するP7以降で追加を検討する、ADR-0013決定6）。
   `renderHash`の正規化規則・`BlockNode`→`messages`変換規則・非決定性要因の構造的排除方針はADR-0013を参照。
+  `OutputFormatter.instruction(outputSchema)`によるフォーマット指示文の`messages`への注入経路
+  （既存system messageへの追記／無ければ新規system message追加、その後renderHash算出）はP7で
+  接続した（ADR-0014決定5）。
 
 ## 2.10 Validation仕様
 
@@ -629,6 +638,10 @@ Experiment ──(勝者昇格要求)──> Prompt Authoring
 | ContextRequirement | scope + required/optional + 参照path一覧 |
 | RenderedPrompt | messages[] / outputFormat / tokenEstimate / renderHash（具体型はADR-0013） |
 | ModelProfile | maxContextTokens / tokenizerId / costPerToken / capabilities（具体型はADR-0013） |
+| ExecutionPolicy | timeoutMs / maxRetries / backoff / parseRepair（具体型はADR-0014） |
+| RawResponse | content / usage(inputTokens/outputTokens) / latency / retryCount（具体型はADR-0014） |
+| OutputSchema | id / fields(name/type/required)。トップレベルのみを検証する最小構造（具体型はADR-0014） |
+| ParsedOutput | format / fields(Map) / raw（具体型はADR-0014） |
 | TokenCount / Cost / LatencyMs | 数値VO（負値禁止） |
 | MetricScore | metricType + value(0..1 or 実数) + method |
 | TrafficPolicy | variant→重み(%)、sticky key（userId等） |
