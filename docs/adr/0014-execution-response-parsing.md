@@ -282,6 +282,8 @@ GitHub Issue #31「APAP統合時にリトライ責務の重複を解消する」
   `ExecutionOutcome.attempts`（初回実行＋各修復再実行の`RawResponse`のリスト。各自が
   `usage`/`latency`/`retryCount`を保持）で表現する。Audit/Evaluation側はこのリストを合算すれば
   トークン・コストを追跡できるため、`OptimizationReport`のような専用集約型は不要と判断した。
+  ただし`attempts`に載る`content`自体の扱いは決定9の訂正を参照（解析に失敗し破棄された
+  中間の応答はマスクする）。
 
 ### 9. 秘密情報の非露出（修復ループ経由）
 
@@ -303,6 +305,38 @@ GitHub Issue #31「APAP統合時にリトライ責務の重複を解消する」
 これらは経路別テスト（P4/P6と同じ形式）で固定する: 生成した秘密情報マーカーを含む
 fake応答で修復ループを最終失敗まで走らせ、最終的にthrowされる`ParseFailedException.message`に
 マーカーが含まれないことを検証する。
+
+**訂正（レビューで発見、初版の見落とし）**: 初版の実装は`ExecutionOutcome.attempts`（決定8、
+Audit/Evaluation向けの記録データ）に、解析に失敗し破棄された中間の応答の`RawResponse.content`を
+生値のまま格納していた。これは「プロバイダには送るが記録には残さない」という要求
+（P7発注時の指示）に反する。`RenderedMessage(ASSISTANT, ...)`は実行のためプロバイダへ送る経路
+であり生値保持が正しいが、`attempts`はAudit/Evaluationが読み取る記録用データであり、
+この2つの経路を混同していたことが原因（ADR-0007がP4で確立した「値を秘匿する経路を後から
+個別に用意するより、構築時点で不正な組み合わせを型・不変条件で排除する」方針に対し、本ADR初版は
+`RawResponse`という単一の型を実行用途と記録用途の両方に使い回したことで、後者の要求を見落とした）。
+
+`ExecutionCoordinator`を修正し、`attempts`へ追加する直前に、解析へ失敗した応答の`content`を
+`"***"`（`SensitiveValue.toString()`と同じマスク表現）へ置換する。最終的に解析へ成功した応答
+（`attempts.last()`）のみ実値の`content`を保持する。`ExecutionOutcome`のKDocにこの契約
+（`attempts`の`content`は生成側がマスクする）を明記した。
+
+漏洩経路テストは以下を独立した経路として個別に検証する（1つのテストで済ませない。
+P2で「マスク処理の書き込み箇所を1つ見落とした」前例があるため）:
+
+1. `ExecutionCoordinatorTest`「漏洩経路1」: 最終`ParseFailedException.message`/`.reason`
+2. `ExecutionCoordinatorTest`「漏洩経路2」: 修復ラウンドの`RenderedPrompt`（プロバイダへの送信経路）
+   は意図通り生値を保持すること（陽性対照）
+3. `ExecutionCoordinatorTest`「漏洩経路3」: 実行成功時、`RawResponse.content`に秘密情報が
+   含まれていても例外は発生せず結果にのみ渡ること
+4. `ExecutionCoordinatorTest`「漏洩経路4」: 修復成功時の`ExecutionOutcome.attempts`が、
+   破棄された失敗応答の`content`を記録しないこと（本訂正の対象）
+5. `JsonOutputFormatterTest`「漏洩経路」（構文エラー・型不一致）: `OutputFormatter`実装単体での
+   例外メッセージ
+6. `JsonOutputFormatterTest`「漏洩経路」（cause連鎖）: Jacksonの例外を`cause`として連鎖させて
+   いるため（本ADR決定9のJSON構文エラー処理）、`cause`チェーンを辿ってもJacksonの例外メッセージ
+   経由で生値が含まれないことを検証する（Jackson 2.16+の既定では`StreamReadFeature.
+   INCLUDE_SOURCE_IN_LOCATION`が無効化されており含まれないが、既定値への依存を暗黙のままに
+   せず、将来の設定変更に対する回帰検知として固定する）
 
 ## 影響範囲
 
