@@ -17,11 +17,10 @@ import promptengine.domain.variable.BindingSet
  * Renderingの入口実装（設計書§5.7シーケンス、ADR-0013決定1・決定10、ADR-0014決定5）。
  *
  * [templateEngine]経由でのみASTを展開し、[outputFormatters]経由の`OutputFormatter.instruction()`
- * 注入（ADR-0014決定5）まで終えた最終的な`messages`に対して[RenderHashCalculator.normalize]
- * （ADR-0013決定1の正規化規則: 改行コード・行末空白・Unicode NFC）を適用してから
- * [RenderHashCalculator.compute]でハッシュ算出する。注入前に正規化すると、注入される
- * instruction文字列自体が正規化規則の対象外になってしまう（CodeRabbitレビュー指摘）ため、
- * 正規化はinstruction注入後の最終messagesに対して一括で行う。
+ * 注入（ADR-0014決定5）まで終えた最終的な`messages`を[RenderHashCalculator.build]へ渡す。
+ * 正規化（ADR-0013決定1の正規化規則: 改行コード・行末空白・Unicode NFC）とハッシュ算出は
+ * [RenderHashCalculator.build]内で不可分に行われるため、ここでは未正規化の`messages`を
+ * 組み立てるだけでよい（正規化の呼び忘れが構造的に起こらない、[RenderHashCalculator]のKDoc参照）。
  */
 class RenderEngineImpl(
     private val templateEngine: TemplateEngine,
@@ -40,13 +39,9 @@ class RenderEngineImpl(
         val formatter =
             outputFormatters[outputFormat]
                 ?: error("no OutputFormatter registered for outputFormat=$outputFormat")
-        val injected = injectInstruction(expanded, formatter.instruction(outputSchema))
-        val messages = injected.map { RenderedMessage(it.role, RenderHashCalculator.normalize(it.content)) }
+        val messages = injectInstruction(expanded, formatter.instruction(outputSchema))
 
-        val tokenEstimate = tokenizerPlugin.estimate(messages.joinToString(separator = "") { it.content })
-        val renderHash = RenderHashCalculator.compute(messages, outputFormat, templateEngine.id())
-
-        return RenderedPrompt(messages, outputFormat, tokenEstimate, renderHash)
+        return RenderHashCalculator.build(messages, outputFormat, templateEngine.id(), tokenizerPlugin)
     }
 
     /**
