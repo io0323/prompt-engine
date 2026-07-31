@@ -258,7 +258,15 @@ Pipelineは12ステージの直列実行。各ステージは `PipelineStage` In
 分類（`ExecutionErrorType`、タイムアウトを接続確立前/応答待機中で区別）、parseRepairの既定値・
 再実行方式、リトライ責務の暫定境界（M1はPE側で一元化、M2でAPAPとの重複を再確認）はADR-0014を
 参照。`OutputSchema`はM1では`output.schemaRef`（§15.1）から自動解決されず、呼出側が明示的に
-渡す値である（DSLからの回収は[Issue #32](https://github.com/io0323/prompt-engine/issues/32)）。
+渡す値である（DSLからの回収は[Issue #32](https://github.com/io0323/prompt-engine/issues/32)。
+`outputFormat`側は`PromptVersion`/`CompiledPrompt`が`output: OutputDeclaration`として保持する
+形でP8が回収した。`schemaRef`から実際の`OutputSchema`を解決する経路は依然として無く、
+[Issue #36](https://github.com/io0323/prompt-engine/issues/36)で追跡する）。
+
+`PipelineContext`/`PipelineStage`/`PipelineMode`の具体的な型定義、ステージ⇔エラーコード対応表、
+`EventBusAdapter`/`AuditRecord`/`AuditRepository`/`AuditFailureHandler`の最小実装方針、
+Pipeline Orchestratorのレイヤ配置（`prompt-engine-application`、ADR-0014決定6の修正を含む）は
+ADR-0015を参照。
 
 ## 2.7 Context Flow
 
@@ -1204,6 +1212,7 @@ entity prompt_versions {
   extends_key : VARCHAR  ' extends先のTemplateKey（ADR-0009）
   extends_version_range : VARCHAR  ' extendsのVersion範囲（例: "^2"。ADR-0009）
   validation : JSON  ' ValidationSettings（maxLength/maxTokens/policies/placeholders）。ADR-0012で追加
+  output : JSON  ' OutputDeclaration（format/schemaRef）。ADR-0015で追加
   * created_by / created_at
   <<UQ prompt_id+version>>
 }
@@ -1523,7 +1532,7 @@ outbox }o--|| domain_events : event_id
 | 422 | VARIABLE_UNRESOLVED / CONTEXT_UNAVAILABLE / TOKEN_BUDGET_EXCEEDED |
 | 429 | RATE_LIMITED |
 | 502 | EXECUTION_FAILED（APAP起因） |
-| 500 | INTERNAL_ERROR |
+| 500 | RENDER_ERROR / INTERNAL_ERROR |
 
 # 14. イベント一覧
 
@@ -1598,6 +1607,13 @@ macros: ...                             # §15.6
 ```
 
 構文要素: `{{ expr }}`（値のテキスト置換。エスケープはOutput Formatterが担当）、`{{#if}}/{{else}}/{{/if}}`、`{{#each list as item}}`、`{{#block role}}`（roleはsystem/user/assistant）、コメント `{{!-- --}}`。式はプロパティ参照とパイプフィルタ（`{{ name | upper | truncate(100) }}`）のみ。任意コード実行は不可（インジェクション防止）。
+
+`output:`宣言は`validation:`（§15.7）と同じ扱いで、DSL取り込み時に`OutputFieldMapper`が
+`PromptVersion.output: OutputDeclaration`（`format`/`schemaRef`）へ変換し、`CompiledPrompt`が
+そのまま引き継ぐ（Template/Fragmentの`output`とはマージせず、Prompt自身の宣言のみが有効。
+ADR-0015）。Pipelineが実際に使う`outputFormat`は「呼出パラメータで明示指定された値 ?:
+`CompiledPrompt.output?.format` ?: `TEXT`」の優先順位で決まる。`schemaRef`から`OutputSchema`
+実体を解決する経路は未設計（[Issue #36](https://github.com/io0323/prompt-engine/issues/36)）。
 
 ## 15.2 Variable仕様
 
