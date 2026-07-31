@@ -1,6 +1,7 @@
 package promptengine.plugin.formatter.json
 
 import io.kotest.assertions.throwables.shouldThrow
+import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldNotContain
@@ -233,6 +234,7 @@ class JsonOutputFormatterTest {
     fun `任意のフィールドにnull値を明示した場合も許容フィールドの欠落とはみなさない`() {
         val result = formatter.parse("""{"answer":"42","confidence":null}""", schema)
 
+        result.fields.keys shouldContain "confidence"
         result.fields["confidence"] shouldBe null
     }
 }

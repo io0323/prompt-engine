@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test
 import promptengine.domain.parsing.ParsedOutput
 import promptengine.domain.render.OutputFormat
 import promptengine.domain.shared.LatencyMs
+import promptengine.domain.shared.SensitiveValue
 import promptengine.domain.shared.TokenCount
 
 class ExecutionOutcomeTest {
@@ -19,10 +20,10 @@ class ExecutionOutcomeTest {
 
     @Test
     fun `attemptsは呼出元のMutableListの後続変更から隔離される`() {
-        val mutableAttempts = mutableListOf(RawResponse("ok", usage, LatencyMs(10)))
+        val mutableAttempts = mutableListOf(RawResponse(SensitiveValue.of("ok"), usage, LatencyMs(10)))
 
         val outcome = ExecutionOutcome(parsedOutput, mutableAttempts)
-        mutableAttempts.add(RawResponse("second", usage, LatencyMs(10)))
+        mutableAttempts.add(RawResponse(SensitiveValue.of("second"), usage, LatencyMs(10)))
 
         outcome.attempts.size shouldBe 1
     }

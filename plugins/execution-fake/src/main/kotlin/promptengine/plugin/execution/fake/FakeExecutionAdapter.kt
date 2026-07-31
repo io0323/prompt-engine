@@ -5,6 +5,7 @@ import promptengine.domain.execution.ExecutionFailedException
 import promptengine.domain.execution.ExecutionPolicy
 import promptengine.domain.execution.RawResponse
 import promptengine.domain.render.RenderedPrompt
+import promptengine.domain.shared.SensitiveValue
 
 /**
  * 実APAP接続（M2）が無いM1時点でPipeline全体をテストするための[ExecutionAdapter]既定実装
@@ -20,9 +21,10 @@ class FakeExecutionAdapter(private val scenario: FakeExecutionScenario) : Execut
         policy: ExecutionPolicy,
     ): RawResponse =
         when (val s = scenario) {
-            is FakeExecutionScenario.Success -> RawResponse(s.content, s.usage, s.latency)
-            is FakeExecutionScenario.Delayed -> RawResponse(s.content, s.usage, s.latency)
+            is FakeExecutionScenario.Success -> RawResponse(SensitiveValue.of(s.content), s.usage, s.latency)
+            is FakeExecutionScenario.Delayed -> RawResponse(SensitiveValue.of(s.content), s.usage, s.latency)
             is FakeExecutionScenario.Error -> throw ExecutionFailedException(s.errorType, retryCount = 0)
-            is FakeExecutionScenario.InvalidStructuredOutput -> RawResponse(s.rawContent, s.usage, s.latency)
+            is FakeExecutionScenario.InvalidStructuredOutput ->
+                RawResponse(SensitiveValue.of(s.rawContent), s.usage, s.latency)
         }
 }

@@ -41,12 +41,33 @@ class RetryingExecutionAdapter(
                     throw ExecutionFailedException(failure.errorType, retryCount = attempt, cause = failure)
                 }
                 lastFailure = failure
-                sleeper(policy.backoff.delayFor(attempt + 1))
+                waitForBackoff(policy, attempt, failure)
             }
         }
 
         // policy.maxRetries >= 0 のためループは必ず return か throw で終了する。
         throw lastFailure ?: error("unreachable: retry loop exited without a result")
+    }
+
+    /**
+     * バックオフ待機中に割り込まれた場合、execute()の契約（失敗時は必ず
+     * [ExecutionFailedException]を投げる）を破らないよう、割り込み状態を復元した上でラップする
+     * （CodeRabbitレビュー指摘）。causeにはリトライの引き金になった[failure]を繋ぎ、
+     * `InterruptedException`は`addSuppressed`で保持する（片方だけを残すとどちらかの原因情報が
+     * 失われる）。
+     */
+    private fun waitForBackoff(
+        policy: ExecutionPolicy,
+        attempt: Int,
+        failure: ExecutionFailedException,
+    ) {
+        try {
+            sleeper(policy.backoff.delayFor(attempt + 1))
+        } catch (interrupted: InterruptedException) {
+            Thread.currentThread().interrupt()
+            throw ExecutionFailedException(failure.errorType, retryCount = attempt, cause = failure)
+                .apply { addSuppressed(interrupted) }
+        }
     }
 
     companion object {

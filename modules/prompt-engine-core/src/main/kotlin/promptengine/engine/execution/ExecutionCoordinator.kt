@@ -4,6 +4,7 @@ import promptengine.domain.execution.ExecutionAdapter
 import promptengine.domain.execution.ExecutionOutcome
 import promptengine.domain.execution.ExecutionPolicy
 import promptengine.domain.execution.RawResponse
+import promptengine.domain.optimization.TokenBudgetExceededException
 import promptengine.domain.parsing.OutputFormatter
 import promptengine.domain.parsing.OutputSchema
 import promptengine.domain.parsing.ParseFailedException
@@ -11,6 +12,8 @@ import promptengine.domain.render.MessageRole
 import promptengine.domain.render.OutputFormat
 import promptengine.domain.render.RenderedMessage
 import promptengine.domain.render.RenderedPrompt
+import promptengine.domain.shared.SensitiveValue
+import promptengine.domain.shared.TokenCount
 import promptengine.domain.tokenizer.TokenizerPlugin
 import promptengine.engine.render.RenderHashCalculator
 
@@ -45,11 +48,20 @@ class ExecutionCoordinator(
      * 生値をそのまま使うが、Audit/Evaluation側が読み取る記録用データには残さない（ADR-0014決定9、
      * 「プロバイダには送るが記録には残さない」）。最終的に解析へ成功した応答（`attempts.last()`）
      * のみ実値を保持する。
+     *
+     * 修復ラウンドは直前の失敗応答と修復指示を`messages`へ追加していくため、繰り返すたびに
+     * `tokenEstimate`が増加する。各修復プロンプトの構築後、次の[ExecutionAdapter.execute]を
+     * 呼ぶ前に[budget]（Stage 7 Optimizationが検証した初回`rendered`の予算と同じ枠）を
+     * 超えていないか検証し、超えていれば[TokenBudgetExceededException]を投げて打ち切る
+     * （CodeRabbitレビュー指摘: 未検証のまま再送するとプロバイダ側のcontext上限エラーとして
+     * 不透明に失敗し、ドメインのエラーコードに正しくマッピングされない）。初回`rendered`自体は
+     * Stage 7で既に検証済みのためここでは再検証しない。
      */
     fun run(
         rendered: RenderedPrompt,
         policy: ExecutionPolicy,
         schema: OutputSchema?,
+        budget: TokenCount,
     ): ExecutionOutcome {
         val formatter =
             outputFormatters[rendered.outputFormat]
@@ -65,7 +77,7 @@ class ExecutionCoordinator(
 
             val parseFailure =
                 try {
-                    val parsed = formatter.parse(raw.content, schema)
+                    val parsed = formatter.parse(raw.content.expose(), schema)
                     attempts += raw
                     return ExecutionOutcome(parsed, attempts)
                 } catch (failure: ParseFailedException) {
@@ -83,6 +95,9 @@ class ExecutionCoordinator(
             }
             repairAttempt++
             currentPrompt = buildRepairPrompt(currentPrompt, raw, formatter, schema, parseFailure.reason)
+            if (currentPrompt.tokenEstimate.value > budget.value) {
+                throw TokenBudgetExceededException(currentPrompt.tokenEstimate, budget)
+            }
         }
     }
 
@@ -93,7 +108,7 @@ class ExecutionCoordinator(
      */
     private fun RawResponse.withRedactedContent(): RawResponse =
         RawResponse(
-            REDACTED_CONTENT,
+            SensitiveValue.of(REDACTED_CONTENT),
             usage,
             latency,
             retryCount,
@@ -110,10 +125,16 @@ class ExecutionCoordinator(
             "先の応答は指定した形式で解釈できませんでした（理由: $reason）。" +
                 formatter.instruction(schema) +
                 "上記の形式を厳守して再出力してください。"
+        // 通常render経路（RenderEngineImpl）と同じくADR-0013決定1の正規化規則を適用してから
+        // renderHashを算出する。正規化前のcontentをハッシュ化すると、等価なはずの修復応答が
+        // 異なるrenderHashになりうる（CodeRabbitレビュー指摘）。
         val messages =
             original.messages +
-                RenderedMessage(MessageRole.ASSISTANT, failedResponse.content) +
-                RenderedMessage(MessageRole.USER, repairInstruction)
+                RenderedMessage(
+                    MessageRole.ASSISTANT,
+                    RenderHashCalculator.normalize(failedResponse.content.expose()),
+                ) +
+                RenderedMessage(MessageRole.USER, RenderHashCalculator.normalize(repairInstruction))
 
         val tokenEstimate = tokenizerPlugin.estimate(messages.joinToString(separator = "") { it.content })
         val renderHash = RenderHashCalculator.compute(messages, original.outputFormat, REPAIR_ENGINE_ID)

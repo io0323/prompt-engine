@@ -3,22 +3,38 @@ package promptengine.engine.render
 import promptengine.domain.render.OutputFormat
 import promptengine.domain.render.RenderedMessage
 import java.security.MessageDigest
+import java.text.Normalizer
 
 /**
- * [promptengine.domain.render.RenderedPrompt.renderHash]の算出ロジック（設計書§2.9、ADR-0013決定1）。
+ * [promptengine.domain.render.RenderedPrompt.renderHash]の算出ロジックと、その入力となる
+ * `content`の正規化規則（設計書§2.9、ADR-0013決定1）。
  *
  * `RenderEngineImpl`（AST展開経由の通常render）と、parseRepair修復ラウンドの合成
  * `RenderedPrompt`構築（`ExecutionCoordinator`、ADR-0014決定6）の両方から再利用するため、
  * `engine.render`パッケージのinternalユーティリティとして抽出した（P7、ADR-0014）。
- * `internal`のため`prompt-engine-core`モジュール外からは参照できない。
+ * `internal`のため`prompt-engine-core`モジュール外からは参照できない。両呼出元とも、
+ * [normalize]を適用した後の`content`を[compute]に渡すこと（CodeRabbitレビュー指摘: 正規化前の
+ * `content`をハッシュ化すると、等価なはずのmessages列が異なる`renderHash`になりうる）。
  */
 internal object RenderHashCalculator {
     /** [RenderHashCalculator]自体のバージョン（renderHashに混入する、設計書§2.9「EngineVersion」）。 */
     const val ENGINE_VERSION = "1"
 
+    private const val CRLF = "\r\n"
+    private const val CR = "\r"
     private const val BYTE_3_SHIFT = 24
     private const val BYTE_2_SHIFT = 16
     private const val BYTE_1_SHIFT = 8
+
+    /**
+     * 改行コード・行末空白・Unicode正規化形（ADR-0013決定1）を[content]に適用する。
+     */
+    fun normalize(content: String): String {
+        val lineEndingsNormalized = content.replace(CRLF, "\n").replace(CR, "\n")
+        val trailingWhitespaceStripped =
+            lineEndingsNormalized.lineSequence().joinToString(separator = "\n") { it.trimEnd(' ', '\t') }
+        return Normalizer.normalize(trailingWhitespaceStripped, Normalizer.Form.NFC)
+    }
 
     /**
      * 各フィールドをUTF-8バイト長（4バイトbig-endian）+ 本体バイト列で区切る（長さプレフィックス方式）。

@@ -12,14 +12,16 @@ import promptengine.domain.render.RenderedPrompt
 import promptengine.domain.render.TemplateEngine
 import promptengine.domain.tokenizer.TokenizerPlugin
 import promptengine.domain.variable.BindingSet
-import java.text.Normalizer
 
 /**
  * Renderingの入口実装（設計書§5.7シーケンス、ADR-0013決定1・決定10、ADR-0014決定5）。
  *
- * [templateEngine]経由でのみASTを展開し、[RenderHashCalculator]でハッシュ算出する前に、
- * ADR-0013決定1の正規化規則（改行コード・行末空白・Unicode NFC）と、
- * [outputFormatters]経由の`OutputFormatter.instruction()`注入（ADR-0014決定5）を適用する。
+ * [templateEngine]経由でのみASTを展開し、[outputFormatters]経由の`OutputFormatter.instruction()`
+ * 注入（ADR-0014決定5）まで終えた最終的な`messages`に対して[RenderHashCalculator.normalize]
+ * （ADR-0013決定1の正規化規則: 改行コード・行末空白・Unicode NFC）を適用してから
+ * [RenderHashCalculator.compute]でハッシュ算出する。注入前に正規化すると、注入される
+ * instruction文字列自体が正規化規則の対象外になってしまう（CodeRabbitレビュー指摘）ため、
+ * 正規化はinstruction注入後の最終messagesに対して一括で行う。
  */
 class RenderEngineImpl(
     private val templateEngine: TemplateEngine,
@@ -33,15 +35,13 @@ class RenderEngineImpl(
         outputFormat: OutputFormat,
         outputSchema: OutputSchema?,
     ): RenderedPrompt {
-        val expanded =
-            templateEngine
-                .expand(compiled.body, variableBindings, contextBindings)
-                .map { RenderedMessage(it.role, normalize(it.content)) }
+        val expanded = templateEngine.expand(compiled.body, variableBindings, contextBindings)
 
         val formatter =
             outputFormatters[outputFormat]
                 ?: error("no OutputFormatter registered for outputFormat=$outputFormat")
-        val messages = injectInstruction(expanded, formatter.instruction(outputSchema))
+        val injected = injectInstruction(expanded, formatter.instruction(outputSchema))
+        val messages = injected.map { RenderedMessage(it.role, RenderHashCalculator.normalize(it.content)) }
 
         val tokenEstimate = tokenizerPlugin.estimate(messages.joinToString(separator = "") { it.content })
         val renderHash = RenderHashCalculator.compute(messages, outputFormat, templateEngine.id())
@@ -72,17 +72,5 @@ class RenderEngineImpl(
         } else {
             messages + RenderedMessage(MessageRole.SYSTEM, instruction)
         }
-    }
-
-    private fun normalize(content: String): String {
-        val lineEndingsNormalized = content.replace(CRLF, "\n").replace(CR, "\n")
-        val trailingWhitespaceStripped =
-            lineEndingsNormalized.lineSequence().joinToString(separator = "\n") { it.trimEnd(' ', '\t') }
-        return Normalizer.normalize(trailingWhitespaceStripped, Normalizer.Form.NFC)
-    }
-
-    companion object {
-        private const val CRLF = "\r\n"
-        private const val CR = "\r"
     }
 }

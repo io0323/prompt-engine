@@ -2,6 +2,7 @@ package promptengine.engine.execution
 
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.types.shouldBeInstanceOf
 import org.junit.jupiter.api.Test
 import promptengine.domain.execution.ExecutionAdapter
 import promptengine.domain.execution.ExecutionErrorType
@@ -14,6 +15,7 @@ import promptengine.domain.render.OutputFormat
 import promptengine.domain.render.RenderedMessage
 import promptengine.domain.render.RenderedPrompt
 import promptengine.domain.shared.LatencyMs
+import promptengine.domain.shared.SensitiveValue
 import promptengine.domain.shared.TokenCount
 
 /** 呼出順に固定のステップを返す/投げるテスト専用[ExecutionAdapter]。 */
@@ -41,7 +43,7 @@ class RetryingExecutionAdapterTest {
             "hash",
         )
 
-    private fun successStep(): () -> RawResponse = { RawResponse("ok", usage, LatencyMs(1)) }
+    private fun successStep(): () -> RawResponse = { RawResponse(SensitiveValue.of("ok"), usage, LatencyMs(1)) }
 
     private fun failureStep(errorType: ExecutionErrorType): () -> RawResponse =
         { throw ExecutionFailedException(errorType, retryCount = 0) }
@@ -62,7 +64,7 @@ class RetryingExecutionAdapterTest {
 
         val response = adapter.execute(rendered, policy)
 
-        response.content shouldBe "ok"
+        response.content.expose() shouldBe "ok"
         response.retryCount shouldBe 2
         delegate.callCount shouldBe 3
         delays.size shouldBe 2
@@ -164,5 +166,26 @@ class RetryingExecutionAdapterTest {
 
         exception.retryCount shouldBe 0
         delegate.callCount shouldBe 1
+    }
+
+    @Test
+    fun `バックオフ待機中の割り込みはExecutionFailedExceptionへラップされ割り込み状態を復元する`() {
+        val delegate =
+            ScriptedExecutionAdapter(listOf(failureStep(ExecutionErrorType.SERVER_ERROR), successStep()))
+        val adapter =
+            RetryingExecutionAdapter(delegate, sleeper = { throw InterruptedException("interrupted during backoff") })
+        val policy = ExecutionPolicy(timeoutMs = 1000, maxRetries = 2)
+
+        try {
+            val exception = shouldThrow<ExecutionFailedException> { adapter.execute(rendered, policy) }
+
+            exception.errorType shouldBe ExecutionErrorType.SERVER_ERROR
+            exception.cause.shouldBeInstanceOf<ExecutionFailedException>()
+            exception.suppressed.single().shouldBeInstanceOf<InterruptedException>()
+            Thread.currentThread().isInterrupted shouldBe true
+        } finally {
+            // 後続テストへ割り込み状態を残さないようクリアする。
+            Thread.interrupted()
+        }
     }
 }

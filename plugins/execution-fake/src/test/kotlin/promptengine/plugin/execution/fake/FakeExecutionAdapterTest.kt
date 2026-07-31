@@ -27,7 +27,7 @@ class FakeExecutionAdapterTest {
 
         val response = adapter.execute(prompt, policy)
 
-        response.content shouldBe "hello"
+        response.content.expose() shouldBe "hello"
         response.usage shouldBe usage
         response.latency shouldBe LatencyMs(100)
         response.retryCount shouldBe 0
@@ -62,7 +62,7 @@ class FakeExecutionAdapterTest {
 
         val response = adapter.execute(prompt, policy)
 
-        response.content shouldBe "not-json"
+        response.content.expose() shouldBe "not-json"
     }
 
     @Test

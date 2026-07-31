@@ -9,6 +9,7 @@ import promptengine.domain.execution.ExecutionPolicy
 import promptengine.domain.execution.ParseRepairPolicy
 import promptengine.domain.execution.RawResponse
 import promptengine.domain.execution.Usage
+import promptengine.domain.optimization.TokenBudgetExceededException
 import promptengine.domain.parsing.OutputFormatter
 import promptengine.domain.parsing.OutputSchema
 import promptengine.domain.parsing.ParseFailedException
@@ -18,6 +19,7 @@ import promptengine.domain.render.OutputFormat
 import promptengine.domain.render.RenderedMessage
 import promptengine.domain.render.RenderedPrompt
 import promptengine.domain.shared.LatencyMs
+import promptengine.domain.shared.SensitiveValue
 import promptengine.domain.shared.TokenCount
 import promptengine.domain.tokenizer.TokenizerPlugin
 
@@ -51,12 +53,13 @@ private class ScriptedContentExecutionAdapter(private val responses: List<String
         executedPrompts += prompt
         val content = responses[callCount]
         callCount++
-        return RawResponse(content, Usage(TokenCount(1), TokenCount(1)), LatencyMs(1))
+        return RawResponse(SensitiveValue.of(content), Usage(TokenCount(1), TokenCount(1)), LatencyMs(1))
     }
 }
 
 class ExecutionCoordinatorTest {
     private val tokenizer = TokenizerPlugin { text -> TokenCount(text.length) }
+    private val generousBudget = TokenCount(10_000)
     private val rendered =
         RenderedPrompt(
             listOf(RenderedMessage(MessageRole.SYSTEM, "answer in json")),
@@ -72,7 +75,7 @@ class ExecutionCoordinatorTest {
         val coordinator = ExecutionCoordinator(adapter, mapOf(OutputFormat.JSON to formatter), tokenizer)
         val policy = ExecutionPolicy(timeoutMs = 1000)
 
-        val outcome = coordinator.run(rendered, policy, schema = null)
+        val outcome = coordinator.run(rendered, policy, schema = null, budget = generousBudget)
 
         outcome.attempts.size shouldBe 1
         outcome.parsedOutput.fields shouldBe mapOf("answer" to "valid")
@@ -85,7 +88,7 @@ class ExecutionCoordinatorTest {
         val coordinator = ExecutionCoordinator(adapter, mapOf(OutputFormat.JSON to formatter), tokenizer)
         val policy = ExecutionPolicy(timeoutMs = 1000, parseRepair = ParseRepairPolicy(enabled = true, maxAttempts = 2))
 
-        val outcome = coordinator.run(rendered, policy, schema = null)
+        val outcome = coordinator.run(rendered, policy, schema = null, budget = generousBudget)
 
         outcome.attempts.size shouldBe 2
         outcome.parsedOutput.fields shouldBe mapOf("answer" to "valid")
@@ -99,7 +102,7 @@ class ExecutionCoordinatorTest {
         val coordinator = ExecutionCoordinator(adapter, mapOf(OutputFormat.JSON to formatter), tokenizer)
         val policy = ExecutionPolicy(timeoutMs = 1000, parseRepair = ParseRepairPolicy(enabled = true, maxAttempts = 2))
 
-        coordinator.run(rendered, policy, schema = null)
+        coordinator.run(rendered, policy, schema = null, budget = generousBudget)
 
         val repairPrompt = adapter.executedPrompts[1]
         repairPrompt.messages.size shouldBe 3
@@ -115,7 +118,15 @@ class ExecutionCoordinatorTest {
         val coordinator = ExecutionCoordinator(adapter, mapOf(OutputFormat.JSON to formatter), tokenizer)
         val policy = ExecutionPolicy(timeoutMs = 1000, parseRepair = ParseRepairPolicy(enabled = true, maxAttempts = 2))
 
-        val exception = shouldThrow<ParseFailedException> { coordinator.run(rendered, policy, schema = null) }
+        val exception =
+            shouldThrow<ParseFailedException> {
+                coordinator.run(
+                    rendered,
+                    policy,
+                    schema = null,
+                    budget = generousBudget,
+                )
+            }
 
         exception.repairAttempts shouldBe 2
         adapter.callCount shouldBe 3
@@ -128,9 +139,34 @@ class ExecutionCoordinatorTest {
         val coordinator = ExecutionCoordinator(adapter, mapOf(OutputFormat.JSON to formatter), tokenizer)
         val policy = ExecutionPolicy(timeoutMs = 1000, parseRepair = ParseRepairPolicy(enabled = false))
 
-        val exception = shouldThrow<ParseFailedException> { coordinator.run(rendered, policy, schema = null) }
+        val exception =
+            shouldThrow<ParseFailedException> {
+                coordinator.run(
+                    rendered,
+                    policy,
+                    schema = null,
+                    budget = generousBudget,
+                )
+            }
 
         exception.repairAttempts shouldBe 0
+        adapter.callCount shouldBe 1
+    }
+
+    @Test
+    fun `修復ラウンドがトークン予算を超えるとTOKEN_BUDGET_EXCEEDEDを投げ再実行しない`() {
+        val adapter = ScriptedContentExecutionAdapter(listOf("broken-response-that-is-fairly-long", "valid"))
+        val formatter = ValidatingJsonFormatter(setOf("valid"))
+        val coordinator = ExecutionCoordinator(adapter, mapOf(OutputFormat.JSON to formatter), tokenizer)
+        val policy = ExecutionPolicy(timeoutMs = 1000, parseRepair = ParseRepairPolicy(enabled = true, maxAttempts = 2))
+        val tinyBudget = TokenCount(10)
+
+        val exception =
+            shouldThrow<TokenBudgetExceededException> {
+                coordinator.run(rendered, policy, schema = null, budget = tinyBudget)
+            }
+
+        exception.budget shouldBe tinyBudget
         adapter.callCount shouldBe 1
     }
 
@@ -144,7 +180,15 @@ class ExecutionCoordinatorTest {
         val coordinator = ExecutionCoordinator(adapter, mapOf(OutputFormat.JSON to formatter), tokenizer)
         val policy = ExecutionPolicy(timeoutMs = 1000, parseRepair = ParseRepairPolicy(enabled = true, maxAttempts = 1))
 
-        val exception = shouldThrow<ParseFailedException> { coordinator.run(rendered, policy, schema = null) }
+        val exception =
+            shouldThrow<ParseFailedException> {
+                coordinator.run(
+                    rendered,
+                    policy,
+                    schema = null,
+                    budget = generousBudget,
+                )
+            }
 
         exception.message.shouldNotContain(secretMarker)
         exception.reason.shouldNotContain(secretMarker)
@@ -158,7 +202,7 @@ class ExecutionCoordinatorTest {
         val coordinator = ExecutionCoordinator(adapter, mapOf(OutputFormat.JSON to formatter), tokenizer)
         val policy = ExecutionPolicy(timeoutMs = 1000, parseRepair = ParseRepairPolicy(enabled = true, maxAttempts = 1))
 
-        coordinator.run(rendered, policy, schema = null)
+        coordinator.run(rendered, policy, schema = null, budget = generousBudget)
 
         adapter.executedPrompts[1].messages[1].content shouldBe "broken-$secretMarker"
     }
@@ -171,10 +215,10 @@ class ExecutionCoordinatorTest {
         val coordinator = ExecutionCoordinator(adapter, mapOf(OutputFormat.JSON to formatter), tokenizer)
         val policy = ExecutionPolicy(timeoutMs = 1000)
 
-        val outcome = coordinator.run(rendered, policy, schema = null)
+        val outcome = coordinator.run(rendered, policy, schema = null, budget = generousBudget)
 
         outcome.parsedOutput.raw shouldBe "content-with-$secretMarker"
-        outcome.attempts.single().content shouldBe "content-with-$secretMarker"
+        outcome.attempts.single().content.expose() shouldBe "content-with-$secretMarker"
     }
 
     @Test
@@ -186,12 +230,12 @@ class ExecutionCoordinatorTest {
         val coordinator = ExecutionCoordinator(adapter, mapOf(OutputFormat.JSON to formatter), tokenizer)
         val policy = ExecutionPolicy(timeoutMs = 1000, parseRepair = ParseRepairPolicy(enabled = true, maxAttempts = 2))
 
-        val outcome = coordinator.run(rendered, policy, schema = null)
+        val outcome = coordinator.run(rendered, policy, schema = null, budget = generousBudget)
 
         outcome.attempts.size shouldBe 3
-        outcome.attempts[0].content.shouldNotContain(secretMarker)
-        outcome.attempts[1].content.shouldNotContain(secretMarker)
-        outcome.attempts.last().content shouldBe "valid"
+        outcome.attempts[0].content.expose().shouldNotContain(secretMarker)
+        outcome.attempts[1].content.expose().shouldNotContain(secretMarker)
+        outcome.attempts.last().content.expose() shouldBe "valid"
     }
 
     @Test
@@ -200,6 +244,6 @@ class ExecutionCoordinatorTest {
         val coordinator = ExecutionCoordinator(adapter, emptyMap(), tokenizer)
         val policy = ExecutionPolicy(timeoutMs = 1000)
 
-        shouldThrow<IllegalStateException> { coordinator.run(rendered, policy, schema = null) }
+        shouldThrow<IllegalStateException> { coordinator.run(rendered, policy, schema = null, budget = generousBudget) }
     }
 }
