@@ -125,21 +125,16 @@ class ExecutionCoordinator(
             "先の応答は指定した形式で解釈できませんでした（理由: $reason）。" +
                 formatter.instruction(schema) +
                 "上記の形式を厳守して再出力してください。"
-        // 通常render経路（RenderEngineImpl）と同じくADR-0013決定1の正規化規則を適用してから
-        // renderHashを算出する。正規化前のcontentをハッシュ化すると、等価なはずの修復応答が
-        // 異なるrenderHashになりうる（CodeRabbitレビュー指摘）。
+        // 通常render経路（RenderEngineImpl）と同じくRenderHashCalculator.buildへ未正規化のまま
+        // 渡す。正規化とハッシュ算出はbuild内で不可分に行われるため、ここで正規化を呼び忘れても
+        // 検知できない状態は構造的に発生しない（CodeRabbitレビュー指摘、RenderHashCalculatorの
+        // KDoc参照）。
         val messages =
             original.messages +
-                RenderedMessage(
-                    MessageRole.ASSISTANT,
-                    RenderHashCalculator.normalize(failedResponse.content.expose()),
-                ) +
-                RenderedMessage(MessageRole.USER, RenderHashCalculator.normalize(repairInstruction))
+                RenderedMessage(MessageRole.ASSISTANT, failedResponse.content.expose()) +
+                RenderedMessage(MessageRole.USER, repairInstruction)
 
-        val tokenEstimate = tokenizerPlugin.estimate(messages.joinToString(separator = "") { it.content })
-        val renderHash = RenderHashCalculator.compute(messages, original.outputFormat, REPAIR_ENGINE_ID)
-
-        return RenderedPrompt(messages, original.outputFormat, tokenEstimate, renderHash)
+        return RenderHashCalculator.build(messages, original.outputFormat, REPAIR_ENGINE_ID, tokenizerPlugin)
     }
 
     companion object {

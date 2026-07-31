@@ -239,6 +239,46 @@ class ExecutionCoordinatorTest {
     }
 
     @Test
+    fun `漏洩経路5 修復成功時のExecutionOutcomeをログ相当のstring interpolationで文字列化しても破棄された失敗応答の秘密情報マーカーは含まれない`() {
+        val secretMarker = "sk-real-secret-marker"
+        val adapter =
+            ScriptedContentExecutionAdapter(listOf("broken-$secretMarker-1", "broken-$secretMarker-2", "valid"))
+        val formatter = ValidatingJsonFormatter(setOf("valid"))
+        val coordinator = ExecutionCoordinator(adapter, mapOf(OutputFormat.JSON to formatter), tokenizer)
+        val policy = ExecutionPolicy(timeoutMs = 1000, parseRepair = ParseRepairPolicy(enabled = true, maxAttempts = 2))
+
+        val outcome = coordinator.run(rendered, policy, schema = null, budget = generousBudget)
+
+        // ログ実装が仮に "$outcome" のようにstring interpolationで丸ごと文字列化しても、
+        // RawResponse.contentがSensitiveValueであるため、破棄された失敗応答の実値は含まれない
+        // （RawResponseTest「漏洩経路 RawResponse自体をtoStringしても…」の型レベル保証を、
+        // ExecutionOutcome経由の実際の呼出経路でも独立して確認する）。
+        "$outcome".shouldNotContain(secretMarker)
+        "${outcome.attempts}".shouldNotContain(secretMarker)
+    }
+
+    @Test
+    fun `漏洩経路6 全ての修復試行が失敗した場合attemptsは戻り値として返却されず外部から参照できない`() {
+        val secretMarker = "sk-real-secret-marker"
+        val adapter =
+            ScriptedContentExecutionAdapter(listOf("broken-$secretMarker-1", "broken-$secretMarker-2"))
+        val formatter = ValidatingJsonFormatter(setOf("never-valid"))
+        val coordinator = ExecutionCoordinator(adapter, mapOf(OutputFormat.JSON to formatter), tokenizer)
+        val policy = ExecutionPolicy(timeoutMs = 1000, parseRepair = ParseRepairPolicy(enabled = true, maxAttempts = 1))
+
+        // 最終失敗時にthrowされるのはParseFailedExceptionのみで、attempts（Audit向け記録データ）を
+        // 保持するExecutionOutcomeは構築・返却されない。失敗応答のcontentを載せた記録データ自体が
+        // 外部から到達不能であることを型シグネチャ（ParseFailedExceptionにattemptsフィールドが
+        // 存在しない）で確認する。
+        val exception =
+            shouldThrow<ParseFailedException> {
+                coordinator.run(rendered, policy, schema = null, budget = generousBudget)
+            }
+
+        "$exception".shouldNotContain(secretMarker)
+    }
+
+    @Test
     fun `outputFormatterが登録されていないoutputFormatを指定するとエラーを投げる`() {
         val adapter = ScriptedContentExecutionAdapter(listOf("valid"))
         val coordinator = ExecutionCoordinator(adapter, emptyMap(), tokenizer)
