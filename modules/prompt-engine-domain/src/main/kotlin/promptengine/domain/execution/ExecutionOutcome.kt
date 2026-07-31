@@ -9,6 +9,11 @@ import promptengine.domain.parsing.ParsedOutput
  * （`attempts[0]`が初回実行）。各要素が自身の`usage`/`latency`/`retryCount`を保持するため、
  * Audit/Evaluation側はこのリストを合算すれば修復にかかったトークン・コストを含め追跡できる
  * （専用の集約型`OptimizationReport`相当は新設しない、ADR-0014決定8）。
+ *
+ * `attempts`は記録用データであるため、解析に失敗し破棄された中間の応答の`RawResponse.content`は
+ * 生成側（`ExecutionCoordinator`、`prompt-engine-core`）がマスクして格納する契約とする
+ * （プロバイダへは送るが記録には残さない、ADR-0014決定9）。最終的に解析へ成功した応答
+ * （`attempts.last()`）のみ実値の`content`を保持する。
  */
 @ConsistentCopyVisibility
 data class ExecutionOutcome private constructor(

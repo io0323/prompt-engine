@@ -164,6 +164,37 @@ class ExecutionCoordinatorTest {
     }
 
     @Test
+    fun `漏洩経路3 実行が成功した場合RawResponse contentに秘密情報が含まれていても例外は発生せず結果にのみ渡る`() {
+        val secretMarker = "sk-real-secret-marker"
+        val adapter = ScriptedContentExecutionAdapter(listOf("content-with-$secretMarker"))
+        val formatter = ValidatingJsonFormatter(setOf("content-with-$secretMarker"))
+        val coordinator = ExecutionCoordinator(adapter, mapOf(OutputFormat.JSON to formatter), tokenizer)
+        val policy = ExecutionPolicy(timeoutMs = 1000)
+
+        val outcome = coordinator.run(rendered, policy, schema = null)
+
+        outcome.parsedOutput.raw shouldBe "content-with-$secretMarker"
+        outcome.attempts.single().content shouldBe "content-with-$secretMarker"
+    }
+
+    @Test
+    fun `漏洩経路4 修復成功時のExecutionOutcome attemptsは失敗応答のcontentを記録せずマスクする`() {
+        val secretMarker = "sk-real-secret-marker"
+        val adapter =
+            ScriptedContentExecutionAdapter(listOf("broken-$secretMarker-1", "broken-$secretMarker-2", "valid"))
+        val formatter = ValidatingJsonFormatter(setOf("valid"))
+        val coordinator = ExecutionCoordinator(adapter, mapOf(OutputFormat.JSON to formatter), tokenizer)
+        val policy = ExecutionPolicy(timeoutMs = 1000, parseRepair = ParseRepairPolicy(enabled = true, maxAttempts = 2))
+
+        val outcome = coordinator.run(rendered, policy, schema = null)
+
+        outcome.attempts.size shouldBe 3
+        outcome.attempts[0].content.shouldNotContain(secretMarker)
+        outcome.attempts[1].content.shouldNotContain(secretMarker)
+        outcome.attempts.last().content shouldBe "valid"
+    }
+
+    @Test
     fun `outputFormatterが登録されていないoutputFormatを指定するとエラーを投げる`() {
         val adapter = ScriptedContentExecutionAdapter(listOf("valid"))
         val coordinator = ExecutionCoordinator(adapter, emptyMap(), tokenizer)

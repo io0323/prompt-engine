@@ -39,6 +39,12 @@ class ExecutionCoordinator(
      * [ParseFailedException.reason]は構造的な理由のみを含む契約（[ParseFailedException]の
      * KDoc参照）であり、修復ラウンドで付与するメッセージは[RenderedMessage]の`content`
      * （実行に必要なため生値を保持する）にのみ現れ、例外メッセージには現れない（ADR-0014決定9）。
+     *
+     * 返却する[ExecutionOutcome.attempts]は、解析に失敗し破棄された中間の応答の`content`を
+     * [REDACTED_CONTENT]でマスクする。プロバイダへの再送（修復ラウンドの`RenderedMessage`）には
+     * 生値をそのまま使うが、Audit/Evaluation側が読み取る記録用データには残さない（ADR-0014決定9、
+     * 「プロバイダには送るが記録には残さない」）。最終的に解析へ成功した応答（`attempts.last()`）
+     * のみ実値を保持する。
      */
     fun run(
         rendered: RenderedPrompt,
@@ -56,15 +62,16 @@ class ExecutionCoordinator(
 
         while (true) {
             val raw = executionAdapter.execute(currentPrompt, policy)
-            attempts += raw
 
             val parseFailure =
                 try {
                     val parsed = formatter.parse(raw.content, schema)
+                    attempts += raw
                     return ExecutionOutcome(parsed, attempts)
                 } catch (failure: ParseFailedException) {
                     failure
                 }
+            attempts += raw.withRedactedContent()
 
             if (repairAttempt >= maxRepairAttempts) {
                 throw ParseFailedException(
@@ -78,6 +85,19 @@ class ExecutionCoordinator(
             currentPrompt = buildRepairPrompt(currentPrompt, raw, formatter, schema, parseFailure.reason)
         }
     }
+
+    /**
+     * Audit/Evaluation向けの記録（[ExecutionOutcome.attempts]）に載せる前に、解析失敗により
+     * 破棄される応答の`content`をマスクする（[run]のKDoc参照）。プロバイダへ再送する
+     * [RenderedMessage]の構築には、この関数を経由しない生の[RawResponse]を使うこと。
+     */
+    private fun RawResponse.withRedactedContent(): RawResponse =
+        RawResponse(
+            REDACTED_CONTENT,
+            usage,
+            latency,
+            retryCount,
+        )
 
     private fun buildRepairPrompt(
         original: RenderedPrompt,
@@ -107,5 +127,8 @@ class ExecutionCoordinator(
          * `templateEngine.id()`ではなく固定値を用いる（ADR-0014決定6）。
          */
         private const val REPAIR_ENGINE_ID = "pe-repair/1"
+
+        /** [SensitiveValue][promptengine.domain.shared.SensitiveValue]と同じマスク表現。 */
+        private const val REDACTED_CONTENT = "***"
     }
 }

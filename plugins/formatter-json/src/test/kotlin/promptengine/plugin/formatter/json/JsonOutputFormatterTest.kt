@@ -99,6 +99,22 @@ class JsonOutputFormatterTest {
     }
 
     @Test
+    fun `漏洩経路 構文エラー時のcause連鎖にもJacksonの例外メッセージ経由で入力中の秘密情報マーカーが含まれない`() {
+        // Jacksonの例外メッセージは入力の一部を含みうる（デフォルトではStreamReadFeature.
+        // INCLUDE_SOURCE_IN_LOCATIONが無効化されており含まれないが、将来のJackson設定変更で
+        // 有効化された場合に備え、causeチェーン経由の漏洩も無いことを固定する）。
+        val secretMarker = "sk-real-secret-marker"
+
+        val exception = shouldThrow<ParseFailedException> { formatter.parse("{broken-$secretMarker", null) }
+
+        var cause: Throwable? = exception.cause
+        while (cause != null) {
+            cause.message?.shouldNotContain(secretMarker)
+            cause = cause.cause
+        }
+    }
+
+    @Test
     fun `漏洩経路 型不一致時の例外メッセージに値そのものは含まれずフィールド名のみを含む`() {
         val secretValue = "sk-real-secret-value"
 
