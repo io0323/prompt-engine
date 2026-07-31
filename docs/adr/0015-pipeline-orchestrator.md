@@ -180,11 +180,12 @@ interface PipelineStage {
 | # | Stage | 例外型 | errorCode | HTTP（§13.3、参考） |
 |---|---|---|---|---|
 | 1 | Load | `PromptVersionNotFoundException` | `PROMPT_NOT_FOUND` | 404 |
-| 2 | Merge | `TemplateVersionNotFoundException` | `TEMPLATE_NOT_FOUND` | 404 |
-| 3 | Import | `CompositionException`（循環）/ `FragmentVersionNotFoundException` | `CIRCULAR_DEPENDENCY` / `FRAGMENT_NOT_FOUND` | 400 / 404 |
+| 2 | Merge | `TemplateReferenceNotFoundException`（`CompositionException`、ADR-0009） | `TEMPLATE_NOT_FOUND` | 404 |
+| 3 | Import | `CircularDependencyException` / `FragmentReferenceNotFoundException`（いずれも`CompositionException`、ADR-0009） | `CIRCULAR_DEPENDENCY` / `FRAGMENT_NOT_FOUND` | 400 / 404 |
 | 4 | Resolve Variables | `VariableUnresolvedException` | `VARIABLE_UNRESOLVED` | 422 |
 | 5 | Resolve Context | `ContextUnavailableException`（required宣言のみ） | `CONTEXT_UNAVAILABLE` | 422 |
-| 6 | Validation | （例外を投げず`ValidationReport`にERROR Findingを返す。Orchestratorが検知し打ち切る） | `VALIDATION_FAILED` | 400 |
+| 6 | Validation | `ValidationFailedException`（新設。`ValidationEngine.validate`自体は例外を投げないため
+（ADR-0012決定1）、`ValidationStage`が`ValidationReport.hasErrors`を見てこの例外を投げる） | `VALIDATION_FAILED` | 400 |
 | 7 | Optimization | `TokenBudgetExceededException` | `TOKEN_BUDGET_EXCEEDED` | 422 |
 | 8 | Rendering | `IllegalStateException`（未登録`OutputFormatter`等、実装内部エラー） | `RENDER_ERROR` | 500（決定5参照） |
 | 9 | Execution | `ExecutionFailedException` | `EXECUTION_FAILED` | 502 |
@@ -192,10 +193,12 @@ interface PipelineStage {
 | 11 | Evaluation | （失敗させない。例外を握り潰し記録のみ） | なし | - |
 | 12 | Audit | （失敗させない。`AuditFailureHandler`へ委譲） | なし | - |
 
-Validation（stage 6）は§2.10の設計通り「Rule Chainが例外を投げず`Finding`を集約した
-`ValidationReport`を返す」ため、他ステージと異なり例外ベースではなく、
-Orchestratorが`ValidationReport`にERROR severityの`Finding`が含まれるかを見て
-`VALIDATION_FAILED`として打ち切る（ADR-0012の既存設計を変更しない）。
+`StageErrorMapper`（`prompt-engine-application`）は例外の型を第一の判定基準とし、
+`IllegalStateException`のように型だけでは`RENDER_ERROR`か汎用`INTERNAL_ERROR`かを
+区別できない場合に限り、どのステージが投げたか（ステージ名）を補助的な判定基準とする
+（1箇所への集約は保ちつつ、型のみでは表現しきれない分類を扱う）。`CompositionException`の
+サブタイプのうち上記3種以外（深さ超過・サイズ超過等）は§13.3にコードが定義されていない
+ため（`CompositionException`自身のKDoc参照）、`INTERNAL_ERROR`にフォールバックする。
 
 ### 5. `RENDER_ERROR`の追加とHTTP分類根拠
 
