@@ -124,6 +124,14 @@ ADR-0014決定6が確立した通り、`ExecutionEngine.run()`は実行(ステ�
 （実装ガイド§6.9「各ステージは既存のEngineに委譲するだけの薄い層にすること」を、
 ADR-0014が既に確立した統合設計の上でも12ステージの構造を保つ形で満たす）。
 
+**同じ原則をStage 2（Merge）・Stage 3（Import）にも適用する**: `CompositionService.compile()`
+（P3c、ADR-0009/0010）は、extends解決・import/include解決・macro展開を1回の呼び出しで
+まとめて行う設計が既に確立しており、ステージ境界で分離できない点がExecution/Response
+Parsingと同型である。`MergeStage`が`compositionService.compile(promptKey, promptVersion,
+mode)`を呼び、結果の`CompiledPrompt`（循環検出等のImport関連エラーも`compile()`内で検出済み）
+を`PipelineContext.compiled`へ格納する。`ImportStage`は素通しステージとする
+（`compile()`が既に処理を終えているため、追加で行うことは無い）。
+
 ### 3. `PipelineContext`・`PipelineStage`・`PipelineMode`（domain）
 
 ```kotlin
