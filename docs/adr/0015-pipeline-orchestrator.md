@@ -99,6 +99,14 @@ interface ExecutionEngine {
 （§2.4の「Prompt Core」記述は、モジュール一覧としての粗い要約であり、§3.3のクラス単位の
 割当てより解像度が低い。クラス単位の記述を優先する）。
 
+**同じ原則の追加適用**: 実装に着手した際、Stage 5（Resolve Context）が委譲する
+`ContextResolverImpl`（P4、7スコープをまとめるファサード）も`ExecutionCoordinator`と
+同じ状態（domain Interfaceを持たない具象クラス）であることが判明した。
+[VariableResolverChain][promptengine.domain.variable.VariableResolverChain]（P4で
+既にdomain Interface化済み）との対称性を欠いた実装漏れであり、`ExecutionEngine`と
+同一の理由（上位レイヤの依存性逆転）で`domain.context.ContextResolverChain`を新設し、
+`ContextResolverImpl`に実装させる。
+
 **原則（本ADRで確立し、以降のPhaseにも適用する）**: domainにInterfaceを置く理由は、
 (a) §16の拡張ポイントである（差替可能性を設計として担保する必要がある）、
 (b) 上位レイヤの依存性逆転（上位レイヤが下位レイヤの具象実装に直接依存しないようにする）、
