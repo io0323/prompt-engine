@@ -27,4 +27,8 @@ dependencies {
     testImplementation(project(":plugins:validator-policy"))
     // 同上（plugins/tokenizer-approx、ADR-0003・ADR-0013）。
     testImplementation(project(":plugins:tokenizer-approx"))
+    // 同上（plugins/execution-fake、ADR-0003・ADR-0014）。
+    testImplementation(project(":plugins:execution-fake"))
+    // 同上（plugins/formatter-json、ADR-0003・ADR-0014）。
+    testImplementation(project(":plugins:formatter-json"))
 }

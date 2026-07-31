@@ -1,10 +1,14 @@
 package promptengine.engine.render
 
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import org.junit.jupiter.api.Test
 import promptengine.domain.composition.CompiledPrompt
 import promptengine.domain.context.ContextBindingSet
+import promptengine.domain.parsing.OutputFormatter
+import promptengine.domain.parsing.OutputSchema
+import promptengine.domain.parsing.ParsedOutput
 import promptengine.domain.render.MessageRole
 import promptengine.domain.render.OutputFormat
 import promptengine.domain.shared.SensitiveValue
@@ -18,9 +22,33 @@ import promptengine.domain.template.ast.TextNode
 import promptengine.domain.tokenizer.TokenizerPlugin
 import promptengine.domain.variable.BindingSet
 
+/** [OutputFormatter.instruction]が常に空文字を返すテスト用スタブ（生成物への注入を伴わない既存挙動の確認用）。 */
+private object BlankOutputFormatter : OutputFormatter {
+    override fun format(): OutputFormat = OutputFormat.TEXT
+
+    override fun instruction(schema: OutputSchema?): String = ""
+
+    override fun parse(
+        raw: String,
+        schema: OutputSchema?,
+    ): ParsedOutput = ParsedOutput(OutputFormat.TEXT, raw = raw)
+}
+
+private class FixedInstructionOutputFormatter(private val text: String) : OutputFormatter {
+    override fun format(): OutputFormat = OutputFormat.JSON
+
+    override fun instruction(schema: OutputSchema?): String = text
+
+    override fun parse(
+        raw: String,
+        schema: OutputSchema?,
+    ): ParsedOutput = ParsedOutput(OutputFormat.JSON, raw = raw)
+}
+
 class RenderEngineImplTest {
     private val tokenizer = TokenizerPlugin { text -> TokenCount(text.length) }
-    private val engine = RenderEngineImpl(DefaultTemplateEngine(), tokenizer)
+    private val blankFormatters = OutputFormat.entries.associateWith { BlankOutputFormatter }
+    private val engine = RenderEngineImpl(DefaultTemplateEngine(), tokenizer, blankFormatters)
 
     private fun compiledPrompt(vararg nodes: promptengine.domain.template.ast.PromptAst): CompiledPrompt =
         CompiledPrompt(nodes.toList(), emptyList(), emptyList(), emptyList())
@@ -210,5 +238,136 @@ class RenderEngineImplTest {
 
         result.messages.single().role shouldBe MessageRole.ASSISTANT
         result.outputFormat shouldBe OutputFormat.MARKDOWN
+    }
+
+    @Test
+    fun `instructionが空文字でなければ既存のSYSTEM messageの末尾に追記される`() {
+        val engineWithInstruction =
+            RenderEngineImpl(
+                DefaultTemplateEngine(),
+                tokenizer,
+                mapOf(OutputFormat.JSON to FixedInstructionOutputFormatter("必ずJSONで出力してください。")),
+            )
+        val compiled =
+            compiledPrompt(
+                BlockNode(BlockRole.SYSTEM, listOf(TextNode("you are helpful"))),
+                BlockNode(BlockRole.USER, listOf(TextNode("hi"))),
+            )
+
+        val result =
+            engineWithInstruction.render(
+                compiled,
+                BindingSet.empty(),
+                ContextBindingSet.empty(),
+                OutputFormat.JSON,
+            )
+
+        result.messages.size shouldBe 2
+        result.messages[0].role shouldBe MessageRole.SYSTEM
+        result.messages[0].content shouldBe "you are helpful\n必ずJSONで出力してください。"
+    }
+
+    @Test
+    fun `instructionが空文字でなくSYSTEM messageが無ければ新規SYSTEM messageが追加される`() {
+        val engineWithInstruction =
+            RenderEngineImpl(
+                DefaultTemplateEngine(),
+                tokenizer,
+                mapOf(OutputFormat.JSON to FixedInstructionOutputFormatter("必ずJSONで出力してください。")),
+            )
+        val compiled = compiledPrompt(BlockNode(BlockRole.USER, listOf(TextNode("hi"))))
+
+        val result =
+            engineWithInstruction.render(
+                compiled,
+                BindingSet.empty(),
+                ContextBindingSet.empty(),
+                OutputFormat.JSON,
+            )
+
+        result.messages.size shouldBe 2
+        result.messages[1].role shouldBe MessageRole.SYSTEM
+        result.messages[1].content shouldBe "必ずJSONで出力してください。"
+    }
+
+    @Test
+    fun `instructionが空文字ならmessagesに変化は無い`() {
+        val compiled = compiledPrompt(BlockNode(BlockRole.USER, listOf(TextNode("hi"))))
+
+        val result = engine.render(compiled, BindingSet.empty(), ContextBindingSet.empty(), OutputFormat.TEXT)
+
+        result.messages.size shouldBe 1
+        result.messages.single().role shouldBe MessageRole.USER
+    }
+
+    @Test
+    fun `outputSchemaはformatterのinstructionへそのまま渡される`() {
+        var receivedSchema: OutputSchema? = null
+        val capturingFormatter =
+            object : OutputFormatter {
+                override fun format(): OutputFormat = OutputFormat.JSON
+
+                override fun instruction(schema: OutputSchema?): String {
+                    receivedSchema = schema
+                    return "instruction"
+                }
+
+                override fun parse(
+                    raw: String,
+                    schema: OutputSchema?,
+                ): ParsedOutput = ParsedOutput(OutputFormat.JSON, raw = raw)
+            }
+        val engineWithCapture =
+            RenderEngineImpl(DefaultTemplateEngine(), tokenizer, mapOf(OutputFormat.JSON to capturingFormatter))
+        val schema = OutputSchema(id = "faq-answer-v1")
+        val compiled = compiledPrompt(TextNode("hi"))
+
+        engineWithCapture.render(compiled, BindingSet.empty(), ContextBindingSet.empty(), OutputFormat.JSON, schema)
+
+        receivedSchema shouldBe schema
+    }
+
+    @Test
+    fun `instruction注入の有無でrenderHashが変わる`() {
+        val engineWithInstruction =
+            RenderEngineImpl(
+                DefaultTemplateEngine(),
+                tokenizer,
+                mapOf(OutputFormat.JSON to FixedInstructionOutputFormatter("必ずJSONで出力してください。")),
+            )
+        val compiled = compiledPrompt(TextNode("hi"))
+
+        val withInstruction =
+            engineWithInstruction.render(
+                compiled,
+                BindingSet.empty(),
+                ContextBindingSet.empty(),
+                OutputFormat.JSON,
+            ).renderHash
+        val withoutInstruction =
+            engine.render(
+                compiled,
+                BindingSet.empty(),
+                ContextBindingSet.empty(),
+                OutputFormat.JSON,
+            ).renderHash
+
+        withInstruction shouldNotBe withoutInstruction
+    }
+
+    @Test
+    fun `outputFormatterが登録されていないoutputFormatを指定するとエラーを投げる`() {
+        val engineWithoutJsonFormatter =
+            RenderEngineImpl(DefaultTemplateEngine(), tokenizer, mapOf(OutputFormat.TEXT to BlankOutputFormatter))
+        val compiled = compiledPrompt(TextNode("hi"))
+
+        shouldThrow<IllegalStateException> {
+            engineWithoutJsonFormatter.render(
+                compiled,
+                BindingSet.empty(),
+                ContextBindingSet.empty(),
+                OutputFormat.JSON,
+            )
+        }
     }
 }
