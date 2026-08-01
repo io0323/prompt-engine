@@ -3,10 +3,13 @@ package promptengine.infrastructure.audit
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
+import promptengine.domain.audit.AuditLogEntry
 import promptengine.domain.audit.AuditOutcome
+import promptengine.domain.audit.AuditQuery
 import promptengine.domain.audit.AuditRecord
 import promptengine.domain.pipeline.PipelineMode
 import java.time.Instant
+import java.util.UUID
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -84,5 +87,59 @@ class InMemoryAuditRepositoryTest {
         executor.shutdown()
 
         failures shouldBe emptyList()
+    }
+
+    private fun logEntry(
+        aggregateId: String,
+        actor: String,
+        occurredAt: Instant,
+    ) = AuditLogEntry(
+        auditId = UUID.randomUUID(),
+        aggregateType = "Prompt",
+        aggregateId = aggregateId,
+        action = "Published",
+        actor = actor,
+        payload = "{}",
+        traceId = "trace-$aggregateId",
+        occurredAt = occurredAt,
+    )
+
+    @Test
+    fun `recordした行はsearchで新しい順に返る`() {
+        val repository = InMemoryAuditRepository(setOf("local"))
+        repository.record(logEntry("support/faq", "user:a", Instant.ofEpochSecond(1)))
+        repository.record(logEntry("support/faq", "user:b", Instant.ofEpochSecond(2)))
+
+        val page = repository.search(AuditQuery())
+
+        page.items.map { it.actor } shouldBe listOf("user:b", "user:a")
+        page.totalElements shouldBe 2L
+    }
+
+    @Test
+    fun `searchはaggregateId actor from to で絞り込める`() {
+        val repository = InMemoryAuditRepository(setOf("local"))
+        repository.record(logEntry("support/faq", "user:a", Instant.ofEpochSecond(1)))
+        repository.record(logEntry("support/other", "user:a", Instant.ofEpochSecond(2)))
+        repository.record(logEntry("support/faq", "user:b", Instant.ofEpochSecond(3)))
+
+        repository.search(AuditQuery(aggregateId = "support/faq")).items.map { it.actor } shouldBe
+            listOf("user:b", "user:a")
+        repository.search(AuditQuery(actor = "user:a")).totalElements shouldBe 2L
+        repository.search(AuditQuery(from = Instant.ofEpochSecond(2))).totalElements shouldBe 2L
+        repository.search(AuditQuery(to = Instant.ofEpochSecond(1))).totalElements shouldBe 1L
+    }
+
+    @Test
+    fun `searchはpage size でページングする`() {
+        val repository = InMemoryAuditRepository(setOf("local"))
+        repeat(5) { i -> repository.record(logEntry("support/faq", "user:$i", Instant.ofEpochSecond(i.toLong()))) }
+
+        val page = repository.search(AuditQuery(page = 1, size = 2))
+
+        page.items.size shouldBe 2
+        page.totalElements shouldBe 5L
+        page.page shouldBe 1
+        page.size shouldBe 2
     }
 }
