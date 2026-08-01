@@ -27,8 +27,15 @@ class InMemoryEventBusAdapter(activeProfiles: Set<String>) : EventBusAdapter {
         published += event
     }
 
-    /** テスト・診断用に現在保持している発行済みイベントのスナップショットを返す。 */
-    fun snapshot(): List<DomainEvent> = published.toList()
+    /**
+     * テスト・診断用に現在保持している発行済みイベントのスナップショットを返す。
+     *
+     * [Collections.synchronizedList]は個々のメソッド呼出（`add`等）自体は同期するが、
+     * `toList()`が内部で行うイテレーションはリストのモニタで保護されない。他スレッドが
+     * `publish`で並行して書き込むと`ConcurrentModificationException`が起こりうるため
+     * （CodeRabbitレビュー指摘）、`synchronized(published)`でイテレーション全体を囲む。
+     */
+    fun snapshot(): List<DomainEvent> = synchronized(published) { published.toList() }
 
     companion object {
         private const val PRODUCTION_PROFILE = "production"

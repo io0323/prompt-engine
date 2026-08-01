@@ -27,8 +27,15 @@ class InMemoryAuditRepository(activeProfiles: Set<String>) : AuditRepository {
         records += record
     }
 
-    /** テスト・診断用に現在保持している記録のスナップショットを返す。 */
-    fun snapshot(): List<AuditRecord> = records.toList()
+    /**
+     * テスト・診断用に現在保持している記録のスナップショットを返す。
+     *
+     * [Collections.synchronizedList]は個々のメソッド呼出（`append`等）自体は同期するが、
+     * `toList()`が内部で行うイテレーションはリストのモニタで保護されない。他スレッドが
+     * `append`で並行して書き込むと`ConcurrentModificationException`が起こりうるため
+     * （CodeRabbitレビュー指摘）、`synchronized(records)`でイテレーション全体を囲む。
+     */
+    fun snapshot(): List<AuditRecord> = synchronized(records) { records.toList() }
 
     companion object {
         private const val PRODUCTION_PROFILE = "production"

@@ -12,12 +12,14 @@ import promptengine.domain.audit.AuditRecord
  * フレームワーク隔離規約）ため、この実装を`prompt-engine-infrastructure`に置く。
  *
  * ログ本文には[AuditRecord]のフィールド（traceId・promptKey・mode・outcome）のみを
- * key=value形式で構造化して載せる。[cause]は`javaClass.simpleName`のみを文字列補間し、
- * `cause.message`は補間せずSLF4Jの`(msg, throwable)`オーバーロードにそのまま渡す
- * （スタックトレースはログ基盤側で記録される。[AuditRecord]自体が生のprompt/response
- * 内容を保持しないため通常は`cause.message`が秘密情報を含む経路も無いはずだが、
- * インフラ層由来の例外（DB接続情報等）が将来混入する可能性に備え、組立文字列には
- * 一切含めない）。
+ * key=value形式で構造化して載せる。[cause]は`javaClass.simpleName`のみを通常の
+ * フォーマット引数として文字列補間し、`cause`オブジェクト自体（Throwable）は
+ * 一切SLF4J呼び出しへ渡さない（CodeRabbitレビュー指摘: SLF4Jは末尾引数が`Throwable`の
+ * 場合、フォーマット済みメッセージに現れなくても`cause.message`とスタックトレース全体を
+ * ログイベントに添付して記録する。DB接続情報等インフラ層由来の例外メッセージに秘密情報が
+ * 含まれる可能性があるため、`cause.message`はもちろん`cause`オブジェクト自体もログ出力
+ * 経路に一切渡さない契約とする。`Slf4jAuditFailureHandlerTest`で添付Throwableが常に
+ * `null`であることを固定する）。
  *
  * 実DLQ（キュー・再試行テーブル）は
  * [Issue #37](https://github.com/io0323/prompt-engine/issues/37)で追跡し、
@@ -40,7 +42,6 @@ class Slf4jAuditFailureHandler : AuditFailureHandler {
             record.mode,
             outcomeLabel,
             cause.javaClass.simpleName,
-            cause,
         )
     }
 

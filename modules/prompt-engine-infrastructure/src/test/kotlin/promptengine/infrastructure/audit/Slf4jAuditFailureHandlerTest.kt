@@ -25,6 +25,11 @@ private const val SECRET_VALUE = "sk-live-do-not-leak-98765"
  * `cause`（インフラ層由来の例外、DB接続情報等を含みうる）のメッセージが誤って
  * 組立文字列へ混入していないこと（ログ本文には[AuditRecord]のフィールドのみを載せる
  * 契約）を、実際のログ出力を[ListAppender]で捕捉して検証する。
+ *
+ * `formattedMessage`（組立文字列）のチェックだけでは不十分（CodeRabbitレビュー指摘）:
+ * SLF4Jは末尾引数が`Throwable`の場合、フォーマット済みメッセージに現れなくても
+ * `cause.message`とスタックトレース全体をログイベントに添付して記録するため、
+ * `ILoggingEvent.throwableProxy`が常に`null`であることも個別に検証する。
  */
 class Slf4jAuditFailureHandlerTest {
     private lateinit var appender: ListAppender<ILoggingEvent>
@@ -59,13 +64,17 @@ class Slf4jAuditFailureHandlerTest {
         Slf4jAuditFailureHandler().handle(record, cause)
 
         appender.list.shouldNotBeEmpty()
-        val formattedMessage = appender.list.single().formattedMessage
+        val event = appender.list.single()
+        val formattedMessage = event.formattedMessage
         formattedMessage shouldNotContain SECRET_VALUE
         formattedMessage shouldContain "trace-secret-leak-check"
         formattedMessage shouldContain "support/faq"
         formattedMessage shouldContain "FULL_EXECUTION"
         formattedMessage shouldContain "EXECUTION_FAILED"
         formattedMessage shouldContain "IllegalStateException"
+        // formattedMessageだけでなく、ログイベントにThrowableが一切添付されていないことも
+        // 検証する（SLF4Jは末尾のThrowable引数からmessage・スタックトレースを別経路で記録するため）。
+        event.throwableProxy shouldBe null
     }
 
     @Test

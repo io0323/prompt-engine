@@ -24,6 +24,7 @@ import java.util.UUID
 class JdbcPromptAliasRepository(
     private val jdbcTemplate: NamedParameterJdbcTemplate,
 ) : PromptAliasRepository {
+    /** [promptKey]の[alias]に対応する[PromptAlias]を返す。存在しなければ`null`。 */
     override fun find(
         promptKey: PromptKey,
         alias: String,
@@ -44,6 +45,7 @@ class JdbcPromptAliasRepository(
             .singleOrNull()
             ?.let { PromptAlias(promptKey, alias, parseSemVer(it)) }
 
+    /** [promptKey]に設定された全[PromptAlias]をalias名の昇順で返す。1件も無ければ空リスト。 */
     override fun findAll(promptKey: PromptKey): List<PromptAlias> =
         jdbcTemplate.query(
             """
@@ -59,6 +61,13 @@ class JdbcPromptAliasRepository(
             PromptAlias(promptKey, rs.getString("alias"), parseSemVer(rs.getString("version")))
         }
 
+    /**
+     * [alias]を作成または更新する（`(promptKey, alias)`が既存なら参照先Versionを更新する、
+     * `(prompt_id, alias)`の一意制約とのON CONFLICTで判定）。
+     *
+     * @throws PromptVersionNotFoundException [alias].promptKeyのPromptが存在しない場合、
+     *   または[alias].semVerに対応するVersionが存在しない場合
+     */
     override fun upsert(alias: PromptAlias) {
         val promptId = findPromptId(alias.promptKey)
         val versionId = findVersionId(promptId, alias.semVer)
