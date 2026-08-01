@@ -37,6 +37,8 @@ import promptengine.domain.pipeline.PipelineRequest
 import promptengine.domain.pipeline.PipelineTracer
 import promptengine.domain.prompt.NewPromptVersion
 import promptengine.domain.prompt.Prompt
+import promptengine.domain.prompt.PromptAlias
+import promptengine.domain.prompt.PromptAliasRepository
 import promptengine.domain.prompt.PromptContent
 import promptengine.domain.prompt.PromptDomainEvent
 import promptengine.domain.prompt.PromptKey
@@ -563,6 +565,17 @@ class PipelineOrchestratorTest {
         }
     }
 
+    private class FakePromptAliasRepository : PromptAliasRepository {
+        override fun find(
+            promptKey: PromptKey,
+            alias: String,
+        ): PromptAlias? = null
+
+        override fun findAll(promptKey: PromptKey): List<PromptAlias> = emptyList()
+
+        override fun upsert(alias: PromptAlias) = Unit
+    }
+
     private class FakeTemplateRepository : TemplateRepository {
         private val templates = mutableMapOf<TemplateKey, Template>()
 
@@ -680,7 +693,7 @@ class PipelineOrchestratorTest {
         fun orchestrator(): PipelineOrchestrator {
             val stages =
                 listOf(
-                    LoadStage(promptRepository),
+                    LoadStage(promptRepository, FakePromptAliasRepository()),
                     MergeStage(compositionService),
                     ImportStage(),
                     ResolveVariablesStage(variableResolverChain),

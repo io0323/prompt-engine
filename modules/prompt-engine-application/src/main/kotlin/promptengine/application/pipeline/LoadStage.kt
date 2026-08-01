@@ -3,6 +3,7 @@ package promptengine.application.pipeline
 import promptengine.domain.pipeline.PipelineContext
 import promptengine.domain.pipeline.PipelineStage
 import promptengine.domain.prompt.LifecycleState
+import promptengine.domain.prompt.PromptAliasRepository
 import promptengine.domain.prompt.PromptKey
 import promptengine.domain.prompt.PromptRepository
 import promptengine.domain.prompt.PromptVersion
@@ -16,12 +17,17 @@ import promptengine.domain.prompt.VersionRef
  * P8時点ではキャッシュを持たない（ADR-0015決定11。Issue #15解消後に別PRで追加）ため、
  * 毎回[promptRepository]へ直接問い合わせる。
  *
- * [VersionRef.Alias]の解決（別名→実Version）は本Stageのスコープ外（未実装。
- * `PromptRepository`にAlias解決の経路が無いため）。指定された場合は
- * [PromptVersionNotFoundException]を投げる（`PROMPT_NOT_FOUND`として扱う。
- * Alias自体の解決に失敗した状態と、Version自体が存在しない状態を呼出元は区別しない）。
+ * [VersionRef.Alias]の解決（別名→実Version）は[aliasRepository]（`PromptAliasRepository`、
+ * `prompt_aliases`テーブル、設計書§12）で行う。当初実装ガイド§6.9のStage 1は`VersionRef`3種
+ * すべてへの対応を前提としていたが、Alias永続化の経路が無いまま常に未解決扱いしていた
+ * 欠落をP8完了の一部として解消する。Alias自体が見つからない場合、Alias解決先のVersionが
+ * 存在しない場合のいずれも[PromptVersionNotFoundException]を投げる（`PROMPT_NOT_FOUND`
+ * として扱う。呼出元はこの2状態を区別しない）。
  */
-class LoadStage(private val promptRepository: PromptRepository) : PipelineStage {
+class LoadStage(
+    private val promptRepository: PromptRepository,
+    private val aliasRepository: PromptAliasRepository,
+) : PipelineStage {
     override val name: String = "Load"
 
     override fun execute(context: PipelineContext): PipelineContext {
@@ -44,6 +50,12 @@ class LoadStage(private val promptRepository: PromptRepository) : PipelineStage 
             is VersionRef.Latest ->
                 versions.find { it.state == LifecycleState.Published }
                     ?: throw PromptVersionNotFoundException.forKey(key)
-            is VersionRef.Alias -> throw PromptVersionNotFoundException.forKey(key)
+            is VersionRef.Alias -> {
+                val target =
+                    aliasRepository.find(key, versionRef.name)?.semVer
+                        ?: throw PromptVersionNotFoundException.forKey(key)
+                versions.find { it.semVer == target }
+                    ?: throw PromptVersionNotFoundException(target)
+            }
         }
 }

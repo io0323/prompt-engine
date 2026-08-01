@@ -23,6 +23,8 @@ import promptengine.domain.pipeline.PipelineMode
 import promptengine.domain.pipeline.PipelineRequest
 import promptengine.domain.prompt.NewPromptVersion
 import promptengine.domain.prompt.Prompt
+import promptengine.domain.prompt.PromptAlias
+import promptengine.domain.prompt.PromptAliasRepository
 import promptengine.domain.prompt.PromptContent
 import promptengine.domain.prompt.PromptDomainEvent
 import promptengine.domain.prompt.PromptKey
@@ -283,6 +285,26 @@ class PipelineStageGuardsTest {
         }
     }
 
+    private class FakePromptAliasRepository : PromptAliasRepository {
+        private val aliases = mutableMapOf<Pair<PromptKey, String>, PromptAlias>()
+
+        fun put(alias: PromptAlias) {
+            aliases[alias.promptKey to alias.alias] = alias
+        }
+
+        override fun find(
+            promptKey: PromptKey,
+            alias: String,
+        ): PromptAlias? = aliases[promptKey to alias]
+
+        override fun findAll(promptKey: PromptKey): List<PromptAlias> =
+            aliases.values.filter { it.promptKey == promptKey }
+
+        override fun upsert(alias: PromptAlias) {
+            aliases[alias.promptKey to alias.alias] = alias
+        }
+    }
+
     private fun wrap(key: String): String = "---\npe: \"1\"\nkind: prompt\nkey: $key\n---\nhello"
 
     private fun draftPrompt(
@@ -305,7 +327,7 @@ class PipelineStageGuardsTest {
         val key = PromptKey("support/fixed-found")
         val repo = FakePromptRepository()
         repo.put(publishedPrompt(key, SemVer(1, 0, 0)))
-        val stage = LoadStage(repo)
+        val stage = LoadStage(repo, FakePromptAliasRepository())
         val request =
             PipelineRequest(key, VersionRef.Fixed(SemVer(1, 0, 0)), PromptRequest(), modelProfile, TokenCount(1_000))
 
@@ -319,7 +341,7 @@ class PipelineStageGuardsTest {
         val key = PromptKey("support/fixed-missing")
         val repo = FakePromptRepository()
         repo.put(publishedPrompt(key, SemVer(1, 0, 0)))
-        val stage = LoadStage(repo)
+        val stage = LoadStage(repo, FakePromptAliasRepository())
         val request =
             PipelineRequest(key, VersionRef.Fixed(SemVer(9, 9, 9)), PromptRequest(), modelProfile, TokenCount(1_000))
 
@@ -333,7 +355,7 @@ class PipelineStageGuardsTest {
         val key = PromptKey("support/latest-missing")
         val repo = FakePromptRepository()
         repo.put(draftPrompt(key, SemVer(1, 0, 0)))
-        val stage = LoadStage(repo)
+        val stage = LoadStage(repo, FakePromptAliasRepository())
         val request = PipelineRequest(key, VersionRef.Latest, PromptRequest(), modelProfile, TokenCount(1_000))
 
         shouldThrow<PromptVersionNotFoundException> {
@@ -342,11 +364,26 @@ class PipelineStageGuardsTest {
     }
 
     @Test
-    fun `LoadStage VersionRef Alias は未サポートのため常にPromptVersionNotFoundException`() {
-        val key = PromptKey("support/alias-unsupported")
+    fun `LoadStage VersionRef Alias は登録済みAliasの参照先Versionを解決する`() {
+        val key = PromptKey("support/alias-found")
         val repo = FakePromptRepository()
         repo.put(publishedPrompt(key, SemVer(1, 0, 0)))
-        val stage = LoadStage(repo)
+        val aliasRepo = FakePromptAliasRepository()
+        aliasRepo.put(PromptAlias(key, "stable", SemVer(1, 0, 0)))
+        val stage = LoadStage(repo, aliasRepo)
+        val request = PipelineRequest(key, VersionRef.Alias("stable"), PromptRequest(), modelProfile, TokenCount(1_000))
+
+        val result = stage.execute(PipelineContext(request, PipelineMode.COMPILE_ONLY, "trace"))
+
+        result.promptVersion?.semVer shouldBe SemVer(1, 0, 0)
+    }
+
+    @Test
+    fun `LoadStage VersionRef Alias は未登録ならPromptVersionNotFoundException`() {
+        val key = PromptKey("support/alias-missing")
+        val repo = FakePromptRepository()
+        repo.put(publishedPrompt(key, SemVer(1, 0, 0)))
+        val stage = LoadStage(repo, FakePromptAliasRepository())
         val request = PipelineRequest(key, VersionRef.Alias("stable"), PromptRequest(), modelProfile, TokenCount(1_000))
 
         shouldThrow<PromptVersionNotFoundException> {
