@@ -1,6 +1,7 @@
 package promptengine.domain.prompt
 
 import promptengine.domain.context.ContextRequirement
+import promptengine.domain.render.OutputDeclaration
 import promptengine.domain.shared.SemVer
 import promptengine.domain.template.ExtendsRef
 import promptengine.domain.validation.ValidationSettings
@@ -27,6 +28,9 @@ import promptengine.domain.variable.VariableDefinition
  *
  * [validation] はDSL `validation:`宣言（設計書§15.7、ADR-0012）の解決結果。
  * `contextRequirements`と同様Template/Fragmentとはマージせず、Prompt自身の宣言のみ有効。
+ *
+ * [output] はDSL `output:`宣言（設計書§15.1、ADR-0015決定9）の解決結果。`validation`と
+ * 同じ扱い（Template/Fragmentとはマージせず、Prompt自身の宣言のみ有効。宣言が無ければ`null`）。
  */
 @ConsistentCopyVisibility
 data class PromptVersion internal constructor(
@@ -36,6 +40,7 @@ data class PromptVersion internal constructor(
     val contextRequirements: List<ContextRequirement> = emptyList(),
     val extends: ExtendsRef? = null,
     val validation: ValidationSettings = ValidationSettings(),
+    val output: OutputDeclaration? = null,
     val state: LifecycleState = LifecycleState.Draft,
 ) {
     init {
