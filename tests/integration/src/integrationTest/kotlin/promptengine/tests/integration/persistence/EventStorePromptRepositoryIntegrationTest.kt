@@ -24,6 +24,8 @@ import promptengine.domain.prompt.NewPromptVersion
 import promptengine.domain.prompt.Prompt
 import promptengine.domain.prompt.PromptContent
 import promptengine.domain.prompt.PromptKey
+import promptengine.domain.render.OutputDeclaration
+import promptengine.domain.render.OutputFormat
 import promptengine.domain.shared.ExtendsRefApi
 import promptengine.domain.shared.SemVer
 import promptengine.domain.shared.VersionRange
@@ -47,6 +49,10 @@ import javax.sql.DataSource
  * - 保存→復元→内容一致（Draft/InReview/Approved/Published/Deprecated/Archivedの全状態を往復）
  * - イベント追記順序とsequenceの連番性
  * - 同時更新での楽観ロック衝突
+ *
+ * `output`（ADR-0015、V6マイグレーション）は`validation`等と同様に最初のシナリオへ組み込み、
+ * 宣言ありのVersion（v1）と宣言なしのVersion（v2、`output: null`）の両方を往復させて
+ * `output`列の読み書きが実際に配線されていることを確認する。
  */
 @OptIn(ExtendsRefApi::class)
 @Testcontainers
@@ -124,9 +130,10 @@ class EventStorePromptRepositoryIntegrationTest {
                 policies = listOf("no-pii"),
                 placeholders = PlaceholderMode.STRICT,
             )
+        val outputDeclaration = OutputDeclaration(format = OutputFormat.JSON, schemaRef = "schemas/answer@1")
 
-        // Draft（variables/contextRequirements/extends（key+range）/validationのround-tripも
-        // 合わせて検証する。ADR-0009・ADR-0012）
+        // Draft（variables/contextRequirements/extends（key+range）/validation/outputの
+        // round-tripも合わせて検証する。ADR-0009・ADR-0012・ADR-0015）
         val (created, createdEvent) =
             Prompt.create(
                 key,
@@ -137,6 +144,7 @@ class EventStorePromptRepositoryIntegrationTest {
                     contextRequirements,
                     extendsRef,
                     validationSettings,
+                    outputDeclaration,
                 ),
                 context,
             )
@@ -148,6 +156,7 @@ class EventStorePromptRepositoryIntegrationTest {
         reloaded.versions.single().contextRequirements shouldBe contextRequirements
         reloaded.versions.single().extends shouldBe extendsRef
         reloaded.versions.single().validation shouldBe validationSettings
+        reloaded.versions.single().output shouldBe outputDeclaration
 
         // InReview
         repository.save(reloaded.submitForReview(v1, validationPassed = true))
@@ -185,6 +194,9 @@ class EventStorePromptRepositoryIntegrationTest {
         v1AfterSupersede.state shouldBe LifecycleState.Deprecated
         v2AfterPublish.state shouldBe LifecycleState.Published
         v2AfterPublish.content shouldBe PromptContent("Answer(v2): {{question}}")
+        // v2はoutput:を宣言せずに作成した（NewPromptVersionの2引数コンストラクタ）ため、
+        // output=nullの往復（「宣言なし」がnullのまま保たれること）もここで確認する。
+        v2AfterPublish.output shouldBe null
 
         // Archived
         val (archived, archivedEvent) = reloaded.archive(v1, referencingClientCount = 0, force = false, context)
