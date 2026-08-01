@@ -171,6 +171,24 @@ interface PipelineStage {
 `CompiledPrompt.body`に読み替えたのと同じ扱い）。`PipelineContext`はdata classとして
 不変更新（`copy()`で次ステージ用の新インスタンスを作る）とする。
 
+#### 決定3の修正（レビュー指摘対応）: `RenderingStage`/`OptimizationStage`のfail-fast統一
+
+`RenderingStage`/`OptimizationStage`は当初、`variableBindings`/`contextBindings`が
+`null`（Stage 4・5未実行）の場合に`context.variableBindings ?: BindingSet.empty()`・
+`context.contextBindings ?: ContextBindingSet.empty()`という空既定へフォールバックしていた。
+これは他の8ステージ（`checkNotNull`で前段未実行を拒否する）と異なる挙動であり、未束縛の
+まま描画・最適化が「成功」してしまい、変数・Contextが本来展開されるべき箇所が空のまま
+欠落した壊れた出力が、エラーにならず正常系として下流（Execution・呼出元）へ流れてしまう
+という欠陥だった。
+
+`ValidationStage`（決定4の表・ステージ6）は同じ`?: empty()`パターンを持つが、こちらは
+COMPILE_ONLYモード（`PipelineFactory`が`variableBindings`/`contextBindings`を
+一切充足させないままValidationのみ実行するモード、決定6参照）で正当に`null`となりうる
+ため意図的に残す。`RenderingStage`/`OptimizationStage`はCOMPILE_ONLYモードの
+ステージリストに含まれず、到達する場合は必ずStage 4・5が先行済みであるため、
+`null`は常に誤配線を意味する。両ステージも他の8ステージと同じ`checkNotNull`による
+fail-fastへ統一し、`PipelineStageGuardsTest`で全ステージの一貫性を固定した。
+
 ### 4. StageErrorマッピングとステージ⇔エラーコード対応表
 
 `PipelineOrchestrator`がステージ実行を`try/catch`し、投げられた例外の型から
@@ -187,18 +205,35 @@ interface PipelineStage {
 | 6 | Validation | `ValidationFailedException`（新設。`ValidationEngine.validate`自体は例外を投げないため
 （ADR-0012決定1）、`ValidationStage`が`ValidationReport.hasErrors`を見てこの例外を投げる） | `VALIDATION_FAILED` | 400 |
 | 7 | Optimization | `TokenBudgetExceededException` | `TOKEN_BUDGET_EXCEEDED` | 422 |
-| 8 | Rendering | `IllegalStateException`（未登録`OutputFormatter`等、実装内部エラー） | `RENDER_ERROR` | 500（決定5参照） |
+| 8 | Rendering | `RenderFailedException`（新設、`domain.render`。未登録`OutputFormatter`等でRenderEngine実装が投げる） | `RENDER_ERROR` | 500（決定5参照） |
 | 9 | Execution | `ExecutionFailedException` | `EXECUTION_FAILED` | 502 |
 | 10 | Response Parsing | `ParseFailedException` | `PARSE_FAILED` | 400 |
 | 11 | Evaluation | （失敗させない。例外を握り潰し記録のみ） | なし | - |
 | 12 | Audit | （失敗させない。`AuditFailureHandler`へ委譲） | なし | - |
 
-`StageErrorMapper`（`prompt-engine-application`）は例外の型を第一の判定基準とし、
-`IllegalStateException`のように型だけでは`RENDER_ERROR`か汎用`INTERNAL_ERROR`かを
-区別できない場合に限り、どのステージが投げたか（ステージ名）を補助的な判定基準とする
-（1箇所への集約は保ちつつ、型のみでは表現しきれない分類を扱う）。`CompositionException`の
-サブタイプのうち上記3種以外（深さ超過・サイズ超過等）は§13.3にコードが定義されていない
-ため（`CompositionException`自身のKDoc参照）、`INTERNAL_ERROR`にフォールバックする。
+`StageErrorMapper`（`prompt-engine-application`）は例外の型のみを判定基準とする
+（ステージ名による補助判定は行わない）。`CompositionException`のサブタイプのうち上記3種
+以外（深さ超過・サイズ超過等）は§13.3にコードが定義されていないため
+（`CompositionException`自身のKDoc参照）、`INTERNAL_ERROR`にフォールバックする。
+
+#### 決定4の修正（レビュー指摘対応）: `RENDER_ERROR`をステージ名判定からdomain専用例外へ
+
+当初案では`RENDER_ERROR`を`IllegalStateException`（型自体は`RenderingStage`以外の
+`checkNotNull`ガードも投げる汎用型）で表現し、`errorCodeFor`が`stageName == "Rendering"`
+かどうかで`RENDER_ERROR`/`INTERNAL_ERROR`を振り分けていた。この設計には、各Stageの
+`checkNotNull`（前段ステージ未実行を防ぐ防御コード）が投げる`IllegalStateException`も
+`RenderingStage`から投げられれば`RENDER_ERROR`に誤分類されてしまうという欠陥があった
+（例: `RenderingStage`自身の`checkNotNull(context.compiled)`が前段未実行で発火した場合、
+実際にはEngine/Plugin側の構成不備ではなくPipeline配線側の欠陥であるにもかかわらず
+`RENDER_ERROR`として記録されてしまう）。
+
+`domain.render`に`RenderFailedException`を新設し、`RenderEngineImpl`（`prompt-engine-core`）が
+未登録`OutputFormatter`等のRendering固有の失敗でこの型を投げるよう変更した上で、
+`StageErrorMapper`は`is RenderFailedException -> RENDER_ERROR`という型のみの判定に統一した
+（`stageName`引数自体を`errorCodeFor`から削除）。これにより`errorCodeFor`の判定基準が
+全コードについて型のみに統一され、`RenderingStage`由来かどうかに関わらず
+`IllegalStateException`は常に`INTERNAL_ERROR`にフォールバックする。この振る舞いは
+`StageErrorMapperTest`・`PipelineStageGuardsTest`で固定した。
 
 ### 5. `RENDER_ERROR`の追加とHTTP分類根拠
 
@@ -209,10 +244,10 @@ interface PipelineStage {
 ```
 
 Validationステージ（6）を通過した時点で、束縛済みAST・呼出パラメータ・宣言済み
-Contextはすべて検証済みである。その後段のRendering（8）が失敗するのは、
-「未登録の`OutputFormatter`」のように、呼出パラメータの不備ではなくEngine/Plugin側の
-構成不備・実装不具合に起因するケースに限られる。クライアント起因（4xx）ではなく
-サーバ起因（5xx）として扱う。
+Contextはすべて検証済みである。その後段のRendering（8）が`RenderFailedException`
+（決定4修正参照）を投げるのは、「未登録の`OutputFormatter`」のように、呼出パラメータの
+不備ではなくEngine/Plugin側の構成不備・実装不具合に起因するケースに限られる。
+クライアント起因（4xx）ではなくサーバ起因（5xx）として扱う。
 
 ### 6. `PipelineFactory`
 
@@ -376,14 +411,19 @@ P9以降のスコープ）。P8では変換ロジックとその単体テスト�
 - `prompt-engine-domain`: `domain.pipeline`（`PipelineContext`/`PipelineStage`/
   `PipelineMode`新設）、`domain.execution`（`ExecutionEngine`新設）、`domain.event`
   （`EventBusAdapter`新設）、`domain.audit`（`AuditRecord`/`AuditOutcome`/
-  `AuditRepository`/`AuditFailureHandler`新設）、`domain.render`（`OutputDeclaration`
-  新設）、`domain.prompt`（`PromptVersion`/`NewPromptVersion`/`PromptVersionMemento`に
-  `output`追加）、`domain.composition`（`CompiledPrompt`に`output`追加）
+  `AuditRepository`/`AuditFailureHandler`新設）、`domain.render`（`OutputDeclaration`・
+  `RenderFailedException`新設）、`domain.prompt`（`PromptVersion`/`NewPromptVersion`/
+  `PromptVersionMemento`に`output`追加）、`domain.composition`（`CompiledPrompt`に
+  `output`追加）
 - `prompt-engine-core`: `engine.execution.ExecutionCoordinator`が`ExecutionEngine`を実装、
-  `engine.compiler.OutputFieldMapper`新設
+  `engine.compiler.OutputFieldMapper`新設、`engine.render.RenderEngineImpl`が
+  未登録`OutputFormatter`時に`RenderFailedException`を投げるよう変更
 - `prompt-engine-application`: 12ステージ実装（`engine.pipeline`ではなくCLAUDE.md
   パッケージルート直下`promptengine.application.pipeline`）、`PipelineFactory`、
-  `PipelineOrchestrator`、`StageErrorMapper`新設（このモジュールへの初の実コード追加）
+  `PipelineOrchestrator`、`StageErrorMapper`新設（このモジュールへの初の実コード追加）。
+  レビュー指摘対応で`StageErrorMapper.errorCodeFor`から`stageName`引数を削除し型のみの
+  判定に統一、`RenderingStage`/`OptimizationStage`の空既定フォールバックを撤去し
+  `checkNotNull`によるfail-fastへ統一（決定3・決定4の修正）
 - `prompt-engine-infrastructure`: `InMemoryEventBusAdapter`、`InMemoryAuditRepository`、
   `Slf4jAuditFailureHandler`新設、`EventStorePromptRepository`に`output`列読み書き追加、
   マイグレーション`V6__output_declaration.sql`新設

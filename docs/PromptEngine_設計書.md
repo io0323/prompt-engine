@@ -1532,7 +1532,7 @@ outbox }o--|| domain_events : event_id
 | 422 | VARIABLE_UNRESOLVED / CONTEXT_UNAVAILABLE / TOKEN_BUDGET_EXCEEDED |
 | 429 | RATE_LIMITED |
 | 502 | EXECUTION_FAILED（APAP起因） |
-| 500 | RENDER_ERROR / INTERNAL_ERROR |
+| 500 | RENDER_ERROR（`RenderFailedException`、Engine/Plugin側の構成不備・実装不具合、ADR-0015） / INTERNAL_ERROR |
 
 # 14. イベント一覧
 
