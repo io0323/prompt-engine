@@ -102,7 +102,7 @@ interface ExecutionEngine {
 **同じ原則の追加適用**: 実装に着手した際、Stage 5（Resolve Context）が委譲する
 `ContextResolverImpl`（P4、7スコープをまとめるファサード）も`ExecutionCoordinator`と
 同じ状態（domain Interfaceを持たない具象クラス）であることが判明した。
-[VariableResolverChain][promptengine.domain.variable.VariableResolverChain]（P4で
+`VariableResolverChain`（P4で
 既にdomain Interface化済み）との対称性を欠いた実装漏れであり、`ExecutionEngine`と
 同一の理由（上位レイヤの依存性逆転）で`domain.context.ContextResolverChain`を新設し、
 `ContextResolverImpl`に実装させる。
@@ -202,8 +202,7 @@ fail-fastへ統一し、`PipelineStageGuardsTest`で全ステージの一貫性�
 | 3 | Import | `CircularDependencyException` / `FragmentReferenceNotFoundException`（いずれも`CompositionException`、ADR-0009） | `CIRCULAR_DEPENDENCY` / `FRAGMENT_NOT_FOUND` | 400 / 404 |
 | 4 | Resolve Variables | `VariableUnresolvedException` | `VARIABLE_UNRESOLVED` | 422 |
 | 5 | Resolve Context | `ContextUnavailableException`（required宣言のみ） | `CONTEXT_UNAVAILABLE` | 422 |
-| 6 | Validation | `ValidationFailedException`（新設。`ValidationEngine.validate`自体は例外を投げないため
-（ADR-0012決定1）、`ValidationStage`が`ValidationReport.hasErrors`を見てこの例外を投げる） | `VALIDATION_FAILED` | 400 |
+| 6 | Validation | `ValidationFailedException`（新設。`ValidationEngine.validate`自体は例外を投げないため（ADR-0012決定1）、`ValidationStage`が`ValidationReport.hasErrors`を見てこの例外を投げる） | `VALIDATION_FAILED` | 400 |
 | 7 | Optimization | `TokenBudgetExceededException` | `TOKEN_BUDGET_EXCEEDED` | 422 |
 | 8 | Rendering | `RenderFailedException`（新設、`domain.render`。未登録`OutputFormatter`等でRenderEngine実装が投げる） | `RENDER_ERROR` | 500（決定5参照） |
 | 9 | Execution | `ExecutionFailedException` | `EXECUTION_FAILED` | 502 |

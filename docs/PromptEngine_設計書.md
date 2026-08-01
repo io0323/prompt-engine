@@ -1609,9 +1609,10 @@ macros: ...                             # §15.6
 構文要素: `{{ expr }}`（値のテキスト置換。エスケープはOutput Formatterが担当）、`{{#if}}/{{else}}/{{/if}}`、`{{#each list as item}}`、`{{#block role}}`（roleはsystem/user/assistant）、コメント `{{!-- --}}`。式はプロパティ参照とパイプフィルタ（`{{ name | upper | truncate(100) }}`）のみ。任意コード実行は不可（インジェクション防止）。
 
 `output:`宣言は`validation:`（§15.7）と同じ扱いで、DSL取り込み時に`OutputFieldMapper`が
-`PromptVersion.output: OutputDeclaration`（`format`/`schemaRef`）へ変換し、`CompiledPrompt`が
-そのまま引き継ぐ（Template/Fragmentの`output`とはマージせず、Prompt自身の宣言のみが有効。
-ADR-0015）。Pipelineが実際に使う`outputFormat`は「呼出パラメータで明示指定された値 ?:
+`PromptVersion.output: OutputDeclaration?`（`format`/`schemaRef`。`output:`ブロック自体が
+宣言されなければ`null`。ADR-0015決定9）へ変換し、`CompiledPrompt`がそのまま引き継ぐ
+（Template/Fragmentの`output`とはマージせず、Prompt自身の宣言のみが有効。ADR-0015）。
+Pipelineが実際に使う`outputFormat`は「呼出パラメータで明示指定された値 ?:
 `CompiledPrompt.output?.format` ?: `TEXT`」の優先順位で決まる。`schemaRef`から`OutputSchema`
 実体を解決する経路は未設計（[Issue #36](https://github.com/io0323/prompt-engine/issues/36)）。
 
