@@ -7,6 +7,7 @@ import promptengine.domain.parsing.OutputSchema
 import promptengine.domain.render.MessageRole
 import promptengine.domain.render.OutputFormat
 import promptengine.domain.render.RenderEngine
+import promptengine.domain.render.RenderFailedException
 import promptengine.domain.render.RenderedMessage
 import promptengine.domain.render.RenderedPrompt
 import promptengine.domain.render.TemplateEngine
@@ -38,7 +39,7 @@ class RenderEngineImpl(
 
         val formatter =
             outputFormatters[outputFormat]
-                ?: error("no OutputFormatter registered for outputFormat=$outputFormat")
+                ?: throw RenderFailedException("no OutputFormatter registered for outputFormat=$outputFormat")
         val messages = injectInstruction(expanded, formatter.instruction(outputSchema))
 
         return RenderHashCalculator.build(messages, outputFormat, templateEngine.id(), tokenizerPlugin)

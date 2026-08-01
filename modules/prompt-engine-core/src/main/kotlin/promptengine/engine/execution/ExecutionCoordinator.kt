@@ -1,6 +1,7 @@
 package promptengine.engine.execution
 
 import promptengine.domain.execution.ExecutionAdapter
+import promptengine.domain.execution.ExecutionEngine
 import promptengine.domain.execution.ExecutionOutcome
 import promptengine.domain.execution.ExecutionPolicy
 import promptengine.domain.execution.RawResponse
@@ -26,13 +27,14 @@ import promptengine.engine.render.RenderHashCalculator
  * 「既存のEngineに委譲するだけの薄い層」であるために必要な結合ロジックとしてP7で新設した。
  *
  * [executionAdapter]は通常[RetryingExecutionAdapter]でラップ済みのものを渡す想定
- * （本クラス自体はリトライを行わない）。
+ * （本クラス自体はリトライを行わない）。[ExecutionEngine]の実装（ADR-0015決定1: Pipeline
+ * Orchestrator、`prompt-engine-application`の依存性逆転のみを理由にdomain Interface化）。
  */
 class ExecutionCoordinator(
     private val executionAdapter: ExecutionAdapter,
     private val outputFormatters: Map<OutputFormat, OutputFormatter>,
     private val tokenizerPlugin: TokenizerPlugin,
-) {
+) : ExecutionEngine {
     /**
      * [rendered]を実行し、結果を[schema]に基づき解析する。解析に失敗し
      * [ExecutionPolicy.parseRepair]が有効なら、修復メッセージを付与した上で
@@ -57,7 +59,7 @@ class ExecutionCoordinator(
      * 不透明に失敗し、ドメインのエラーコードに正しくマッピングされない）。初回`rendered`自体は
      * Stage 7で既に検証済みのためここでは再検証しない。
      */
-    fun run(
+    override fun run(
         rendered: RenderedPrompt,
         policy: ExecutionPolicy,
         schema: OutputSchema?,
