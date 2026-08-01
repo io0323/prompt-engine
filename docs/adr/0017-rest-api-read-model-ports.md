@@ -69,6 +69,16 @@ interface AuditRepository {
 テスト・ローカル開発用に`record`/`search`も実装する。本番相当の永続化は
 `JdbcAuditRepository`（9a、新設）が担う。
 
+`AuditLogEntry.aggregateId`はビジネスキー文字列（Prompt向けなら`PromptKey.value`）を
+保持する。`domain_events`テーブルが同じ理由（V1マイグレーションのコメント
+「Domain層のDomainEvent.aggregateId（PromptKeyの文字列値等、ビジネスキー）とは
+別物であり、永続化層でビジネスキー→サロゲートキーの解決を行う」）で確立済みの
+方針と揃え、`audit_logs.aggregate_id`（UUID列）への書き込みは`JdbcAuditRepository`が
+`prompts.prompt_key = :aggregateId`から`prompt_id`を解決してから行う。`search`の
+読み取りでは`prompts`とJOINしてUUIDを`prompt_key`文字列へ戻す。
+
+`AuditQuery.aggregateId`も同じくビジネスキー文字列で検索する契約とする。
+
 ### 3. `DependencyRepository`（`domain.dependency`、新設）
 
 ```kotlin
