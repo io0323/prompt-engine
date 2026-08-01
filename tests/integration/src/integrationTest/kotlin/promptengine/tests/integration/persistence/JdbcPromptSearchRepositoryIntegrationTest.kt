@@ -120,15 +120,20 @@ class JdbcPromptSearchRepositoryIntegrationTest {
 
     @Test
     fun `statusはDraftとPublishedを区別する`() {
+        // 同一クラス内の他テストと同じPostgresコンテナを共有する（TestInstance.Lifecycle.PER_CLASS）
+        // ため、statusのみでの絞り込みは他テストが作ったDraft状態のPromptも拾ってしまう。
+        // qも合わせて指定し、このテスト自身が作ったPromptだけを対象にする。
+        val prefix = "status-check-${UUID.randomUUID()}"
         val draftKey = uniqueKey()
         val publishedKey = uniqueKey()
-        createDraftPrompt(draftKey, "draft-prompt")
-        createDraftPrompt(publishedKey, "published-prompt")
+        createDraftPrompt(draftKey, "$prefix-draft")
+        createDraftPrompt(publishedKey, "$prefix-published")
         publish(publishedKey)
 
-        searchRepository.search(PromptSearchCriteria(status = LifecycleState.Draft)).items.map { it.key } shouldBe
-            listOf(draftKey)
-        val publishedResult = searchRepository.search(PromptSearchCriteria(status = LifecycleState.Published))
+        val draftResult = searchRepository.search(PromptSearchCriteria(q = prefix, status = LifecycleState.Draft))
+        draftResult.items.map { it.key } shouldBe listOf(draftKey)
+        val publishedResult =
+            searchRepository.search(PromptSearchCriteria(q = prefix, status = LifecycleState.Published))
         publishedResult.items.map { it.key } shouldBe listOf(publishedKey)
         publishedResult.items.single().publishedVersion shouldBe "1.0.0"
     }

@@ -42,7 +42,7 @@ class JdbcDependencyRepository(
             FROM dependencies d
             JOIN prompt_versions pv ON pv.version_id = d.from_version_id
             JOIN prompts p ON p.prompt_id = pv.prompt_id
-            WHERE d.to_kind = 'PROMPT' AND d.to_key = :promptKey
+            WHERE UPPER(d.to_kind) = 'PROMPT' AND d.to_key = :promptKey
             """.trimIndent(),
             MapSqlParameterSource().addValue("promptKey", promptKey.value),
         ) { rs, _ ->

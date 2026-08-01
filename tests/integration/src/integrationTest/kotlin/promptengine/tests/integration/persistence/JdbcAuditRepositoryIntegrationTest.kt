@@ -121,12 +121,17 @@ class JdbcAuditRepositoryIntegrationTest {
 
     @Test
     fun `searchはactorで絞り込める`() {
+        // 同一クラス内の他テストと同じPostgresコンテナを共有する（TestInstance.Lifecycle.PER_CLASS）
+        // ため、actorのみでの絞り込みは他テストのレコードも拾ってしまう。aggregateIdも合わせて
+        // 指定し、このテスト自身が作った行だけを対象にする。
         val key = uniqueKey()
         createPrompt(key)
         auditRepository.record(logEntry(key, actor = "user:a"))
         auditRepository.record(logEntry(key, actor = "user:b"))
 
-        auditRepository.search(AuditQuery(actor = "user:a")).items.map { it.actor } shouldBe listOf("user:a")
+        val page = auditRepository.search(AuditQuery(aggregateId = key.value, actor = "user:a"))
+
+        page.items.map { it.actor } shouldBe listOf("user:a")
     }
 
     private fun logEntry(
