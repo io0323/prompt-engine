@@ -12,6 +12,7 @@ import promptengine.domain.execution.ExecutionFailedException
 import promptengine.domain.fragment.FragmentKey
 import promptengine.domain.optimization.TokenBudgetExceededException
 import promptengine.domain.parsing.ParseFailedException
+import promptengine.domain.pipeline.InvalidPipelineRequestException
 import promptengine.domain.prompt.PromptKey
 import promptengine.domain.prompt.PromptVersionNotFoundException
 import promptengine.domain.render.OutputFormat
@@ -96,6 +97,12 @@ class StageErrorMapperTest {
     fun `ParseFailedException は PARSE_FAILED`() {
         val exception = ParseFailedException(OutputFormat.TEXT, "bad")
         StageErrorMapper.errorCodeFor(exception) shouldBe StageErrorMapper.PARSE_FAILED
+    }
+
+    @Test
+    fun `InvalidPipelineRequestException は INVALID_REQUEST`() {
+        val exception = InvalidPipelineRequestException("executionPolicy is required")
+        StageErrorMapper.errorCodeFor(exception) shouldBe StageErrorMapper.INVALID_REQUEST
     }
 
     @Test

@@ -1,5 +1,6 @@
 package promptengine.application.pipeline
 
+import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
 import promptengine.domain.audit.AuditFailureHandler
@@ -79,6 +80,21 @@ class AuditStageTest {
         record.mode shouldBe PipelineMode.FULL_EXECUTION
         record.stageDurationsMs shouldBe mapOf("Load" to 1L)
         record.outcome shouldBe AuditOutcome.Success
+    }
+
+    @Test
+    fun `永続化されるAuditRecordはAudit自身のdurationを含まない 構造的な制約 AuditStageのKDoc参照`() {
+        // AuditRecordはexecute内でappend(永続化)される時点で作られるため、
+        // Audit自身のdurationはまだ確定していない（PipelineOrchestratorが
+        // execute()の戻り値を受け取った後に初めて計測が完了する）。
+        // AuditRepositoryは追記専用で更新を提供しないため、永続化後に
+        // "Audit"キーを追記する経路は存在しない（CodeRabbitレビュー指摘対応）。
+        val repository = RecordingAuditRepository()
+        val stage = AuditStage(repository, RecordingAuditFailureHandler())
+
+        stage.execute(context)
+
+        repository.records.single().stageDurationsMs.keys shouldNotContain "Audit"
     }
 
     @Test

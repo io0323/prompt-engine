@@ -7,6 +7,7 @@ import promptengine.domain.context.ContextUnavailableException
 import promptengine.domain.execution.ExecutionFailedException
 import promptengine.domain.optimization.TokenBudgetExceededException
 import promptengine.domain.parsing.ParseFailedException
+import promptengine.domain.pipeline.InvalidPipelineRequestException
 import promptengine.domain.prompt.PromptVersionNotFoundException
 import promptengine.domain.render.RenderFailedException
 import promptengine.domain.validation.ValidationFailedException
@@ -36,6 +37,7 @@ object StageErrorMapper {
     const val RENDER_ERROR = "RENDER_ERROR"
     const val EXECUTION_FAILED = "EXECUTION_FAILED"
     const val PARSE_FAILED = "PARSE_FAILED"
+    const val INVALID_REQUEST = "INVALID_REQUEST"
     const val INTERNAL_ERROR = "INTERNAL_ERROR"
 
     fun errorCodeFor(throwable: Throwable): String =
@@ -51,6 +53,7 @@ object StageErrorMapper {
             is RenderFailedException -> RENDER_ERROR
             is ExecutionFailedException -> EXECUTION_FAILED
             is ParseFailedException -> PARSE_FAILED
+            is InvalidPipelineRequestException -> INVALID_REQUEST
             else -> INTERNAL_ERROR
         }
 }

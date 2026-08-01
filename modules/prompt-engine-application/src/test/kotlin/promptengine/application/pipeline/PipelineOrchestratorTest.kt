@@ -32,6 +32,7 @@ import promptengine.domain.parsing.OutputFormatter
 import promptengine.domain.parsing.OutputSchema
 import promptengine.domain.parsing.ParseFailedException
 import promptengine.domain.parsing.ParsedOutput
+import promptengine.domain.pipeline.InvalidPipelineRequestException
 import promptengine.domain.pipeline.PipelineMode
 import promptengine.domain.pipeline.PipelineRequest
 import promptengine.domain.pipeline.PipelineTracer
@@ -275,13 +276,35 @@ class PipelineOrchestratorTest {
     fun `Load PromptVersionNotFoundException PROMPT_NOT_FOUND`() {
         val fixture = Fixture()
         val orchestrator = fixture.orchestrator()
-        val request = fixture.baseRequest(promptKey = PromptKey("support/does-not-exist"))
+        val request =
+            fixture.baseRequest(
+                promptKey = PromptKey("support/does-not-exist"),
+                executionPolicy = ExecutionPolicy(timeoutMs = 5_000),
+            )
 
         shouldThrow<PromptVersionNotFoundException> {
             orchestrator.run(request, PipelineMode.FULL_EXECUTION, "trace-load-error")
         }
 
         fixture.assertAuditedFailure(StageErrorMapper.PROMPT_NOT_FOUND)
+        // 失敗したLoad自身のdurationがAuditRecordへ記録されていることを検証する
+        // （CodeRabbitレビュー指摘: 従来は例外発生時にdurationの積み増しが行われず欠落していた）。
+        fixture.recordingAuditRepository.records.single().stageDurationsMs.keys shouldContain "Load"
+    }
+
+    @Test
+    fun `FULL_EXECUTIONでexecutionPolicy未指定はどのStageも実行せずINVALID_REQUESTとして記録される`() {
+        val fixture = Fixture()
+        val orchestrator = fixture.orchestrator()
+        val request = fixture.baseRequest(executionPolicy = null)
+
+        shouldThrow<InvalidPipelineRequestException> {
+            orchestrator.run(request, PipelineMode.FULL_EXECUTION, "trace-missing-execution-policy")
+        }
+
+        fixture.assertAuditedFailure(StageErrorMapper.INVALID_REQUEST)
+        // どのStageも実行されていない（入口の検証で即座に打ち切られる）ことを確認する。
+        fixture.recordingAuditRepository.records.single().stageDurationsMs shouldBe emptyMap()
     }
 
     @Test
@@ -307,7 +330,11 @@ class PipelineOrchestratorTest {
         val orchestrator = fixture.orchestrator()
 
         shouldThrow<TemplateReferenceNotFoundException> {
-            orchestrator.run(fixture.baseRequest(promptKey = key), PipelineMode.FULL_EXECUTION, "trace-merge-template")
+            orchestrator.run(
+                fixture.baseRequest(promptKey = key, executionPolicy = ExecutionPolicy(timeoutMs = 5_000)),
+                PipelineMode.FULL_EXECUTION,
+                "trace-merge-template",
+            )
         }
 
         fixture.assertAuditedFailure(StageErrorMapper.TEMPLATE_NOT_FOUND)
@@ -325,7 +352,11 @@ class PipelineOrchestratorTest {
         val orchestrator = fixture.orchestrator()
 
         shouldThrow<CircularDependencyException> {
-            orchestrator.run(fixture.baseRequest(promptKey = key), PipelineMode.FULL_EXECUTION, "trace-merge-circular")
+            orchestrator.run(
+                fixture.baseRequest(promptKey = key, executionPolicy = ExecutionPolicy(timeoutMs = 5_000)),
+                PipelineMode.FULL_EXECUTION,
+                "trace-merge-circular",
+            )
         }
 
         fixture.assertAuditedFailure(StageErrorMapper.CIRCULAR_DEPENDENCY)
@@ -353,7 +384,11 @@ class PipelineOrchestratorTest {
         val orchestrator = fixture.orchestrator()
 
         shouldThrow<FragmentReferenceNotFoundException> {
-            orchestrator.run(fixture.baseRequest(promptKey = key), PipelineMode.FULL_EXECUTION, "trace-merge-fragment")
+            orchestrator.run(
+                fixture.baseRequest(promptKey = key, executionPolicy = ExecutionPolicy(timeoutMs = 5_000)),
+                PipelineMode.FULL_EXECUTION,
+                "trace-merge-fragment",
+            )
         }
 
         fixture.assertAuditedFailure(StageErrorMapper.FRAGMENT_NOT_FOUND)
@@ -363,7 +398,11 @@ class PipelineOrchestratorTest {
     fun `ResolveVariables VariableUnresolvedException VARIABLE_UNRESOLVED`() {
         val fixture = Fixture()
         val orchestrator = fixture.orchestrator()
-        val request = fixture.baseRequest(variableResolution = PromptRequest())
+        val request =
+            fixture.baseRequest(
+                variableResolution = PromptRequest(),
+                executionPolicy = ExecutionPolicy(timeoutMs = 5_000),
+            )
 
         shouldThrow<VariableUnresolvedException> {
             orchestrator.run(request, PipelineMode.FULL_EXECUTION, "trace-resolve-variables")
@@ -385,7 +424,11 @@ class PipelineOrchestratorTest {
         val orchestrator = fixture.orchestrator()
 
         shouldThrow<ContextUnavailableException> {
-            orchestrator.run(fixture.baseRequest(promptKey = key), PipelineMode.FULL_EXECUTION, "trace-resolve-context")
+            orchestrator.run(
+                fixture.baseRequest(promptKey = key, executionPolicy = ExecutionPolicy(timeoutMs = 5_000)),
+                PipelineMode.FULL_EXECUTION,
+                "trace-resolve-context",
+            )
         }
 
         fixture.assertAuditedFailure(StageErrorMapper.CONTEXT_UNAVAILABLE)
@@ -397,7 +440,11 @@ class PipelineOrchestratorTest {
         val orchestrator = fixture.orchestrator()
 
         shouldThrow<promptengine.domain.validation.ValidationFailedException> {
-            orchestrator.run(fixture.baseRequest(), PipelineMode.FULL_EXECUTION, "trace-validation")
+            orchestrator.run(
+                fixture.baseRequest(executionPolicy = ExecutionPolicy(timeoutMs = 5_000)),
+                PipelineMode.FULL_EXECUTION,
+                "trace-validation",
+            )
         }
 
         fixture.assertAuditedFailure(StageErrorMapper.VALIDATION_FAILED)
@@ -407,7 +454,7 @@ class PipelineOrchestratorTest {
     fun `Optimization TokenBudgetExceededException TOKEN_BUDGET_EXCEEDED`() {
         val fixture = Fixture()
         val orchestrator = fixture.orchestrator()
-        val request = fixture.baseRequest(budget = TokenCount(0))
+        val request = fixture.baseRequest(budget = TokenCount(0), executionPolicy = ExecutionPolicy(timeoutMs = 5_000))
 
         shouldThrow<TokenBudgetExceededException> {
             orchestrator.run(request, PipelineMode.FULL_EXECUTION, "trace-optimization")
@@ -422,7 +469,11 @@ class PipelineOrchestratorTest {
         val orchestrator = fixture.orchestrator()
 
         shouldThrow<RenderFailedException> {
-            orchestrator.run(fixture.baseRequest(), PipelineMode.FULL_EXECUTION, "trace-rendering")
+            orchestrator.run(
+                fixture.baseRequest(executionPolicy = ExecutionPolicy(timeoutMs = 5_000)),
+                PipelineMode.FULL_EXECUTION,
+                "trace-rendering",
+            )
         }
 
         fixture.assertAuditedFailure(StageErrorMapper.RENDER_ERROR)

@@ -253,14 +253,17 @@ class PipelineStageGuardsTest {
     }
 
     @Test
-    fun `EvaluationStage は Execution未実行時 executionOutcome欠如 でIllegalStateException`() {
+    fun `EvaluationStage は Execution未実行時 executionOutcome欠如でも本流を失敗させず publishも呼ばれない`() {
         val eventBusAdapter =
             object : promptengine.domain.event.EventBusAdapter {
                 override fun publish(event: promptengine.domain.event.DomainEvent) =
-                    throw AssertionError("must not be called: EvaluationStage guard should fire first")
+                    throw AssertionError("must not be called: payload construction should fail before publish")
             }
+        val bare = context()
 
-        shouldThrow<IllegalStateException> { EvaluationStage(eventBusAdapter).execute(context()) }
+        val result = EvaluationStage(eventBusAdapter).execute(bare)
+
+        result shouldBe bare
     }
 
     // ---- LoadStage: VersionRef 3種の分岐 ----
@@ -395,25 +398,22 @@ class PipelineStageGuardsTest {
 
     /**
      * 前段の出力（`compiled`/`variableBindings`/`contextBindings`/`rendered`/`executionOutcome`）に
-     * 依存する9ステージ種別（Merge・ResolveVariables・ResolveContext・Validation・
-     * Optimization・Rendering・Execution・ResponseParsing・Evaluation）はすべて
+     * 依存する8ステージ種別（Merge・ResolveVariables・ResolveContext・Validation・
+     * Optimization・Rendering・Execution・ResponseParsing）はすべて
      * `checkNotNull`で前段未実行を拒否し、空既定へフォールバックする例外を作らない
      * （ADR-0015決定4修正、RenderingStage/OptimizationStageの`?: BindingSet.empty()`除去）。
      *
      * Load（前段が無い最初のステージ）・Import（Mergeが処理済みのため読み取るフィールドが
-     * 無い素通しステージ）・Audit（前段の結果に関わらず常に実行し記録する契約、ADR-0015決定7）
-     * の3ステージはこの一貫性の対象外（前段依存の`checkNotNull`を持つ設計ではないため）。
+     * 無い素通しステージ）・Audit（前段の結果に関わらず常に実行し記録する契約、ADR-0015決定7）・
+     * Evaluation（「本流を失敗させない」契約、設計書§2.6。payload構築の`checkNotNull`失敗を
+     * 含め`runCatching`で握り潰す、CodeRabbitレビュー指摘対応）の4ステージはこの一貫性の
+     * 対象外（前段依存の`checkNotNull`を外部へ伝播させる設計ではないため）。
      */
     @Test
-    fun `前段の出力に依存する9ステージ種別は全て前段未実行に対し一貫してfail-fastする`() {
+    fun `前段の出力に依存する8ステージ種別は全て前段未実行に対し一貫してfail-fastする`() {
         val bare = context()
         val compiledOnly = bare.copy(compiled = compiledPrompt())
         val compiledAndVariables = compiledOnly.copy(variableBindings = BindingSet.empty())
-        val throwingEventBusAdapter =
-            object : promptengine.domain.event.EventBusAdapter {
-                override fun publish(event: promptengine.domain.event.DomainEvent) =
-                    throw AssertionError("must not be called: EvaluationStage guard should fire first")
-            }
 
         val guardedInvocations: List<Pair<String, () -> Unit>> =
             listOf(
@@ -435,7 +435,6 @@ class PipelineStageGuardsTest {
                 },
                 "Execution" to { ExecutionStage(UnreachableExecutionEngine).execute(bare) },
                 "ResponseParsing" to { ResponseParsingStage().execute(bare) },
-                "Evaluation" to { EvaluationStage(throwingEventBusAdapter).execute(bare) },
             )
 
         guardedInvocations.forEach { (label, invoke) ->

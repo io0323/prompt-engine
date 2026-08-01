@@ -19,6 +19,17 @@ import java.time.Instant
  *
  * [AuditRepository.append]がどちらの経路でも失敗した場合は例外を伝播させず
  * [auditFailureHandler]へ委譲する（本流を失敗させない契約、設計書§2.6ステージ12）。
+ *
+ * **Audit自身のdurationについて（CodeRabbitレビュー指摘、設計上の意図的な決定）**:
+ * [execute]が[append]で`AuditRecord`を永続化する時点では、Audit自身の所要時間は
+ * まだ確定していない（`PipelineOrchestrator`が`execute`の戻り値を受け取った後に
+ * 初めて計測が完了する）。そのため、正常系で永続化される`AuditRecord.stageDurationsMs`は
+ * ステージ1〜11のdurationのみを含み、"Audit"キー自体は含まない。Audit自身のdurationは
+ * `PipelineOrchestrator.run`が返す最終的な[PipelineContext.stageDurationsMs]には
+ * 含まれる（呼出元が結果を検査する経路のみ）。`AuditRepository`は追記専用で更新を
+ * 提供しないため（`AuditRepository`のKDoc参照）、永続化後に"Audit"キーを追記する
+ * 経路は存在しない。この非対称性は構造的な制約であり、欠陥ではない
+ * （`AuditStageTest`でこの契約を固定する）。
  */
 class AuditStage(
     private val auditRepository: AuditRepository,
