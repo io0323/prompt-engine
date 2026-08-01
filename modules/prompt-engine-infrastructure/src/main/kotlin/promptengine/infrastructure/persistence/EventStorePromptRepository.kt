@@ -220,6 +220,11 @@ class EventStorePromptRepository(
      * インクリメントした値（`prompt.rowVersion + 1`）を返す ── `save` 側で
      * 無条件に `prompt.rowVersion + 1` を仮定すると、INSERT直後は実際のDB値（`0`）と
      * 食い違い、次のsave呼び出しが誤ってVERSION_CONFLICTになる。
+     *
+     * `name` 列はINSERT時のみ `prompt.key.name` を初期値として書き込み、UPDATE時は
+     * 触らない（ADR-0020）。UPDATE文でも書き込むと、`submitForReview`/`approve`/`publish`
+     * 等の状態遷移で毎回 `Prompt.save` が呼ばれるたび、`PromptMetadataRepository.upsert`
+     * が設定したカスタム表示名が `prompt.key.name` で上書きされ失われてしまう。
      */
     private fun upsertPrompt(
         prompt: Prompt,
@@ -254,11 +259,10 @@ class EventStorePromptRepository(
         val updatedRows =
             jdbcTemplate.update(
                 """
-                UPDATE prompts SET name = :name, state = :state, row_version = row_version + 1, updated_at = :updatedAt
+                UPDATE prompts SET state = :state, row_version = row_version + 1, updated_at = :updatedAt
                 WHERE prompt_id = :promptId AND row_version = :expectedRowVersion
                 """.trimIndent(),
                 MapSqlParameterSource()
-                    .addValue("name", prompt.key.name)
                     .addValue("state", state)
                     .addValue("updatedAt", Timestamp.from(occurredAt))
                     .addValue("promptId", existing.promptId)

@@ -4,7 +4,9 @@ import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
 import promptengine.domain.audit.AuditFailureHandler
+import promptengine.domain.audit.AuditLogEntry
 import promptengine.domain.audit.AuditOutcome
+import promptengine.domain.audit.AuditQuery
 import promptengine.domain.audit.AuditRecord
 import promptengine.domain.audit.AuditRepository
 import promptengine.domain.execution.ExecutionPolicy
@@ -15,6 +17,7 @@ import promptengine.domain.pipeline.PipelineRequest
 import promptengine.domain.prompt.PromptKey
 import promptengine.domain.prompt.VersionRef
 import promptengine.domain.shared.Cost
+import promptengine.domain.shared.Page
 import promptengine.domain.shared.PromptRequest
 import promptengine.domain.shared.TokenCount
 import java.math.BigDecimal
@@ -49,10 +52,18 @@ class AuditStageTest {
         override fun append(record: AuditRecord) {
             records += record
         }
+
+        override fun record(entry: AuditLogEntry) = Unit
+
+        override fun search(query: AuditQuery): Page<AuditLogEntry> = Page(emptyList(), query.page, query.size, 0)
     }
 
     private class ThrowingAuditRepository : AuditRepository {
         override fun append(record: AuditRecord): Nothing = error("audit store unavailable (test)")
+
+        override fun record(entry: AuditLogEntry): Nothing = error("audit store unavailable (test)")
+
+        override fun search(query: AuditQuery): Nothing = error("audit store unavailable (test)")
     }
 
     private class RecordingAuditFailureHandler : AuditFailureHandler {

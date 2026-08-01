@@ -746,16 +746,22 @@ E2Eテスト（tests/integration）: 3モードそれぞれで、
 
 ## 6.10 P9 — REST API + 認可
 
-```
+submit-review/approve/reject の3エンドポイントは M2（ReviewCase Aggregate実装後）へ
+先送り済み（ADR-0016）。ReviewCase Aggregateを経由しない実装で公開すると、対応する
+Domain Event発行（監査ログの正規の記録経路）を伴わない状態遷移を外部から起こせて
+しまうため。
+
+```text
 >>>
 docs/PromptEngine_設計書.md の §13（API設計）全体を読んでください。
 表に無いエンドポイント・エラーコードを追加しないこと。
 
 prompt-engine-interface に REST層を実装します。
 1. Controller: §13.1 の表のうち M1 対象分
-   （Prompt CRUD / Version / diff / lifecycle遷移 / compile / render / execute /
-    aliases / dependencies / audit-logs / metrics）
-   ※ experiments 系は M2 なので実装しない
+   （Prompt CRUD / Version / diff / lifecycle遷移(publish/rollback/deprecate) /
+    compile / render / execute / aliases / dependencies / audit-logs / metrics）
+   ※ experiments 系、および submit-review/approve/reject は M2 なので実装しない
+     （ReviewCase Aggregate未実装のため。ADR-0016、GitHub Issue #9）
 2. DTO は §13.2 の JSON 例と完全一致させる（フィールド名・ネスト構造）
 3. GlobalExceptionHandler: §13.3 の HTTP↔code 対応表を網羅
 4. Spring Security Resource Server（JWT）

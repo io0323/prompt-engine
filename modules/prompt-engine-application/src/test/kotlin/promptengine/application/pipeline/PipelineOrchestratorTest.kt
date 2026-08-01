@@ -6,7 +6,9 @@ import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import org.junit.jupiter.api.Test
 import promptengine.domain.audit.AuditFailureHandler
+import promptengine.domain.audit.AuditLogEntry
 import promptengine.domain.audit.AuditOutcome
+import promptengine.domain.audit.AuditQuery
 import promptengine.domain.audit.AuditRecord
 import promptengine.domain.audit.AuditRepository
 import promptengine.domain.composition.CircularDependencyException
@@ -52,6 +54,7 @@ import promptengine.domain.render.RenderedPrompt
 import promptengine.domain.shared.Cost
 import promptengine.domain.shared.ExtendsRefApi
 import promptengine.domain.shared.LatencyMs
+import promptengine.domain.shared.Page
 import promptengine.domain.shared.PromptRequest
 import promptengine.domain.shared.SemVer
 import promptengine.domain.shared.SensitiveValue
@@ -581,10 +584,18 @@ class PipelineOrchestratorTest {
         override fun append(record: AuditRecord) {
             records += record
         }
+
+        override fun record(entry: AuditLogEntry) = Unit
+
+        override fun search(query: AuditQuery): Page<AuditLogEntry> = Page(emptyList(), query.page, query.size, 0)
     }
 
     private class ThrowingAuditRepository : AuditRepository {
         override fun append(record: AuditRecord): Nothing = error("audit store unavailable (test)")
+
+        override fun record(entry: AuditLogEntry): Nothing = error("audit store unavailable (test)")
+
+        override fun search(query: AuditQuery): Nothing = error("audit store unavailable (test)")
     }
 
     private class RecordingAuditFailureHandler : AuditFailureHandler {
