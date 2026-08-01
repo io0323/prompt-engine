@@ -85,23 +85,27 @@ class JdbcAuditRepository(
         }
         val whereClause = if (conditions.isEmpty()) "" else "WHERE ${conditions.joinToString(" AND ")}"
 
+        // NIL_PROMPT_ID（promptKeyがnullの記録）で書かれた行はprompts側に対応するUUIDが
+        // 存在しない。INNER JOINだとこれらの行がsearchから恒久的に見えなくなる
+        // （書き込みは成功するのに検索できない、というCodeRabbitレビュー指摘）ため、
+        // LEFT JOINにしaggregate_idは該当prompt_keyが無ければ空文字列を返す。
         val total =
             jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM audit_logs al JOIN prompts p ON p.prompt_id = al.aggregate_id $whereClause",
+                "SELECT COUNT(*) FROM audit_logs al LEFT JOIN prompts p ON p.prompt_id = al.aggregate_id $whereClause",
                 params,
                 Long::class.java,
             ) ?: 0L
 
-        params.addValue("limit", query.size).addValue("offset", query.page * query.size)
+        params.addValue("limit", query.size).addValue("offset", query.page.toLong() * query.size)
         val items =
             jdbcTemplate.query(
                 """
                 SELECT al.audit_id, al.aggregate_type, p.prompt_key AS aggregate_id, al.action, al.actor,
                        al.payload::text AS payload, al.trace_id, al.occurred_at
                 FROM audit_logs al
-                JOIN prompts p ON p.prompt_id = al.aggregate_id
+                LEFT JOIN prompts p ON p.prompt_id = al.aggregate_id
                 $whereClause
-                ORDER BY al.occurred_at DESC
+                ORDER BY al.occurred_at DESC, al.audit_id DESC
                 LIMIT :limit OFFSET :offset
                 """.trimIndent(),
                 params,
@@ -109,7 +113,7 @@ class JdbcAuditRepository(
                 AuditLogEntry(
                     auditId = rs.getObject("audit_id", UUID::class.java),
                     aggregateType = rs.getString("aggregate_type"),
-                    aggregateId = rs.getString("aggregate_id"),
+                    aggregateId = rs.getString("aggregate_id") ?: "",
                     action = rs.getString("action"),
                     actor = rs.getString("actor"),
                     payload = rs.getString("payload"),

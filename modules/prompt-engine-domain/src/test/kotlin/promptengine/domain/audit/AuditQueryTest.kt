@@ -1,11 +1,23 @@
 package promptengine.domain.audit
 
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
 import promptengine.domain.shared.Page
 import java.time.Instant
 
 class AuditQueryTest {
+    @Test
+    fun `pageが負の場合は例外を投げる`() {
+        shouldThrow<IllegalArgumentException> { AuditQuery(page = -1) }
+    }
+
+    @Test
+    fun `sizeが0以下または上限超過の場合は例外を投げる`() {
+        shouldThrow<IllegalArgumentException> { AuditQuery(size = 0) }
+        shouldThrow<IllegalArgumentException> { AuditQuery(size = Page.MAX_SIZE + 1) }
+    }
+
     @Test
     fun `既定値はaggregateId actor from toがnull page0 sizeはDEFAULT_SIZE`() {
         val query = AuditQuery()

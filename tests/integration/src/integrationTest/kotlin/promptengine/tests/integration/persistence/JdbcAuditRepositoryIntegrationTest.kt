@@ -3,6 +3,7 @@ package promptengine.tests.integration.persistence
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
+import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.shouldBe
 import org.flywaydb.core.Flyway
 import org.junit.jupiter.api.AfterAll
@@ -132,6 +133,28 @@ class JdbcAuditRepositoryIntegrationTest {
         val page = auditRepository.search(AuditQuery(aggregateId = key.value, actor = "user:a"))
 
         page.items.map { it.actor } shouldBe listOf("user:a")
+    }
+
+    @Test
+    fun `promptKeyがnullのappend記録もsearchで見つかる`() {
+        // JdbcAuditRepository.appendはpromptKey nullの場合prompts行に紐付かないNIL_PROMPT_IDで
+        // 書き込む。LEFT JOINでない実装だとこれらの行はsearchから恒久的に見えなくなる
+        // （CodeRabbitレビュー指摘、書き込みは成功するのに検索できない状態）。
+        val traceId = "trace-null-promptkey-${UUID.randomUUID()}"
+        val record =
+            AuditRecord(
+                traceId = traceId,
+                promptKey = null,
+                mode = PipelineMode.RENDER_ONLY,
+                stageDurationsMs = mapOf("Load" to 3L),
+                outcome = AuditOutcome.Success,
+                occurredAt = Instant.now(),
+            )
+
+        auditRepository.append(record)
+
+        val page = auditRepository.search(AuditQuery(actor = "system"))
+        page.items.map { it.traceId } shouldContain traceId
     }
 
     private fun logEntry(

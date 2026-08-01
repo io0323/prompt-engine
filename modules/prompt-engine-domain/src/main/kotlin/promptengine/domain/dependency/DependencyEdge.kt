@@ -18,4 +18,5 @@ data class DependencyEdge(
     val toVersion: String?,
 )
 
+/** [DependencyEdge.toKey]が指す参照先の種別。Template/Fragment/Prompt本体のいずれかを表す。 */
 enum class DependencyKind { TEMPLATE, FRAGMENT, PROMPT }

@@ -9,6 +9,7 @@ import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
+import org.springframework.jdbc.core.namedparam.MapSqlParameterSource
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
 import org.springframework.jdbc.datasource.DataSourceTransactionManager
 import org.springframework.transaction.support.TransactionTemplate
@@ -35,6 +36,7 @@ import javax.sql.DataSource
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class JdbcPromptMetadataRepositoryIntegrationTest {
     private lateinit var dataSource: DataSource
+    private lateinit var jdbcTemplate: NamedParameterJdbcTemplate
     private lateinit var metadataRepository: JdbcPromptMetadataRepository
     private lateinit var promptRepository: EventStorePromptRepository
 
@@ -52,9 +54,9 @@ class JdbcPromptMetadataRepositoryIntegrationTest {
         dataSource = HikariDataSource(hikariConfig)
         Flyway.configure().dataSource(dataSource).load().migrate()
 
-        val jdbcTemplate = NamedParameterJdbcTemplate(dataSource)
+        jdbcTemplate = NamedParameterJdbcTemplate(dataSource)
         val transactionTemplate = TransactionTemplate(DataSourceTransactionManager(dataSource))
-        metadataRepository = JdbcPromptMetadataRepository(jdbcTemplate)
+        metadataRepository = JdbcPromptMetadataRepository(jdbcTemplate, transactionTemplate)
         promptRepository = EventStorePromptRepository(jdbcTemplate, transactionTemplate, jacksonObjectMapper())
     }
 
@@ -106,16 +108,27 @@ class JdbcPromptMetadataRepositoryIntegrationTest {
 
     @Test
     fun `同名categoryは同一category_idを再利用する`() {
+        // find()が返すcategory名の一致だけでは、findOrCreateCategoryが同名で2行作成していても
+        // 検出できない（CodeRabbitレビュー指摘）。categoriesテーブルを直接問い合わせ、
+        // 行そのものが1件に重複排除されていることを検証する。
         val key1 = uniqueKey()
         val key2 = uniqueKey()
+        val categoryName = "shared-${UUID.randomUUID()}"
         createPrompt(key1)
         createPrompt(key2)
 
-        metadataRepository.upsert(PromptMetadata(key1, "name1", category = "shared"))
-        metadataRepository.upsert(PromptMetadata(key2, "name2", category = "shared"))
+        metadataRepository.upsert(PromptMetadata(key1, "name1", category = categoryName))
+        metadataRepository.upsert(PromptMetadata(key2, "name2", category = categoryName))
 
-        metadataRepository.find(key1)!!.category shouldBe "shared"
-        metadataRepository.find(key2)!!.category shouldBe "shared"
+        metadataRepository.find(key1)!!.category shouldBe categoryName
+        metadataRepository.find(key2)!!.category shouldBe categoryName
+        val categoryRowCount =
+            jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM categories WHERE name = :name",
+                MapSqlParameterSource().addValue("name", categoryName),
+                Long::class.java,
+            )
+        categoryRowCount shouldBe 1L
     }
 
     @Test

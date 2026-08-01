@@ -2,6 +2,7 @@ package promptengine.infrastructure.persistence
 
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
+import promptengine.domain.prompt.LifecycleState
 import promptengine.domain.prompt.PromptKey
 import promptengine.domain.prompt.PromptSearchCriteria
 import promptengine.domain.prompt.PromptSearchRepository
@@ -26,7 +27,7 @@ class JdbcPromptSearchRepository(
         val countSql = "SELECT COUNT(DISTINCT p.prompt_id) $baseQuery"
         val total = jdbcTemplate.queryForObject(countSql, params, Long::class.java) ?: 0L
 
-        params.addValue("limit", criteria.size).addValue("offset", criteria.page * criteria.size)
+        params.addValue("limit", criteria.size).addValue("offset", criteria.page.toLong() * criteria.size)
         val items = queryItems(baseQuery, params)
         return Page(items, criteria.page, criteria.size, total)
     }
@@ -81,40 +82,73 @@ class JdbcPromptSearchRepository(
         $whereClause
         """.trimIndent()
 
+    /**
+     * ページ内の全Promptのtagsを1クエリでまとめて取得してから[PromptSummary]を組み立てる。
+     * 行マッパー内で`findTags`をPromptごとに呼ぶN+1実装は、開いたままの外側`ResultSet`の下で
+     * ネストしたクエリが別コネクションを借用し、ページサイズに比例して接続を圧迫する
+     * （CodeRabbitレビュー指摘）。
+     */
     private fun queryItems(
         baseQuery: String,
         params: MapSqlParameterSource,
-    ): List<PromptSummary> =
-        jdbcTemplate.query(
-            """
-            SELECT p.prompt_id, p.prompt_key, p.name, c.name AS category_name, rv.status,
-                   latest.version AS latest_version, published.version AS published_version
-            $baseQuery
-            ORDER BY p.prompt_key
-            LIMIT :limit OFFSET :offset
-            """.trimIndent(),
-            params,
-        ) { rs, _ ->
-            val promptId = rs.getObject("prompt_id", UUID::class.java)
+    ): List<PromptSummary> {
+        val rows =
+            jdbcTemplate.query(
+                """
+                SELECT p.prompt_id, p.prompt_key, p.name, c.name AS category_name, rv.status,
+                       latest.version AS latest_version, published.version AS published_version
+                $baseQuery
+                ORDER BY p.prompt_key
+                LIMIT :limit OFFSET :offset
+                """.trimIndent(),
+                params,
+            ) { rs, _ ->
+                PromptSummaryRow(
+                    promptId = rs.getObject("prompt_id", UUID::class.java),
+                    key = PromptKey(rs.getString("prompt_key")),
+                    name = rs.getString("name"),
+                    category = rs.getString("category_name"),
+                    status = lifecycleStateFromDbValue(rs.getString("status")),
+                    latestVersion = rs.getString("latest_version"),
+                    publishedVersion = rs.getString("published_version"),
+                )
+            }
+        val tagsByPromptId = findTagsByPromptIds(rows.map { it.promptId })
+        return rows.map { row ->
             PromptSummary(
-                key = PromptKey(rs.getString("prompt_key")),
-                name = rs.getString("name"),
-                category = rs.getString("category_name"),
-                tags = findTags(promptId),
-                status = lifecycleStateFromDbValue(rs.getString("status")),
-                latestVersion = rs.getString("latest_version"),
-                publishedVersion = rs.getString("published_version"),
+                key = row.key,
+                name = row.name,
+                category = row.category,
+                tags = tagsByPromptId[row.promptId] ?: emptyList(),
+                status = row.status,
+                latestVersion = row.latestVersion,
+                publishedVersion = row.publishedVersion,
             )
         }
+    }
 
-    private fun findTags(promptId: UUID): List<String> =
-        jdbcTemplate.query(
+    private fun findTagsByPromptIds(promptIds: List<UUID>): Map<UUID, List<String>> {
+        if (promptIds.isEmpty()) return emptyMap()
+        return jdbcTemplate.query(
             """
-            SELECT t.name FROM tags t
+            SELECT pt.prompt_id, t.name
+            FROM tags t
             JOIN prompt_tags pt ON pt.tag_id = t.tag_id
-            WHERE pt.prompt_id = :promptId
+            WHERE pt.prompt_id IN (:promptIds)
             ORDER BY t.name
             """.trimIndent(),
-            MapSqlParameterSource().addValue("promptId", promptId),
-        ) { rs, _ -> rs.getString("name") }
+            MapSqlParameterSource().addValue("promptIds", promptIds),
+        ) { rs, _ -> rs.getObject("prompt_id", UUID::class.java) to rs.getString("name") }
+            .groupBy({ it.first }, { it.second })
+    }
+
+    private data class PromptSummaryRow(
+        val promptId: UUID,
+        val key: PromptKey,
+        val name: String,
+        val category: String?,
+        val status: LifecycleState,
+        val latestVersion: String,
+        val publishedVersion: String?,
+    )
 }

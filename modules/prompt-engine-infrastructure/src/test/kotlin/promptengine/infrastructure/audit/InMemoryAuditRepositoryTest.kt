@@ -131,6 +131,19 @@ class InMemoryAuditRepositoryTest {
     }
 
     @Test
+    fun `page が巨大でもオーバーフローせず空ページを返す`() {
+        // page * sizeをIntのまま計算するとInt.MAX_VALUE付近でオーバーフローし、
+        // 負のfromIndexによりIndexOutOfBoundsException等を起こしうる（CodeRabbitレビュー指摘）。
+        val repository = InMemoryAuditRepository(setOf("local"))
+        repository.record(logEntry("support/faq", "user:a", Instant.ofEpochSecond(1)))
+
+        val page = repository.search(AuditQuery(page = Int.MAX_VALUE / 10, size = 20))
+
+        page.items shouldBe emptyList()
+        page.totalElements shouldBe 1L
+    }
+
+    @Test
     fun `searchはpage size でページングする`() {
         val repository = InMemoryAuditRepository(setOf("local"))
         repeat(5) { i -> repository.record(logEntry("support/faq", "user:$i", Instant.ofEpochSecond(i.toLong()))) }

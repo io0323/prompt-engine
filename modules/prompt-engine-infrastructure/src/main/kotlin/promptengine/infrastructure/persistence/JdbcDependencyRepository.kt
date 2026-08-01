@@ -11,6 +11,13 @@ import java.util.UUID
 
 /**
  * [DependencyRepository]のJDBC実装（`dependencies`テーブル、設計書§12、ADR-0017）。
+ *
+ * `dependencies.to_kind`列を書き込む本番コードは現状無く（P9bで追加予定）、これまで
+ * テストフィクスチャが小文字（`"template"`/`"fragment"`/`"prompt"`）で書き込んでいた。
+ * [DependencyKind.name]（大文字）とのcasing不一致で`findInbound`が0件を返す不具合が
+ * CIで顕在化したため（CodeRabbitレビュー指摘）、[findInbound]では`UPPER(d.to_kind)`で
+ * 大文字小文字を無視して比較する。P9bで実際の書き込み経路を実装する際は
+ * `DependencyKind.name`（大文字）で統一して書き込むこと。
  */
 class JdbcDependencyRepository(
     private val jdbcTemplate: NamedParameterJdbcTemplate,

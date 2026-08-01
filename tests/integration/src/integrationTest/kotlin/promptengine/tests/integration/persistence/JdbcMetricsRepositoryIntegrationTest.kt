@@ -126,6 +126,10 @@ class JdbcMetricsRepositoryIntegrationTest {
         summary.totalInputTokens.value shouldBe 350
         summary.totalOutputTokens.value shouldBe 130
         summary.successRate shouldBe (2.0 / 3.0)
+        // SUM(0.01 + 0.02 + 0.00) = 0.03。BigDecimalのスケール差異を避けるためcompareToで比較する。
+        summary.totalCost.value.compareTo(BigDecimal("0.03")) shouldBe 0
+        // AVG(200, 400, 100) = 233.33...。rs.getLong はJDBCのNUMERIC→long変換で小数部を切り捨てる。
+        summary.averageLatency.value shouldBe 233L
     }
 
     @Test

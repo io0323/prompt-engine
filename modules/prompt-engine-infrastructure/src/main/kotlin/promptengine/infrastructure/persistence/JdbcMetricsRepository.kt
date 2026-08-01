@@ -14,6 +14,11 @@ import java.time.Instant
 
 /**
  * [MetricsRepository]のJDBC実装（`execution_logs`テーブル、設計書§12、ADR-0017）。
+ *
+ * `execution_logs.status`列を書き込む本番コードは現状無く（P8のPipeline実行はAuditRecord
+ * のみへ記録し、execution_logsへは書き込まない）、`'success'`（小文字）は本Repositoryの
+ * テストフィクスチャが定めた暫定値。実際の書き込み経路を実装する際は、値の大文字小文字を
+ * [JdbcDependencyRepository]の`to_kind`と同様に統一すること（CodeRabbitレビュー指摘）。
  */
 class JdbcMetricsRepository(
     private val jdbcTemplate: NamedParameterJdbcTemplate,

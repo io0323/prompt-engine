@@ -1,10 +1,22 @@
 package promptengine.domain.prompt
 
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
 import promptengine.domain.shared.Page
 
 class PromptSearchCriteriaTest {
+    @Test
+    fun `pageが負の場合は例外を投げる`() {
+        shouldThrow<IllegalArgumentException> { PromptSearchCriteria(page = -1) }
+    }
+
+    @Test
+    fun `sizeが0以下または上限超過の場合は例外を投げる`() {
+        shouldThrow<IllegalArgumentException> { PromptSearchCriteria(size = 0) }
+        shouldThrow<IllegalArgumentException> { PromptSearchCriteria(size = Page.MAX_SIZE + 1) }
+    }
+
     @Test
     fun `既定値はq tag category statusがnull page0 sizeはDEFAULT_SIZE`() {
         val criteria = PromptSearchCriteria()

@@ -46,8 +46,11 @@ class InMemoryAuditRepository(activeProfiles: Set<String>) : AuditRepository {
                     .filter { query.to == null || !it.occurredAt.isAfter(query.to) }
                     .sortedByDescending { it.occurredAt }
             }
-        val fromIndex = (query.page * query.size).coerceAtMost(filtered.size)
-        val toIndex = (fromIndex + query.size).coerceAtMost(filtered.size)
+        // page/sizeはAuditQuery.initでpage>=0・size<=MAX_SIZEを保証されるが、pageの上限は
+        // 無いため、page * sizeをIntのまま計算するとオーバーフローしうる（CodeRabbitレビュー指摘）。
+        // Long演算で計算してからfiltered.sizeでクランプする。
+        val fromIndex = (query.page.toLong() * query.size).coerceAtMost(filtered.size.toLong()).toInt()
+        val toIndex = (fromIndex.toLong() + query.size).coerceAtMost(filtered.size.toLong()).toInt()
         return Page(
             items = filtered.subList(fromIndex, toIndex),
             page = query.page,

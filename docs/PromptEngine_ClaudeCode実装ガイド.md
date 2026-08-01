@@ -751,7 +751,7 @@ submit-review/approve/reject の3エンドポイントは M2（ReviewCase Aggreg
 Domain Event発行（監査ログの正規の記録経路）を伴わない状態遷移を外部から起こせて
 しまうため。
 
-```
+```text
 >>>
 docs/PromptEngine_設計書.md の §13（API設計）全体を読んでください。
 表に無いエンドポイント・エラーコードを追加しないこと。
