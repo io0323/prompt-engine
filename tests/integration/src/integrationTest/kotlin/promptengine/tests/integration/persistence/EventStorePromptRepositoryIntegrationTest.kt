@@ -303,6 +303,45 @@ class EventStorePromptRepositoryIntegrationTest {
         snapshotSequences shouldBe listOf(2L)
     }
 
+    @Test
+    fun `prompt_snapshots state のJSONにもoutput宣言が欠落せず書き込まれる`() {
+        // findByKeyは常にRDB投影（prompts/prompt_versions）から復元し、prompt_snapshotsは
+        // 書き込み専用（読み込みは監査・障害復旧用の別経路として将来実装、ADR-0006・
+        // PromptSnapshotPayloadのKDoc「逆変換は本フェーズでは実装しない」）。そのため
+        // 「復元して一致することを確認する」形のテストは書けない。代わりに、
+        // PromptSnapshotPayload.from()が独自にPromptV/PromptVersionのフィールドを
+        // 写す変換処理を持つ（domain型を直接Jackson直列化しない設計）ため、この変換自体が
+        // outputフィールドを見落としていないかをprompt_snapshots.stateの生JSONを直接検証する
+        // （CodeRabbitレビュー指摘、P2でマスク処理の書き込み箇所を1つ見落としたのと同じ構図
+        // ——書き込み経路が複数箇所に分かれている場合、片方だけの検証では見落としを検出できない）。
+        val key = uniqueKey()
+        val v1 = SemVer(0, 1, 0)
+        val outputDeclaration = OutputDeclaration(format = OutputFormat.JSON, schemaRef = "schemas/snapshot-check@1")
+
+        val (created, createdEvent) =
+            Prompt.create(key, NewPromptVersion(v1, PromptContent("body"), output = outputDeclaration), context)
+        repository.save(created, listOf(createdEvent))
+        // snapshotThreshold=2のため、2件目のイベント（v2追加）でスナップショットが書かれる。
+        val (withV2, v2Event) =
+            repository.findByKey(key)!!.newVersion(NewPromptVersion(SemVer(0, 2, 0), PromptContent("body v2")), context)
+        repository.save(withV2, listOf(v2Event))
+
+        val promptId = findPromptId(key)
+        val snapshotStateJson =
+            jdbcTemplate.queryForObject(
+                """
+                SELECT state::text FROM prompt_snapshots
+                WHERE aggregate_id = :promptId ORDER BY sequence DESC LIMIT 1
+                """.trimIndent(),
+                MapSqlParameterSource("promptId", promptId),
+                String::class.java,
+            )!!
+        val snapshotTree = jacksonObjectMapper().readTree(snapshotStateJson)
+        val v1Node = snapshotTree.get("versions").first { it.get("semVer").asText() == "0.1.0" }
+        v1Node.get("output").get("format").asText() shouldBe "JSON"
+        v1Node.get("output").get("schemaRef").asText() shouldBe "schemas/snapshot-check@1"
+    }
+
     private fun findPromptId(key: PromptKey): UUID =
         jdbcTemplate.queryForObject(
             "SELECT prompt_id FROM prompts WHERE prompt_key = :promptKey",
