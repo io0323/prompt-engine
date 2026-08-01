@@ -45,18 +45,22 @@ interface PromptMetadataRepository {
 
 ### `EventStorePromptRepository`との整合
 
-`upsertPrompt`（既存、P2）は`prompts.name`列に`prompt.key.name`を無条件で書き込む
-（Aggregate保存のたびに実行される）。`PromptMetadataRepository.upsert`が別途`name`列を
-更新しても、次にAggregateが保存されるタイミングでこの上書きにより値が失われる。
-これを避けるため、`JdbcPromptMetadataRepository`（9a）は`name`/`category_id`/
-`description`の書き込みを`UPDATE prompts SET name = ..., category_id = ..., description = ...
-WHERE prompt_id = ...`という、`row_version`や`state`など`EventStorePromptRepository`が
-管理する列に触れない限定的なUPDATE文で行う。両Repositoryが同じ`prompts`テーブルの
-異なる列サブセットを独立に書く形になるが、列が重複しない（`name`は両方が触るため
-例外的に競合しうる）ため、`PromptCommandService.updateMetadata`（9b）は
-`PromptMetadataRepository.upsert`のみを呼び、`Prompt` Aggregate自体の`save`は
-呼ばない（メタデータ更新はAggregateの状態遷移を伴わないため、そもそも`Prompt.save`を
-呼ぶ理由が無い）契約とすることで、書き込みタイミングの競合を構造的に避ける。
+`upsertPrompt`（既存、P2）は当初`prompts.name`列に`prompt.key.name`を無条件で書き込んで
+いた（Aggregate保存のたびに実行される）。`PromptMetadataRepository.upsert`が別途`name`列を
+更新しても、`submitForReview`/`approve`/`publish`等の状態遷移で`Prompt.save`が
+再度呼ばれるたびにこの上書きが発生し、設定済みのカスタム表示名が失われる
+（9aの`JdbcPromptSearchRepositoryIntegrationTest`で実際に顕在化し検出した）。
+これを避けるため、`upsertPrompt`のUPDATE分岐から`name`列への書き込みを削除し、
+INSERT時（初回作成、`PromptMetadata`未設定時の初期値）のみ`prompt.key.name`を
+書き込む形に修正した。以降、`name`列の更新は`JdbcPromptMetadataRepository`（9a）の
+`UPDATE prompts SET name = ..., category_id = ..., description = ... WHERE prompt_id = ...`
+という、`row_version`や`state`など`EventStorePromptRepository`が管理する列に触れない
+限定的なUPDATE文が単独で担う。これにより`name`列も他の列と同様、両Repositoryが
+重複せず異なる書き込みタイミング・条件で担当する形になる。加えて
+`PromptCommandService.updateMetadata`（9b）は`PromptMetadataRepository.upsert`のみを呼び、
+`Prompt` Aggregate自体の`save`は呼ばない（メタデータ更新はAggregateの状態遷移を伴わない
+ため、そもそも`Prompt.save`を呼ぶ理由が無い）契約とすることで、書き込みタイミングの
+競合を構造的に避ける。
 
 ### Command/Query経路
 

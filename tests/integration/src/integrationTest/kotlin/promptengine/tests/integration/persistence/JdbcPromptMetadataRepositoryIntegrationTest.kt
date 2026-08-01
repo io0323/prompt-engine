@@ -123,6 +123,21 @@ class JdbcPromptMetadataRepositoryIntegrationTest {
         metadataRepository.find(uniqueKey()) shouldBe null
     }
 
+    @Test
+    fun `upsert後にPrompt保存を挟んでもnameは上書きされない`() {
+        // EventStorePromptRepository.upsertPromptはUPDATE時にname列を触らない（ADR-0020）。
+        // submitForReview等の状態遷移でPrompt.saveが再度呼ばれても、
+        // PromptMetadataRepository.upsertで設定したカスタム名が失われないことを確認する。
+        val key = uniqueKey()
+        createPrompt(key)
+        metadataRepository.upsert(PromptMetadata(key, "カスタム表示名"))
+
+        val prompt = promptRepository.findByKey(key)!!
+        promptRepository.save(prompt.submitForReview(SemVer(1, 0, 0), validationPassed = true))
+
+        metadataRepository.find(key)!!.name shouldBe "カスタム表示名"
+    }
+
     private fun uniqueKey(): PromptKey = PromptKey("integration-test/${UUID.randomUUID()}")
 
     private companion object {
