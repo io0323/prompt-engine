@@ -239,6 +239,15 @@ renderHash = RenderHashCalculator.compute(messages, outputFormat, engineId = "pe
 `ExecutionPolicy.parseRepair`に従って回し、最終的に`ExecutionOutcome`を返す
 （成功時）か`ParseFailedException`を投げる（`parseRepair.maxAttempts`を使い切っても失敗した場合）。
 
+**修正（ADR-0015、supersedeではなく本決定への修正）**: 上記「§16拡張ポイント一覧に
+定義が無いためdomain Interfaceを持たない」という判断は、Interfaceをdomainに置く理由を
+「§16の拡張ポイントであること」の1点のみに絞ったために生じた。ADR-0015はこれを、
+「(a) §16拡張ポイントであること」と「(b) 上位レイヤ（Pipeline Orchestrator、P8）の
+依存性逆転」という2つの独立した理由があり、後者だけを理由にdomain Interfaceを
+置くことも正当である、と修正した。この結果、P8で`domain.execution.ExecutionEngine`
+Interfaceを新設し、`ExecutionCoordinator`はそれを実装する（クラス自体・シグネチャは
+変更しない）。詳細はADR-0015第1節を参照。
+
 ### 7. リトライの責務境界とエラー分類
 
 M1（P7時点、実APAP接続なし）では、**PE側（`RetryingExecutionAdapter`、`prompt-engine-core`、

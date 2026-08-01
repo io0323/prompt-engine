@@ -24,6 +24,8 @@ import promptengine.domain.prompt.NewPromptVersion
 import promptengine.domain.prompt.Prompt
 import promptengine.domain.prompt.PromptContent
 import promptengine.domain.prompt.PromptKey
+import promptengine.domain.render.OutputDeclaration
+import promptengine.domain.render.OutputFormat
 import promptengine.domain.shared.ExtendsRefApi
 import promptengine.domain.shared.SemVer
 import promptengine.domain.shared.VersionRange
@@ -47,6 +49,10 @@ import javax.sql.DataSource
  * - 保存→復元→内容一致（Draft/InReview/Approved/Published/Deprecated/Archivedの全状態を往復）
  * - イベント追記順序とsequenceの連番性
  * - 同時更新での楽観ロック衝突
+ *
+ * `output`（ADR-0015、V6マイグレーション）は`validation`等と同様に最初のシナリオへ組み込み、
+ * 宣言ありのVersion（v1）と宣言なしのVersion（v2、`output: null`）の両方を往復させて
+ * `output`列の読み書きが実際に配線されていることを確認する。
  */
 @OptIn(ExtendsRefApi::class)
 @Testcontainers
@@ -124,9 +130,10 @@ class EventStorePromptRepositoryIntegrationTest {
                 policies = listOf("no-pii"),
                 placeholders = PlaceholderMode.STRICT,
             )
+        val outputDeclaration = OutputDeclaration(format = OutputFormat.JSON, schemaRef = "schemas/answer@1")
 
-        // Draft（variables/contextRequirements/extends（key+range）/validationのround-tripも
-        // 合わせて検証する。ADR-0009・ADR-0012）
+        // Draft（variables/contextRequirements/extends（key+range）/validation/outputの
+        // round-tripも合わせて検証する。ADR-0009・ADR-0012・ADR-0015）
         val (created, createdEvent) =
             Prompt.create(
                 key,
@@ -137,6 +144,7 @@ class EventStorePromptRepositoryIntegrationTest {
                     contextRequirements,
                     extendsRef,
                     validationSettings,
+                    outputDeclaration,
                 ),
                 context,
             )
@@ -148,6 +156,7 @@ class EventStorePromptRepositoryIntegrationTest {
         reloaded.versions.single().contextRequirements shouldBe contextRequirements
         reloaded.versions.single().extends shouldBe extendsRef
         reloaded.versions.single().validation shouldBe validationSettings
+        reloaded.versions.single().output shouldBe outputDeclaration
 
         // InReview
         repository.save(reloaded.submitForReview(v1, validationPassed = true))
@@ -185,6 +194,9 @@ class EventStorePromptRepositoryIntegrationTest {
         v1AfterSupersede.state shouldBe LifecycleState.Deprecated
         v2AfterPublish.state shouldBe LifecycleState.Published
         v2AfterPublish.content shouldBe PromptContent("Answer(v2): {{question}}")
+        // v2はoutput:を宣言せずに作成した（NewPromptVersionの2引数コンストラクタ）ため、
+        // output=nullの往復（「宣言なし」がnullのまま保たれること）もここで確認する。
+        v2AfterPublish.output shouldBe null
 
         // Archived
         val (archived, archivedEvent) = reloaded.archive(v1, referencingClientCount = 0, force = false, context)
@@ -289,6 +301,45 @@ class EventStorePromptRepositoryIntegrationTest {
             ) { rs, _ -> rs.getLong("sequence") }
 
         snapshotSequences shouldBe listOf(2L)
+    }
+
+    @Test
+    fun `prompt_snapshots state のJSONにもoutput宣言が欠落せず書き込まれる`() {
+        // findByKeyは常にRDB投影（prompts/prompt_versions）から復元し、prompt_snapshotsは
+        // 書き込み専用（読み込みは監査・障害復旧用の別経路として将来実装、ADR-0006・
+        // PromptSnapshotPayloadのKDoc「逆変換は本フェーズでは実装しない」）。そのため
+        // 「復元して一致することを確認する」形のテストは書けない。代わりに、
+        // PromptSnapshotPayload.from()が独自にPromptV/PromptVersionのフィールドを
+        // 写す変換処理を持つ（domain型を直接Jackson直列化しない設計）ため、この変換自体が
+        // outputフィールドを見落としていないかをprompt_snapshots.stateの生JSONを直接検証する
+        // （CodeRabbitレビュー指摘、P2でマスク処理の書き込み箇所を1つ見落としたのと同じ構図
+        // ——書き込み経路が複数箇所に分かれている場合、片方だけの検証では見落としを検出できない）。
+        val key = uniqueKey()
+        val v1 = SemVer(0, 1, 0)
+        val outputDeclaration = OutputDeclaration(format = OutputFormat.JSON, schemaRef = "schemas/snapshot-check@1")
+
+        val (created, createdEvent) =
+            Prompt.create(key, NewPromptVersion(v1, PromptContent("body"), output = outputDeclaration), context)
+        repository.save(created, listOf(createdEvent))
+        // snapshotThreshold=2のため、2件目のイベント（v2追加）でスナップショットが書かれる。
+        val (withV2, v2Event) =
+            repository.findByKey(key)!!.newVersion(NewPromptVersion(SemVer(0, 2, 0), PromptContent("body v2")), context)
+        repository.save(withV2, listOf(v2Event))
+
+        val promptId = findPromptId(key)
+        val snapshotStateJson =
+            jdbcTemplate.queryForObject(
+                """
+                SELECT state::text FROM prompt_snapshots
+                WHERE aggregate_id = :promptId ORDER BY sequence DESC LIMIT 1
+                """.trimIndent(),
+                MapSqlParameterSource("promptId", promptId),
+                String::class.java,
+            )!!
+        val snapshotTree = jacksonObjectMapper().readTree(snapshotStateJson)
+        val v1Node = snapshotTree.get("versions").first { it.get("semVer").asText() == "0.1.0" }
+        v1Node.get("output").get("format").asText() shouldBe "JSON"
+        v1Node.get("output").get("schemaRef").asText() shouldBe "schemas/snapshot-check@1"
     }
 
     private fun findPromptId(key: PromptKey): UUID =

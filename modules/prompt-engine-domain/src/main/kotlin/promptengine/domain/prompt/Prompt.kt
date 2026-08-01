@@ -75,6 +75,7 @@ data class Prompt internal constructor(
                     version.contextRequirements,
                     version.extends,
                     version.validation,
+                    version.output,
                 )
             val prompt = Prompt(key, listOf(promptVersion))
             val event =
@@ -110,6 +111,7 @@ data class Prompt internal constructor(
                         it.contextRequirements,
                         it.extends,
                         it.validation,
+                        it.output,
                         it.state,
                     )
                 }
@@ -135,6 +137,7 @@ data class Prompt internal constructor(
                 version.contextRequirements,
                 version.extends,
                 version.validation,
+                version.output,
             )
         val prompt = copy(versions = versions + promptVersion)
         val event =

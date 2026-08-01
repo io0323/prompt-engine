@@ -3,11 +3,13 @@ package promptengine.engine.resolver
 import promptengine.domain.context.ContextBindingSet
 import promptengine.domain.context.ContextRequirement
 import promptengine.domain.context.ContextResolver
+import promptengine.domain.context.ContextResolverChain
 import promptengine.domain.context.ContextUnavailableException
 import promptengine.domain.shared.PromptRequest
 
 /**
  * [ContextResolver]の7スコープをまとめて解決・マージする（設計書§3.3・§5.4シーケンス）。
+ * [ContextResolverChain]の実装（ADR-0015決定1の原則）。
  *
  * マージ順序は設計書§2.7の通り固定（後勝ち）:
  * `environment → system → application → workflow → user → memory → conversation`。
@@ -23,7 +25,7 @@ import promptengine.domain.shared.PromptRequest
  */
 class ContextResolverImpl(
     private val resolvers: List<ContextResolver>,
-) {
+) : ContextResolverChain {
     private val resolversByScope: Map<String, ContextResolver> = resolvers.associateBy { it.scope() }
 
     /**
@@ -31,7 +33,7 @@ class ContextResolverImpl(
      * 重複scopeはドメイン層で構築時に拒否済み）を解決・マージし[ContextBindingSet]を返す。
      * `required`未充足時は[ContextUnavailableException]を投げる（クラスのKDoc参照）。
      */
-    fun resolve(
+    override fun resolve(
         requirements: List<ContextRequirement>,
         request: PromptRequest,
     ): ContextBindingSet {
