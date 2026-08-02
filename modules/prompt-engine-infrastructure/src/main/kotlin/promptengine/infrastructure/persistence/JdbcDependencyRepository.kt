@@ -12,12 +12,14 @@ import java.util.UUID
 /**
  * [DependencyRepository]のJDBC実装（`dependencies`テーブル、設計書§12、ADR-0017）。
  *
- * `dependencies.to_kind`列を書き込む本番コードは現状無く（P9bで追加予定）、これまで
- * テストフィクスチャが小文字（`"template"`/`"fragment"`/`"prompt"`）で書き込んでいた。
- * [DependencyKind.name]（大文字）とのcasing不一致で`findInbound`が0件を返す不具合が
- * CIで顕在化したため（CodeRabbitレビュー指摘）、[findInbound]では`UPPER(d.to_kind)`で
- * 大文字小文字を無視して比較する。P9bで実際の書き込み経路を実装する際は
- * `DependencyKind.name`（大文字）で統一して書き込むこと。
+ * [replaceOutbound]（P9bで追加）が本番の書き込み経路であり、`DependencyKind.name`
+ * （大文字）で統一して書き込む。過去に存在した小文字（`"template"`等）のテストフィクスチャとの
+ * casing不一致対策として、読み取り側（[findOutbound]/[findInbound]）は引き続き
+ * `UPPER(d.to_kind)`で大文字小文字を無視して比較する。
+ *
+ * P9b時点で[replaceOutbound]を呼ぶのはVersion作成コマンド（extends由来のTEMPLATE依存のみ）。
+ * import/include（FRAGMENT）・Nested Prompt（PROMPT、Issue #19未実装）由来の依存は
+ * まだ書き込まれない（docs/prompts/p9b.md参照）。
  */
 class JdbcDependencyRepository(
     private val jdbcTemplate: NamedParameterJdbcTemplate,
@@ -41,6 +43,74 @@ class JdbcDependencyRepository(
             )
         }
     }
+
+    override fun findOutbound(
+        promptKey: PromptKey,
+        semVer: SemVer,
+    ): List<DependencyEdge> {
+        val versionId = findVersionId(promptKey, semVer) ?: return emptyList()
+        return jdbcTemplate.query(
+            """
+            SELECT d.to_kind, d.to_key, d.to_version
+            FROM dependencies d
+            WHERE d.from_version_id = :versionId
+            """.trimIndent(),
+            MapSqlParameterSource().addValue("versionId", versionId),
+        ) { rs, _ ->
+            DependencyEdge(
+                fromKey = promptKey,
+                fromVersion = semVer,
+                toKind = DependencyKind.valueOf(rs.getString("to_kind").uppercase()),
+                toKey = rs.getString("to_key"),
+                toVersion = rs.getString("to_version"),
+            )
+        }
+    }
+
+    override fun replaceOutbound(
+        promptKey: PromptKey,
+        semVer: SemVer,
+        edges: List<DependencyEdge>,
+    ) {
+        val versionId =
+            findVersionId(promptKey, semVer)
+                ?: error("no prompt_versions row for ${promptKey.value}@$semVer")
+        jdbcTemplate.update(
+            "DELETE FROM dependencies WHERE from_version_id = :versionId",
+            MapSqlParameterSource().addValue("versionId", versionId),
+        )
+        edges.forEach { edge ->
+            jdbcTemplate.update(
+                """
+                INSERT INTO dependencies (from_version_id, to_kind, to_key, to_version)
+                VALUES (:versionId, :toKind, :toKey, :toVersion)
+                """.trimIndent(),
+                MapSqlParameterSource()
+                    .addValue("versionId", versionId)
+                    .addValue("toKind", edge.toKind.name)
+                    .addValue("toKey", edge.toKey)
+                    .addValue("toVersion", edge.toVersion),
+            )
+        }
+    }
+
+    private fun findVersionId(
+        promptKey: PromptKey,
+        semVer: SemVer,
+    ): UUID? =
+        jdbcTemplate
+            .query(
+                """
+                SELECT pv.version_id
+                FROM prompt_versions pv
+                JOIN prompts p ON p.prompt_id = pv.prompt_id
+                WHERE p.prompt_key = :promptKey AND pv.version = :version
+                """.trimIndent(),
+                MapSqlParameterSource()
+                    .addValue("promptKey", promptKey.value)
+                    .addValue("version", semVer.toString()),
+            ) { rs, _ -> rs.getObject("version_id", UUID::class.java) }
+            .firstOrNull()
 
     override fun findInbound(promptKey: PromptKey): List<DependencyEdge> =
         jdbcTemplate.query(

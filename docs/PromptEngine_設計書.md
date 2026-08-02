@@ -233,6 +233,8 @@ Promptがアプリケーションコード内に散在すると、(a) 変更に�
 
 ルール: Published Versionの内容はImmutable。修正は必ず新Versionとして作成。1 Promptにつき「Published」は同時に1 Version（Experiment中はVariantとして複数配信可）。
 
+`archive`の「参照クライアントゼロ確認」について: 真の参照クライアント（AACP等の外部呼出元）を評価する`execution_logs`（本節下部・§12）への書き込み経路がM1時点で未実装のため、M1では自動確認を行わず`force=true`のみでarchiveを受け付ける（P9b）。`execution_logs`書き込み経路の実装後に自動確認を復活させる計画は[Issue #48](https://github.com/io0323/prompt-engine/issues/48)で追跡する。
+
 ## 2.6 Prompt Pipeline仕様
 
 Pipelineは12ステージの直列実行。各ステージは `PipelineStage` Interface（§3.4）を実装し、`PipelineContext`（累積状態）を受け渡す。ステージ単位でTrace Span生成・所要時間記録。
@@ -1382,6 +1384,16 @@ entity audit_logs {
   * trace_id : VARCHAR
   * occurred_at
 }
+entity idempotency_keys {
+  * idempotency_key : VARCHAR <<PK>>  ' クライアントが送るIdempotency-Keyヘッダの値
+  --
+  * request_fingerprint : VARCHAR  ' 正規化済みリクエストのSHA-256ハッシュ。同一キー・別内容の再送検知用（P9b）
+  * status : VARCHAR  ' IN_PROGRESS/COMPLETED
+  result_type : VARCHAR  ' 完了後の結果型（完全修飾クラス名）。COMPLETEDまでNULL
+  result_json : JSON  ' 完了後の結果。COMPLETEDまでNULL
+  * created_at
+  completed_at
+}
 entity domain_events {
   * event_id : UUID <<PK>>
   --
@@ -1528,7 +1540,7 @@ outbox }o--|| domain_events : event_id
 | 401 | UNAUTHENTICATED |
 | 403 | PERMISSION_DENIED |
 | 404 | PROMPT_NOT_FOUND / VERSION_NOT_FOUND / FRAGMENT_NOT_FOUND / TEMPLATE_NOT_FOUND |
-| 409 | INVALID_STATE_TRANSITION / VERSION_CONFLICT / DUPLICATE_KEY |
+| 409 | INVALID_STATE_TRANSITION / VERSION_CONFLICT / DUPLICATE_KEY / IDEMPOTENCY_KEY_CONFLICT（同一Idempotency-Keyで異なるリクエスト内容） / IDEMPOTENCY_KEY_IN_PROGRESS（同一キーが処理中） |
 | 422 | VARIABLE_UNRESOLVED / CONTEXT_UNAVAILABLE / TOKEN_BUDGET_EXCEEDED |
 | 429 | RATE_LIMITED |
 | 502 | EXECUTION_FAILED（APAP起因） |
