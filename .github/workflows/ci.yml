@@ -11,7 +11,7 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-java@v5
+      - uses: actions/setup-java@v5.6.0
         with: { distribution: temurin, java-version: '21' }
       - uses: gradle/actions/setup-gradle@v6
       - name: Check for Gradle wrapper
@@ -28,7 +28,7 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-java@v5
+      - uses: actions/setup-java@v5.6.0
         with: { distribution: temurin, java-version: '21' }
       - uses: gradle/actions/setup-gradle@v6
       - name: Check for Gradle wrapper
@@ -45,7 +45,7 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-java@v5
+      - uses: actions/setup-java@v5.6.0
         with: { distribution: temurin, java-version: '21' }
       - uses: gradle/actions/setup-gradle@v6
       - name: Check for Gradle wrapper
@@ -62,7 +62,7 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-java@v5
+      - uses: actions/setup-java@v5.6.0
         with: { distribution: temurin, java-version: '21' }
       - uses: gradle/actions/setup-gradle@v6
       - name: Check for Gradle wrapper
@@ -79,8 +79,12 @@ jobs:
         if: steps.gradlew.outputs.exists == 'true'
         # integrationTest（P2〜）/ jacocoTestCoverageVerification（未導入）は
         # タスクが存在する場合のみ実行に加える。
+        # :tests:integration:verifyIntegrationTestExecuted は、integrationTestが
+        # SourceSet配線の破損等でNO-SOURCEのままsilent greenになっていないかを検証する
+        # 独立したタスクであり、上記の動的検出に関わらず必ず呼ぶ（検出ロジック自体が
+        # 壊れているケースも見逃さないため）。
         run: |
-          tasks="test"
+          tasks="test :tests:integration:verifyIntegrationTestExecuted"
           [ "${{ steps.tasks.outputs.integration_test }}" = "true" ] && tasks="$tasks integrationTest"
           [ "${{ steps.tasks.outputs.jacoco_verify }}" = "true" ] && tasks="$tasks jacocoTestCoverageVerification"
           ./gradlew $tasks --no-daemon

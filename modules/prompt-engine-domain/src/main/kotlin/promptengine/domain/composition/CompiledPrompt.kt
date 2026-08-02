@@ -1,6 +1,7 @@
 package promptengine.domain.composition
 
 import promptengine.domain.context.ContextRequirement
+import promptengine.domain.render.OutputDeclaration
 import promptengine.domain.template.ast.PromptAst
 import promptengine.domain.validation.ValidationSettings
 import promptengine.domain.variable.VariableDefinition
@@ -16,6 +17,7 @@ import promptengine.domain.variable.VariableDefinition
  * Template/Fragmentのcontext要求とのマージは行わない。TemplateVersion/FragmentVersionは
  * contextRequirementsを持たないため）。[validation] も同様にPrompt自身の宣言のみを
  * 引き継ぐ（ADR-0012決定2。TemplateVersion/FragmentVersionは`validation`を持たない）。
+ * [output]も同様（ADR-0015決定9。`output:`宣言が無ければ`null`）。
  *
  * data classなので、同一リポジトリ状態から得た2つの`CompiledPrompt`は`==`で
  * 構造的に比較できる（決定性テストの基盤、ADR-0009）。
@@ -26,4 +28,5 @@ data class CompiledPrompt(
     val variables: List<VariableDefinition>,
     val contextRequirements: List<ContextRequirement>,
     val validation: ValidationSettings = ValidationSettings(),
+    val output: OutputDeclaration? = null,
 )

@@ -11,6 +11,7 @@ import promptengine.domain.parsing.OutputSchema
 import promptengine.domain.parsing.ParsedOutput
 import promptengine.domain.render.MessageRole
 import promptengine.domain.render.OutputFormat
+import promptengine.domain.render.RenderFailedException
 import promptengine.domain.shared.SensitiveValue
 import promptengine.domain.shared.TokenCount
 import promptengine.domain.template.ast.BlockNode
@@ -356,12 +357,12 @@ class RenderEngineImplTest {
     }
 
     @Test
-    fun `outputFormatterが登録されていないoutputFormatを指定するとエラーを投げる`() {
+    fun `outputFormatterが登録されていないoutputFormatを指定するとRenderFailedExceptionを投げる`() {
         val engineWithoutJsonFormatter =
             RenderEngineImpl(DefaultTemplateEngine(), tokenizer, mapOf(OutputFormat.TEXT to BlankOutputFormatter))
         val compiled = compiledPrompt(TextNode("hi"))
 
-        shouldThrow<IllegalStateException> {
+        shouldThrow<RenderFailedException> {
             engineWithoutJsonFormatter.render(
                 compiled,
                 BindingSet.empty(),

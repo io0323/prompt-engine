@@ -2,19 +2,27 @@ package promptengine.engine.render
 
 import promptengine.domain.render.OutputFormat
 import promptengine.domain.render.RenderedMessage
+import promptengine.domain.render.RenderedPrompt
+import promptengine.domain.tokenizer.TokenizerPlugin
 import java.security.MessageDigest
 import java.text.Normalizer
 
 /**
- * [promptengine.domain.render.RenderedPrompt.renderHash]の算出ロジックと、その入力となる
- * `content`の正規化規則（設計書§2.9、ADR-0013決定1）。
+ * 未正規化の`messages`から一貫した[RenderedPrompt]（正規化済み`messages` + それに一致する
+ * `tokenEstimate`・`renderHash`）を組み立てる唯一の入口（設計書§2.9、ADR-0013決定1）。
  *
  * `RenderEngineImpl`（AST展開経由の通常render）と、parseRepair修復ラウンドの合成
  * `RenderedPrompt`構築（`ExecutionCoordinator`、ADR-0014決定6）の両方から再利用するため、
  * `engine.render`パッケージのinternalユーティリティとして抽出した（P7、ADR-0014）。
- * `internal`のため`prompt-engine-core`モジュール外からは参照できない。両呼出元とも、
- * [normalize]を適用した後の`content`を[compute]に渡すこと（CodeRabbitレビュー指摘: 正規化前の
- * `content`をハッシュ化すると、等価なはずのmessages列が異なる`renderHash`になりうる）。
+ * `internal`のため`prompt-engine-core`モジュール外からは参照できない。
+ *
+ * 正規化（改行コード・行末空白・Unicode NFC、ADR-0013決定1）とハッシュ算出を[build]内に
+ * 閉じ込め、正規化ロジック（`normalize`）とハッシュ算出ロジック（`compute`）は`private`とする。
+ * かつて両者を別々の`public`関数として公開していたところ、呼出元が`normalize`を呼び忘れたまま
+ * `compute`だけを呼べてしまい、正規化バイパスが実際に発生した（CodeRabbitレビュー指摘）。
+ * 新しい呼出元がこの構造を壊さない限り、未正規化の`content`が`renderHash`の入力になったり、
+ * 返却される`RenderedPrompt.messages`と実際にハッシュ化された内容が食い違ったりする経路は
+ * 存在しない（`messages`と`renderHash`を[build]が単一の呼出内で同時に確定させるため）。
  */
 internal object RenderHashCalculator {
     /** [RenderHashCalculator]自体のバージョン（renderHashに混入する、設計書§2.9「EngineVersion」）。 */
@@ -27,9 +35,26 @@ internal object RenderHashCalculator {
     private const val BYTE_1_SHIFT = 8
 
     /**
+     * [messages]（未正規化でよい）を正規化した上で、[tokenizerPlugin]による`tokenEstimate`と
+     * それに一致する`renderHash`を算出し、[RenderedPrompt]として返す。
+     */
+    fun build(
+        messages: List<RenderedMessage>,
+        outputFormat: OutputFormat,
+        engineId: String,
+        tokenizerPlugin: TokenizerPlugin,
+        engineVersion: String = ENGINE_VERSION,
+    ): RenderedPrompt {
+        val normalized = messages.map { RenderedMessage(it.role, normalize(it.content)) }
+        val tokenEstimate = tokenizerPlugin.estimate(normalized.joinToString(separator = "") { it.content })
+        val renderHash = compute(normalized, outputFormat, engineId, engineVersion)
+        return RenderedPrompt(normalized, outputFormat, tokenEstimate, renderHash)
+    }
+
+    /**
      * 改行コード・行末空白・Unicode正規化形（ADR-0013決定1）を[content]に適用する。
      */
-    fun normalize(content: String): String {
+    private fun normalize(content: String): String {
         val lineEndingsNormalized = content.replace(CRLF, "\n").replace(CR, "\n")
         val trailingWhitespaceStripped =
             lineEndingsNormalized.lineSequence().joinToString(separator = "\n") { it.trimEnd(' ', '\t') }
@@ -42,11 +67,11 @@ internal object RenderHashCalculator {
      * 構造の異なるmessages列がバイト列として偶然一致する余地が残る。長さを明示することで
      * フィールド境界を曖昧性なく復元可能にし、この衝突経路を構造的に排除する（ADR-0013決定1）。
      */
-    fun compute(
+    private fun compute(
         messages: List<RenderedMessage>,
         outputFormat: OutputFormat,
         engineId: String,
-        engineVersion: String = ENGINE_VERSION,
+        engineVersion: String,
     ): String {
         val digest = MessageDigest.getInstance("SHA-256")
         messages.forEach { message ->
