@@ -129,7 +129,7 @@ class EventStorePromptRepository(
             prompt.versions.forEach { version -> upsertVersion(promptId, version, actor, occurredAt) }
 
             if (events.isNotEmpty()) {
-                appendEvents(promptId, events)
+                jdbcTemplate.appendDomainEvents(objectMapper, promptId, events)
                 maybeSnapshot(promptId, prompt)
             }
 
@@ -362,43 +362,6 @@ class EventStorePromptRepository(
             MapSqlParameterSource("promptId", promptId),
             Long::class.java,
         )!!
-
-    private fun appendEvents(
-        promptId: UUID,
-        events: List<PromptDomainEvent>,
-    ) {
-        val baseSequence = currentMaxSequence(promptId)
-        events.forEachIndexed { index, event ->
-            // event.eventIdはPrompt側で発行済み（例: Prompt.publish内のUUID.randomUUID()）。
-            // ここで新規採番すると、リトライ時に同一イベントが別IDで重複登録されうる。
-            val eventId = event.eventId
-            jdbcTemplate.update(
-                """
-                INSERT INTO domain_events
-                    (event_id, aggregate_type, aggregate_id, sequence, event_type, actor, trace_id, payload, occurred_at)
-                VALUES
-                    (:eventId, :aggregateType, :aggregateId, :sequence, :eventType, :actor, :traceId, :payload::json, :occurredAt)
-                """.trimIndent(),
-                MapSqlParameterSource()
-                    .addValue("eventId", eventId)
-                    .addValue("aggregateType", event.aggregateType)
-                    .addValue("aggregateId", promptId)
-                    .addValue("sequence", baseSequence + index + 1)
-                    .addValue("eventType", event.eventType)
-                    .addValue("actor", event.actor)
-                    .addValue("traceId", event.traceId)
-                    .addValue("payload", objectMapper.writeValueAsString(event.payload))
-                    .addValue("occurredAt", Timestamp.from(event.occurredAt)),
-            )
-            jdbcTemplate.update(
-                "INSERT INTO outbox (outbox_id, event_id, created_at) VALUES (:outboxId, :eventId, :createdAt)",
-                MapSqlParameterSource()
-                    .addValue("outboxId", UUID.randomUUID())
-                    .addValue("eventId", eventId)
-                    .addValue("createdAt", Timestamp.from(Instant.now())),
-            )
-        }
-    }
 
     /** sequenceが直近スナップショットから [snapshotThreshold] 件を超えたらスナップショットを保存する（設計書§6.3）。 */
     private fun maybeSnapshot(

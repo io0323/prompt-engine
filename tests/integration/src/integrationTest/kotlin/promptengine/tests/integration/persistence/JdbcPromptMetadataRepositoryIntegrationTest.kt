@@ -56,7 +56,7 @@ class JdbcPromptMetadataRepositoryIntegrationTest {
 
         jdbcTemplate = NamedParameterJdbcTemplate(dataSource)
         val transactionTemplate = TransactionTemplate(DataSourceTransactionManager(dataSource))
-        metadataRepository = JdbcPromptMetadataRepository(jdbcTemplate, transactionTemplate)
+        metadataRepository = JdbcPromptMetadataRepository(jdbcTemplate, transactionTemplate, jacksonObjectMapper())
         promptRepository = EventStorePromptRepository(jdbcTemplate, transactionTemplate, jacksonObjectMapper())
     }
 

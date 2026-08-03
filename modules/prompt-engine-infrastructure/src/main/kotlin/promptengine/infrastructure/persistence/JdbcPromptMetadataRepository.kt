@@ -1,8 +1,10 @@
 package promptengine.infrastructure.persistence
 
+import com.fasterxml.jackson.databind.ObjectMapper
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
 import org.springframework.transaction.support.TransactionTemplate
+import promptengine.domain.prompt.PromptDomainEvent
 import promptengine.domain.prompt.PromptKey
 import promptengine.domain.prompt.PromptMetadata
 import promptengine.domain.prompt.PromptMetadataRepository
@@ -25,6 +27,7 @@ import java.util.UUID
 class JdbcPromptMetadataRepository(
     private val jdbcTemplate: NamedParameterJdbcTemplate,
     private val transactionTemplate: TransactionTemplate,
+    private val objectMapper: ObjectMapper,
 ) : PromptMetadataRepository {
     private data class PromptMetadataRow(
         val promptId: UUID,
@@ -62,7 +65,10 @@ class JdbcPromptMetadataRepository(
         )
     }
 
-    override fun upsert(metadata: PromptMetadata) {
+    override fun upsert(
+        metadata: PromptMetadata,
+        events: List<PromptDomainEvent>,
+    ) {
         transactionTemplate.executeWithoutResult {
             val promptId = findPromptId(metadata.key)
             val categoryId = metadata.category?.let { findOrCreateCategory(it) }
@@ -78,6 +84,7 @@ class JdbcPromptMetadataRepository(
                     .addValue("promptId", promptId),
             )
             replaceTags(promptId, metadata.tags)
+            jdbcTemplate.appendDomainEvents(objectMapper, promptId, events)
         }
     }
 
