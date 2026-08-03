@@ -74,6 +74,12 @@ class JdbcIdempotentCommandExecutor(
      * [operation]が失敗した場合、`IN_PROGRESS`のまま残った予約行を削除してから例外を再送出する。
      * 削除しないと、以降同一キー・同一fingerprintでの再送が[IdempotencyKeyInProgressException]で
      * 永久にブロックされ、失敗した処理をリトライできなくなる（レビュー指摘、Critical）。
+     *
+     * **既知の制約（[Issue #50](https://github.com/io0323/prompt-engine/issues/50)）**:
+     * この解放処理はJVMプロセスの正常な例外伝播を前提とする。プロセスがクラッシュした場合
+     * （OOM Kill・ノード障害等）は`catch`節自体が実行されず、予約が`IN_PROGRESS`のまま残る。
+     * 有効期限ベースで期限切れ予約を新規リクエストが奪取できるようにする対応をIssue #50で
+     * 追跡する（P10）。
      */
     @Suppress("TooGenericExceptionCaught")
     private fun <T : Any> runOperationOrReleaseReservation(

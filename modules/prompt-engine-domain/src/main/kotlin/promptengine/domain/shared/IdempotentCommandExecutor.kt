@@ -19,6 +19,14 @@ package promptengine.domain.shared
  * [IdempotencyKeyConflictException]を、同一キーが`IN_PROGRESS`中の再送は
  * [IdempotencyKeyInProgressException]を投げる。[idempotencyKey]が`null`の場合は
  * 冪等性を保証せず、都度[command]/[operation]を実行する。
+ *
+ * **既知の制約（[Issue #50](https://github.com/io0323/prompt-engine/issues/50)）**:
+ * [executeLongRunning]は[operation]が例外を投げた場合は`IN_PROGRESS`予約を解放するが、
+ * プロセスがクラッシュした場合（OOM Kill・ノード障害等）は解放処理自体が実行されず、
+ * 予約が`IN_PROGRESS`のまま残る。この場合、同一[idempotencyKey]への以降の全リクエストが
+ * [IdempotencyKeyInProgressException]で永久にブロックされる（手動のDB介入以外に復旧手段が無い）。
+ * `IN_PROGRESS`予約に有効期限を持たせ、期限切れ予約を新規リクエストが安全に奪取できるようにする
+ * 対応をIssue #50で追跡する（P10）。
  */
 interface IdempotentCommandExecutor {
     fun <T : Any> executeInTransaction(
