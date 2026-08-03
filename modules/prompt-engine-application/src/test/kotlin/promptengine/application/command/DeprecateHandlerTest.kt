@@ -17,7 +17,7 @@ class DeprecateHandlerTest {
     private val semVer = SemVer(1, 0, 0)
 
     @Test
-    fun `deprecates a Published version`() {
+    fun `Published版をdeprecateできる`() {
         val context =
             EventContext(actor = "tester", traceId = "trace-1", occurredAt = Instant.parse("2026-01-01T00:00:00Z"))
         val (created, _) = Prompt.create(promptKey, NewPromptVersion(semVer, PromptContent("body")), context)
@@ -34,7 +34,7 @@ class DeprecateHandlerTest {
     }
 
     @Test
-    fun `throws when the prompt does not exist`() {
+    fun `Promptが存在しなければ例外を投げる`() {
         val handler = DeprecateHandler(InMemoryPromptRepository(), PassthroughIdempotentCommandExecutor())
 
         shouldThrow<PromptVersionNotFoundException> {

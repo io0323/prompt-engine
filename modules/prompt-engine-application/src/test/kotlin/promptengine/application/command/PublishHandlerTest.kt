@@ -112,7 +112,7 @@ class PublishHandlerTest {
         )
 
     @Test
-    fun `publish is blocked when a TEMPLATE dependency is not Published`() {
+    fun `TEMPLATE依存がPublishedでなければpublishはブロックされる`() {
         val promptRepository = InMemoryPromptRepository().apply { seed(approvedPrompt()) }
         val templateRepository =
             InMemoryTemplateRepository().apply {
@@ -136,7 +136,7 @@ class PublishHandlerTest {
     }
 
     @Test
-    fun `publish succeeds when all TEMPLATE dependencies are Published`() {
+    fun `全てのTEMPLATE依存がPublishedであればpublishは成功する`() {
         val promptRepository = InMemoryPromptRepository().apply { seed(approvedPrompt()) }
         val templateRepository =
             InMemoryTemplateRepository().apply {
@@ -162,7 +162,7 @@ class PublishHandlerTest {
     }
 
     @Test
-    fun `publish is blocked when a TEMPLATE dependency does not exist`() {
+    fun `TEMPLATE依存が存在しなければpublishはブロックされる`() {
         val promptRepository = InMemoryPromptRepository().apply { seed(approvedPrompt()) }
         val dependencyRepository =
             FakeDependencyRepository(
@@ -176,7 +176,7 @@ class PublishHandlerTest {
     }
 
     @Test
-    fun `publish is blocked when a FRAGMENT dependency is not Published`() {
+    fun `FRAGMENT依存がPublishedでなければpublishはブロックされる`() {
         val fragmentKey = FragmentKey("team/snippet")
         val promptRepository = InMemoryPromptRepository().apply { seed(approvedPrompt()) }
         val fragmentRepository =
@@ -200,7 +200,7 @@ class PublishHandlerTest {
     }
 
     @Test
-    fun `publish succeeds when a FRAGMENT dependency is Published`() {
+    fun `FRAGMENT依存がPublishedであればpublishは成功する`() {
         val fragmentKey = FragmentKey("team/snippet")
         val promptRepository = InMemoryPromptRepository().apply { seed(approvedPrompt()) }
         val fragmentRepository =
@@ -225,7 +225,7 @@ class PublishHandlerTest {
     }
 
     @Test
-    fun `publish is blocked when a PROMPT dependency is not Published`() {
+    fun `PROMPT依存がPublishedでなければpublishはブロックされる`() {
         val dependencyPromptKey = PromptKey("team/other")
         val promptRepository =
             InMemoryPromptRepository().apply {
@@ -250,7 +250,7 @@ class PublishHandlerTest {
     }
 
     @Test
-    fun `publish succeeds when a PROMPT dependency is Published`() {
+    fun `PROMPT依存がPublishedであればpublishは成功する`() {
         val dependencyPromptKey = PromptKey("team/other")
         val promptRepository =
             InMemoryPromptRepository().apply {
@@ -269,7 +269,7 @@ class PublishHandlerTest {
     }
 
     @Test
-    fun `publish is blocked when a FRAGMENT dependency does not exist`() {
+    fun `FRAGMENT依存が存在しなければpublishはブロックされる`() {
         val promptRepository = InMemoryPromptRepository().apply { seed(approvedPrompt()) }
         val dependencyRepository =
             FakeDependencyRepository(
@@ -283,7 +283,7 @@ class PublishHandlerTest {
     }
 
     @Test
-    fun `publish is blocked when a PROMPT dependency does not exist`() {
+    fun `PROMPT依存が存在しなければpublishはブロックされる`() {
         val promptRepository = InMemoryPromptRepository().apply { seed(approvedPrompt()) }
         val dependencyRepository =
             FakeDependencyRepository(
@@ -297,7 +297,7 @@ class PublishHandlerTest {
     }
 
     @Test
-    fun `publish is blocked when the Published TEMPLATE version does not satisfy the version range`() {
+    fun `PublishedなTEMPLATE版がVersion範囲を満たさなければpublishはブロックされる`() {
         val promptRepository = InMemoryPromptRepository().apply { seed(approvedPrompt()) }
         val templateRepository =
             InMemoryTemplateRepository().apply {
@@ -322,7 +322,7 @@ class PublishHandlerTest {
     }
 
     @Test
-    fun `publish succeeds vacuously when there are no dependencies`() {
+    fun `依存が無ければpublishは空虚に成功する`() {
         val promptRepository = InMemoryPromptRepository().apply { seed(approvedPrompt()) }
         val handler =
             handlerWith(

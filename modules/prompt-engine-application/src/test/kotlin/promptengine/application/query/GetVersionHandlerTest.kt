@@ -20,7 +20,7 @@ class GetVersionHandlerTest {
         EventContext(actor = "tester", traceId = "trace-1", occurredAt = Instant.parse("2026-01-01T00:00:00Z"))
 
     @Test
-    fun `returns the matching version`() {
+    fun `一致するVersionを返す`() {
         val (draft, _) = Prompt.create(promptKey, NewPromptVersion(semVer, PromptContent("body")), context)
         val promptRepository = InMemoryPromptRepository().apply { seed(draft) }
         val handler = GetVersionHandler(promptRepository)
@@ -29,7 +29,7 @@ class GetVersionHandlerTest {
     }
 
     @Test
-    fun `throws when the version does not exist`() {
+    fun `Versionが存在しなければ例外を投げる`() {
         val (draft, _) = Prompt.create(promptKey, NewPromptVersion(semVer, PromptContent("body")), context)
         val promptRepository = InMemoryPromptRepository().apply { seed(draft) }
         val handler = GetVersionHandler(promptRepository)
@@ -40,7 +40,7 @@ class GetVersionHandlerTest {
     }
 
     @Test
-    fun `throws when the prompt does not exist`() {
+    fun `Promptが存在しなければ例外を投げる`() {
         val handler = GetVersionHandler(InMemoryPromptRepository())
 
         shouldThrow<PromptVersionNotFoundException> {

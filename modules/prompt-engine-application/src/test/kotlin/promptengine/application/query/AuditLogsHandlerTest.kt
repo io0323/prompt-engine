@@ -18,7 +18,7 @@ class AuditLogsHandlerTest {
     }
 
     @Test
-    fun `delegates to AuditRepository`() {
+    fun `AuditRepositoryへ委譲する`() {
         val handler = AuditLogsHandler(FakeAuditRepository())
 
         val page = handler.handle(AuditQuery(actor = "tester"))

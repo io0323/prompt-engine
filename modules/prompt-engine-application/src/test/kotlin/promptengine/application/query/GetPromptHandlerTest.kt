@@ -22,7 +22,7 @@ class GetPromptHandlerTest {
         EventContext(actor = "tester", traceId = "trace-1", occurredAt = Instant.parse("2026-01-01T00:00:00Z"))
 
     @Test
-    fun `returns metadata and versions for an existing prompt`() {
+    fun `既存Promptのメタデータとversionsを返す`() {
         val (draft, _) = Prompt.create(promptKey, NewPromptVersion(semVer, PromptContent("body")), context)
         val promptRepository = InMemoryPromptRepository().apply { seed(draft) }
         val metadataRepository =
@@ -36,7 +36,7 @@ class GetPromptHandlerTest {
     }
 
     @Test
-    fun `throws when the prompt does not exist`() {
+    fun `Promptが存在しなければ例外を投げる`() {
         val handler = GetPromptHandler(InMemoryPromptRepository(), InMemoryPromptMetadataRepository())
 
         shouldThrow<PromptVersionNotFoundException> { handler.handle(GetPromptQuery(promptKey)) }

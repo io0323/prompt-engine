@@ -18,7 +18,8 @@ data class SetAliasCommand(
     val semVer: SemVer,
     val idempotencyKey: String? = null,
 ) {
-    internal fun fingerprintPayload(): String = listOf(key, alias, semVer).toString()
+    // クラス名を先頭に含める: 他のCommandとfingerprintPayload()の結果が衝突しないため（レビュー指摘）。
+    internal fun fingerprintPayload(): String = "${this::class.simpleName}:" + listOf(key, alias, semVer)
 }
 
 data class SetAliasResult(val key: PromptKey, val alias: String, val semVer: SemVer)

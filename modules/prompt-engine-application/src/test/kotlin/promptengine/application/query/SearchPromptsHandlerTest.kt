@@ -32,7 +32,7 @@ class SearchPromptsHandlerTest {
     }
 
     @Test
-    fun `delegates to PromptSearchRepository`() {
+    fun `PromptSearchRepositoryへ委譲する`() {
         val handler = SearchPromptsHandler(FakePromptSearchRepository())
 
         val page = handler.handle(SearchPromptsQuery(PromptSearchCriteria(q = "greeting")))

@@ -20,7 +20,9 @@ data class UpdatePromptMetadataCommand(
     val traceId: String,
     val idempotencyKey: String? = null,
 ) {
-    internal fun fingerprintPayload(): String = listOf(key, name, category, description, tags).toString()
+    // クラス名を先頭に含める: 他のCommandとfingerprintPayload()の結果が衝突しないため（レビュー指摘）。
+    internal fun fingerprintPayload(): String =
+        "${this::class.simpleName}:" + listOf(key, name, category, description, tags)
 }
 
 data class UpdatePromptMetadataResult(val key: PromptKey)

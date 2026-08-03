@@ -36,7 +36,7 @@ class JdbcIdempotentCommandExecutor(
         resultType: Class<T>,
         command: () -> T,
     ): T {
-        if (idempotencyKey == null) return command()
+        if (idempotencyKey == null) return transactionTemplate.execute { command() }!!
         return transactionTemplate.execute {
             when (val outcome = reserveOrResolve(idempotencyKey, requestFingerprint, resultType)) {
                 is ReservationOutcome.AlreadyCompleted -> outcome.result
@@ -63,11 +63,37 @@ class JdbcIdempotentCommandExecutor(
         return when (outcome) {
             is ReservationOutcome.AlreadyCompleted -> outcome.result
             is ReservationOutcome.Reserved -> {
-                val result = operation()
+                val result = runOperationOrReleaseReservation(idempotencyKey, operation)
                 transactionTemplate.execute { markCompleted(idempotencyKey, result, resultType) }
                 result
             }
         }
+    }
+
+    /**
+     * [operation]が失敗した場合、`IN_PROGRESS`のまま残った予約行を削除してから例外を再送出する。
+     * 削除しないと、以降同一キー・同一fingerprintでの再送が[IdempotencyKeyInProgressException]で
+     * 永久にブロックされ、失敗した処理をリトライできなくなる（レビュー指摘、Critical）。
+     */
+    @Suppress("TooGenericExceptionCaught")
+    private fun <T : Any> runOperationOrReleaseReservation(
+        idempotencyKey: String,
+        operation: () -> T,
+    ): T =
+        try {
+            operation()
+        } catch (e: Exception) {
+            transactionTemplate.executeWithoutResult { releaseReservation(idempotencyKey) }
+            throw e
+        }
+
+    private fun releaseReservation(idempotencyKey: String) {
+        jdbcTemplate.update(
+            "DELETE FROM idempotency_keys WHERE idempotency_key = :idempotencyKey AND status = :status",
+            MapSqlParameterSource()
+                .addValue("idempotencyKey", idempotencyKey)
+                .addValue("status", STATUS_IN_PROGRESS),
+        )
     }
 
     private sealed class ReservationOutcome<out T> {

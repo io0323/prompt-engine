@@ -27,7 +27,7 @@ class UpdatePromptMetadataHandlerTest {
     }
 
     @Test
-    fun `PromptUpdated envelope has all 8 fields populated`() {
+    fun `PromptUpdatedの封筒8項目が全て埋まっている`() {
         val repository = RecordingPromptMetadataRepository()
         val handler = UpdatePromptMetadataHandler(repository, PassthroughIdempotentCommandExecutor())
         val key = PromptKey("team/greeting")

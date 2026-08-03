@@ -4,6 +4,7 @@ import promptengine.application.command.sha256
 import promptengine.domain.pipeline.PipelineMode
 import promptengine.domain.pipeline.PipelineRequest
 import promptengine.domain.shared.IdempotentCommandExecutor
+import promptengine.domain.validation.Severity
 
 /**
  * `POST /prompts/{key}/compile`（設計書§13.1、Compile-only検証。CI用）。P8の
@@ -19,9 +20,12 @@ data class CompileCommand(
     val traceId: String,
     val idempotencyKey: String? = null,
 ) {
-    internal fun fingerprintPayload(): String = request.toString()
+    // クラス名を先頭に含める: PublishCommand等、フィールド構成が同じ他のCommandと
+    // fingerprintPayload()の結果が衝突しないようにするため（レビュー指摘）。
+    internal fun fingerprintPayload(): String = "${this::class.simpleName}:$request"
 }
 
+/** [CompileUseCase.handle]の結果。§13.2のレスポンス例のうち単純型のみを転記したもの。 */
 data class CompileResult(
     val promptKey: String,
     val traceId: String,
@@ -29,6 +33,7 @@ data class CompileResult(
     val warningCount: Int,
 )
 
+/** [CompileCommand]のハンドラ。P8の[PipelineOrchestrator]をCOMPILE_ONLYモードで呼ぶ。 */
 class CompileUseCase(
     private val pipelineOrchestrator: PipelineOrchestrator,
     private val idempotentCommandExecutor: IdempotentCommandExecutor,
@@ -45,7 +50,7 @@ class CompileUseCase(
                 promptKey = command.request.promptKey.value,
                 traceId = context.traceId,
                 validationPassed = report?.hasErrors?.not() ?: true,
-                warningCount = report?.findings?.size ?: 0,
+                warningCount = report?.findings?.count { it.severity == Severity.WARNING } ?: 0,
             )
         }
 }

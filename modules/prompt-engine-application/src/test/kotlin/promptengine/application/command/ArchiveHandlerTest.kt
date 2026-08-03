@@ -53,7 +53,7 @@ class ArchiveHandlerTest {
     }
 
     @Test
-    fun `archive with force=false is rejected without checking referencing clients`() {
+    fun `force=falseのarchiveは参照クライアントを確認せず拒否される`() {
         val promptRepository = InMemoryPromptRepository().apply { seed(deprecatedPrompt()) }
         val handler =
             ArchiveHandler(promptRepository, FakeDependencyRepository(), PassthroughIdempotentCommandExecutor())
@@ -65,7 +65,7 @@ class ArchiveHandlerTest {
     }
 
     @Test
-    fun `archive with force=true succeeds`() {
+    fun `force=trueのarchiveは成功する`() {
         val promptRepository = InMemoryPromptRepository().apply { seed(deprecatedPrompt()) }
         val handler =
             ArchiveHandler(promptRepository, FakeDependencyRepository(), PassthroughIdempotentCommandExecutor())
@@ -78,7 +78,7 @@ class ArchiveHandlerTest {
     }
 
     @Test
-    fun `archive with force=true throws when the prompt does not exist`() {
+    fun `force=trueでもPromptが存在しなければ例外を投げる`() {
         val handler =
             ArchiveHandler(
                 InMemoryPromptRepository(),

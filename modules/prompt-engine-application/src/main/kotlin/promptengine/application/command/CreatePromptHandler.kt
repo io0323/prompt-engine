@@ -36,10 +36,13 @@ data class CreatePromptCommand(
     val traceId: String,
     val idempotencyKey: String? = null,
 ) {
+    // クラス名を先頭に含める: 他のCommandとfingerprintPayload()の結果が衝突しないため（レビュー指摘）。
     internal fun fingerprintPayload(): String =
-        listOf(
-            key, name, category, description, tags, semVer, source, variables, contextRequirements, validation, output,
-        ).toString()
+        "${this::class.simpleName}:" +
+            listOf(
+                key, name, category, description, tags, semVer,
+                source, variables, contextRequirements, validation, output,
+            )
 }
 
 data class CreatePromptResult(val key: PromptKey, val semVer: SemVer)

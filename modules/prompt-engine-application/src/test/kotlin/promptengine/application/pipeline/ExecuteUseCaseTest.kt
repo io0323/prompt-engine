@@ -36,7 +36,7 @@ class ExecuteUseCaseTest {
         )
 
     @Test
-    fun `summarizes ExecutionOutcome from PipelineContext`() {
+    fun `PipelineContextのExecutionOutcomeを結果に要約する`() {
         val orchestrator = mockk<PipelineOrchestrator>()
         val outcome =
             ExecutionOutcome(
@@ -70,7 +70,7 @@ class ExecuteUseCaseTest {
     }
 
     @Test
-    fun `returns null fields and zero attempts when executionOutcome is absent`() {
+    fun `executionOutcomeが無ければ各フィールドはnullでattemptCountは0になる`() {
         val orchestrator = mockk<PipelineOrchestrator>()
         val context = PipelineContext(request = request, mode = PipelineMode.FULL_EXECUTION, traceId = "trace-1")
         every { orchestrator.run(request, PipelineMode.FULL_EXECUTION, "trace-1") } returns context

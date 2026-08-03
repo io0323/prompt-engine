@@ -18,9 +18,11 @@ data class ExecuteCommand(
     val traceId: String,
     val idempotencyKey: String? = null,
 ) {
-    internal fun fingerprintPayload(): String = request.toString()
+    // クラス名を先頭に含める: 他のCommandとfingerprintPayload()の結果が衝突しないため（レビュー指摘）。
+    internal fun fingerprintPayload(): String = "${this::class.simpleName}:$request"
 }
 
+/** [ExecuteUseCase.handle]の結果。§13.2のレスポンス例のうち単純型のみを転記したもの。 */
 data class ExecuteResult(
     val promptKey: String,
     val traceId: String,
@@ -31,6 +33,7 @@ data class ExecuteResult(
     val attemptCount: Int,
 )
 
+/** [ExecuteCommand]のハンドラ。P8の[PipelineOrchestrator]をFULL_EXECUTIONモードで呼ぶ。 */
 class ExecuteUseCase(
     private val pipelineOrchestrator: PipelineOrchestrator,
     private val idempotentCommandExecutor: IdempotentCommandExecutor,

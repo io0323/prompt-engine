@@ -27,7 +27,8 @@ data class PublishCommand(
     val traceId: String,
     val idempotencyKey: String? = null,
 ) {
-    internal fun fingerprintPayload(): String = listOf(key, semVer).toString()
+    // クラス名を先頭に含める: 他のCommandとfingerprintPayload()の結果が衝突しないため（レビュー指摘）。
+    internal fun fingerprintPayload(): String = "${this::class.simpleName}:" + listOf(key, semVer)
 }
 
 data class PublishResult(val key: PromptKey, val semVer: SemVer)

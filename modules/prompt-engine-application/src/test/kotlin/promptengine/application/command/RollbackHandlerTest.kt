@@ -18,7 +18,7 @@ class RollbackHandlerTest {
     private val v2 = SemVer(2, 0, 0)
 
     @Test
-    fun `rolls back to a Deprecated version`() {
+    fun `Deprecated版へロールバックできる`() {
         val context =
             EventContext(actor = "tester", traceId = "trace-1", occurredAt = Instant.parse("2026-01-01T00:00:00Z"))
         val (createdV1, _) = Prompt.create(promptKey, NewPromptVersion(v1, PromptContent("body v1")), context)
@@ -46,7 +46,7 @@ class RollbackHandlerTest {
     }
 
     @Test
-    fun `throws when the prompt does not exist`() {
+    fun `Promptが存在しなければ例外を投げる`() {
         val handler = RollbackHandler(InMemoryPromptRepository(), PassthroughIdempotentCommandExecutor())
 
         shouldThrow<PromptVersionNotFoundException> {

@@ -32,7 +32,7 @@ class MetricsHandlerTest {
     }
 
     @Test
-    fun `delegates to MetricsRepository`() {
+    fun `MetricsRepositoryへ委譲する`() {
         val handler = MetricsHandler(FakeMetricsRepository())
         val key = PromptKey("team/greeting")
 

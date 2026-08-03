@@ -16,6 +16,12 @@ import java.util.UUID
  *
  * 呼出元が同一トランザクション（[org.springframework.transaction.support.TransactionTemplate]）
  * の中で呼ぶことを前提とする。本関数自体はトランザクション境界を持たない。
+ *
+ * `MAX(sequence)`はread-then-writeであり、行ロック無しでは同一[aggregateId]への並行呼び出しが
+ * 同じ`sequence`を読んで`(aggregate_id, sequence)`のUNIQUE制約違反を起こしうる（レビュー指摘）。
+ * `prompts`の対象行を`SELECT ... FOR UPDATE`でロックしてから読むことで、同一Aggregateへの
+ * 並行呼び出しを直列化する（`aggregateId`は常に`prompts.prompt_id`。他Aggregate種別の
+ * イベントはP9b時点で発行されないため、ロック対象テーブルを`prompts`に固定してよい）。
  */
 internal fun NamedParameterJdbcTemplate.appendDomainEvents(
     objectMapper: ObjectMapper,
@@ -23,6 +29,11 @@ internal fun NamedParameterJdbcTemplate.appendDomainEvents(
     events: List<PromptDomainEvent>,
 ) {
     if (events.isEmpty()) return
+    queryForObject(
+        "SELECT prompt_id FROM prompts WHERE prompt_id = :aggregateId FOR UPDATE",
+        MapSqlParameterSource("aggregateId", aggregateId),
+        UUID::class.java,
+    )
     val baseSequence =
         queryForObject(
             "SELECT COALESCE(MAX(sequence), 0) FROM domain_events WHERE aggregate_id = :aggregateId",

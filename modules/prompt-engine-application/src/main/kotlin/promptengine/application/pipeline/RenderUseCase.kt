@@ -20,9 +20,11 @@ data class RenderCommand(
     val traceId: String,
     val idempotencyKey: String? = null,
 ) {
-    internal fun fingerprintPayload(): String = request.toString()
+    // クラス名を先頭に含める: 他のCommandとfingerprintPayload()の結果が衝突しないため（レビュー指摘）。
+    internal fun fingerprintPayload(): String = "${this::class.simpleName}:$request"
 }
 
+/** [RenderUseCase.handle]の結果。 */
 data class RenderResult(
     val promptKey: String,
     val traceId: String,
@@ -32,6 +34,7 @@ data class RenderResult(
     val messageCount: Int,
 )
 
+/** [RenderCommand]のハンドラ。P8の[PipelineOrchestrator]をRENDER_ONLYモードで呼ぶ。 */
 class RenderUseCase(
     private val pipelineOrchestrator: PipelineOrchestrator,
     private val idempotentCommandExecutor: IdempotentCommandExecutor,

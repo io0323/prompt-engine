@@ -29,7 +29,8 @@ data class ArchiveCommand(
     val traceId: String,
     val idempotencyKey: String? = null,
 ) {
-    internal fun fingerprintPayload(): String = listOf(key, semVer, force).toString()
+    // クラス名を先頭に含める: 他のCommandとfingerprintPayload()の結果が衝突しないため（レビュー指摘）。
+    internal fun fingerprintPayload(): String = "${this::class.simpleName}:" + listOf(key, semVer, force)
 }
 
 data class ArchiveResult(val key: PromptKey, val semVer: SemVer, val structuralInboundDependencyCount: Int)

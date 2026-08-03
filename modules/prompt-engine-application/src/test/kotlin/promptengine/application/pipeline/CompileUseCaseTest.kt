@@ -31,7 +31,7 @@ class CompileUseCaseTest {
         )
 
     @Test
-    fun `reports validationPassed=false when the report has ERROR findings`() {
+    fun `ERROR findingが1件あればvalidationPassedはfalseになりwarningCountはERRORを含めない`() {
         val orchestrator = mockk<PipelineOrchestrator>()
         val report =
             ValidationReport(
@@ -52,11 +52,37 @@ class CompileUseCaseTest {
         val result = useCase.handle(CompileCommand(request, "trace-1"))
 
         result.validationPassed shouldBe false
+        result.warningCount shouldBe 0
+    }
+
+    @Test
+    fun `WARNING findingのみの件数がwarningCountに反映される`() {
+        val orchestrator = mockk<PipelineOrchestrator>()
+        val report =
+            ValidationReport(
+                listOf(
+                    Finding(ruleId = "LengthCheck", path = "$.y", severity = Severity.WARNING, message = "long"),
+                    Finding(ruleId = "SchemaValidation", path = "$.x", severity = Severity.ERROR, message = "missing"),
+                ),
+            )
+        val context =
+            PipelineContext(
+                request = request,
+                mode = PipelineMode.COMPILE_ONLY,
+                traceId = "trace-1",
+                validationReport = report,
+            )
+        every { orchestrator.run(request, PipelineMode.COMPILE_ONLY, "trace-1") } returns context
+
+        val useCase = CompileUseCase(orchestrator, PassthroughIdempotentCommandExecutor())
+        val result = useCase.handle(CompileCommand(request, "trace-1"))
+
+        result.validationPassed shouldBe false
         result.warningCount shouldBe 1
     }
 
     @Test
-    fun `reports validationPassed=true when validationReport is absent`() {
+    fun `validationReportが無ければvalidationPassedはtrueになる`() {
         val orchestrator = mockk<PipelineOrchestrator>()
         val context = PipelineContext(request = request, mode = PipelineMode.COMPILE_ONLY, traceId = "trace-1")
         every { orchestrator.run(request, PipelineMode.COMPILE_ONLY, "trace-1") } returns context

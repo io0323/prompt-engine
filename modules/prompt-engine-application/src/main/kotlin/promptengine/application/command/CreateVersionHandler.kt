@@ -35,8 +35,9 @@ data class CreateVersionCommand(
     val traceId: String,
     val idempotencyKey: String? = null,
 ) {
+    // クラス名を先頭に含める: 他のCommandとfingerprintPayload()の結果が衝突しないため（レビュー指摘）。
     internal fun fingerprintPayload(): String =
-        listOf(key, semVer, source, variables, contextRequirements, validation, output).toString()
+        "${this::class.simpleName}:" + listOf(key, semVer, source, variables, contextRequirements, validation, output)
 }
 
 data class CreateVersionResult(val key: PromptKey, val semVer: SemVer)

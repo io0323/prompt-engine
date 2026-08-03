@@ -21,7 +21,7 @@ class DiffHandlerTest {
         EventContext(actor = "tester", traceId = "trace-1", occurredAt = Instant.parse("2026-01-01T00:00:00Z"))
 
     @Test
-    fun `detects content changes between two versions`() {
+    fun `2つのVersion間のcontent変更を検知する`() {
         val (createdV1, _) = Prompt.create(promptKey, NewPromptVersion(v1, PromptContent("body v1")), context)
         val (withV2, _) = createdV1.newVersion(NewPromptVersion(v2, PromptContent("body v2")), context)
         val promptRepository = InMemoryPromptRepository().apply { seed(withV2) }
@@ -35,7 +35,7 @@ class DiffHandlerTest {
     }
 
     @Test
-    fun `throws when the from version does not exist`() {
+    fun `from側のVersionが存在しなければ例外を投げる`() {
         val (createdV1, _) = Prompt.create(promptKey, NewPromptVersion(v1, PromptContent("body v1")), context)
         val promptRepository = InMemoryPromptRepository().apply { seed(createdV1) }
         val handler = DiffHandler(promptRepository)
@@ -46,7 +46,7 @@ class DiffHandlerTest {
     }
 
     @Test
-    fun `throws when the to version does not exist`() {
+    fun `to側のVersionが存在しなければ例外を投げる`() {
         val (createdV1, _) = Prompt.create(promptKey, NewPromptVersion(v1, PromptContent("body v1")), context)
         val promptRepository = InMemoryPromptRepository().apply { seed(createdV1) }
         val handler = DiffHandler(promptRepository)
@@ -57,7 +57,7 @@ class DiffHandlerTest {
     }
 
     @Test
-    fun `throws when the prompt does not exist`() {
+    fun `Promptが存在しなければ例外を投げる`() {
         val handler = DiffHandler(InMemoryPromptRepository())
 
         shouldThrow<PromptVersionNotFoundException> {

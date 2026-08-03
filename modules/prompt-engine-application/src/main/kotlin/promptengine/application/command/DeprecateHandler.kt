@@ -19,7 +19,10 @@ data class DeprecateCommand(
     val traceId: String,
     val idempotencyKey: String? = null,
 ) {
-    internal fun fingerprintPayload(): String = listOf(key, semVer, recommendedReplacement).toString()
+    // クラス名を先頭に含める: 他のCommandとfingerprintPayload()の結果が衝突しないため（レビュー指摘）。
+    internal fun fingerprintPayload(): String =
+        "${this::class.simpleName}:" +
+            listOf(key, semVer, recommendedReplacement)
 }
 
 data class DeprecateResult(val key: PromptKey, val semVer: SemVer)

@@ -60,7 +60,7 @@ class CreateVersionHandlerTest {
     }
 
     @Test
-    fun `stored ExtendsRef equals parsing content source directly with ExtendsFieldResolver`() {
+    fun `保存されたExtendsRefはcontent_sourceをExtendsFieldResolverで直接解決した結果と一致する`() {
         val context =
             EventContext(actor = "tester", traceId = "trace-1", occurredAt = Instant.parse("2026-01-01T00:00:00Z"))
         val existingVersion = NewPromptVersion(semVer = existingSemVer, content = PromptContent("original body"))
@@ -90,7 +90,7 @@ class CreateVersionHandlerTest {
     }
 
     @Test
-    fun `throws when the prompt does not exist`() {
+    fun `Promptが存在しなければ例外を投げる`() {
         val handler =
             CreateVersionHandler(
                 InMemoryPromptRepository(),

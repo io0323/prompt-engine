@@ -19,7 +19,7 @@ class SetAliasHandlerTest {
         EventContext(actor = "tester", traceId = "trace-1", occurredAt = Instant.parse("2026-01-01T00:00:00Z"))
 
     @Test
-    fun `sets an alias to an existing version`() {
+    fun `既存Versionへエイリアスを設定できる`() {
         val (draft, _) = Prompt.create(promptKey, NewPromptVersion(semVer, PromptContent("body")), context)
         val promptRepository = InMemoryPromptRepository().apply { seed(draft) }
         val aliasRepository = InMemoryPromptAliasRepository()
@@ -32,7 +32,7 @@ class SetAliasHandlerTest {
     }
 
     @Test
-    fun `rejects an alias pointing to a non-existent version`() {
+    fun `存在しないVersionを指すエイリアスは拒否される`() {
         val (draft, _) = Prompt.create(promptKey, NewPromptVersion(semVer, PromptContent("body")), context)
         val promptRepository = InMemoryPromptRepository().apply { seed(draft) }
         val handler =
@@ -44,7 +44,7 @@ class SetAliasHandlerTest {
     }
 
     @Test
-    fun `throws when the prompt does not exist`() {
+    fun `Promptが存在しなければ例外を投げる`() {
         val handler =
             SetAliasHandler(
                 InMemoryPromptRepository(),

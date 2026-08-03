@@ -21,7 +21,7 @@ class CreatePromptHandlerTest {
         """.trimIndent()
 
     @Test
-    fun `creates a Draft prompt, stores metadata, and records PromptCreated`() {
+    fun `Draft状態のPromptを作成しメタデータを保存しPromptCreatedを記録する`() {
         val promptRepository = InMemoryPromptRepository()
         val metadataRepository = InMemoryPromptMetadataRepository()
         val dependencyRepository = InMemoryDependencyRepository()

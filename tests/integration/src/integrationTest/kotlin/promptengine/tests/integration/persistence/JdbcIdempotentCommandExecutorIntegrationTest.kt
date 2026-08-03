@@ -61,7 +61,7 @@ class JdbcIdempotentCommandExecutorIntegrationTest {
     }
 
     @Test
-    fun `executeInTransaction does not re-run command on retry with same key and fingerprint`() {
+    fun `executeInTransactionは同一キー・同一fingerprintの再送でcommandを再実行しない`() {
         val key = uniqueKey()
         var callCount = 0
         val command = {
@@ -78,7 +78,7 @@ class JdbcIdempotentCommandExecutorIntegrationTest {
     }
 
     @Test
-    fun `executeInTransaction throws IdempotencyKeyConflictException for same key with different fingerprint`() {
+    fun `executeInTransactionは同一キー・異なるfingerprintでIdempotencyKeyConflictExceptionを投げる`() {
         val key = uniqueKey()
         executor.executeInTransaction(key, "fingerprint-a", DummyResult::class.java) { DummyResult(1) }
 
@@ -88,7 +88,7 @@ class JdbcIdempotentCommandExecutorIntegrationTest {
     }
 
     @Test
-    fun `executeLongRunning runs operation outside the reservation transaction and dedups on retry`() {
+    fun `executeLongRunningはoperationを予約トランザクション外で実行し再送でも重複実行しない`() {
         val key = uniqueKey()
         var callCount = 0
         val operation = {
@@ -105,7 +105,26 @@ class JdbcIdempotentCommandExecutorIntegrationTest {
     }
 
     @Test
-    fun `retry while a key is still IN_PROGRESS throws IdempotencyKeyInProgressException`() {
+    fun `executeLongRunningでoperationが失敗すると予約が解除され再送でリトライできる`() {
+        val key = uniqueKey()
+        var callCount = 0
+        val operation = {
+            callCount++
+            if (callCount == 1) error("simulated APAP failure")
+            DummyResult(callCount)
+        }
+
+        shouldThrow<IllegalStateException> {
+            executor.executeLongRunning(key, "fingerprint-a", DummyResult::class.java, operation)
+        }
+        val result = executor.executeLongRunning(key, "fingerprint-a", DummyResult::class.java, operation)
+
+        callCount shouldBe 2
+        result shouldBe DummyResult(2)
+    }
+
+    @Test
+    fun `IN_PROGRESS中のキーへの再送はIdempotencyKeyInProgressExceptionを投げる`() {
         val key = uniqueKey()
         reserveInProgress(key, "fingerprint-a")
 

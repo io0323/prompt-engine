@@ -33,7 +33,7 @@ class DependenciesHandlerTest {
     }
 
     @Test
-    fun `OUT direction returns findOutbound result`() {
+    fun `OUT方向はfindOutboundの結果を返す`() {
         val handler = DependenciesHandler(FakeDependencyRepository())
 
         val edges = handler.handle(DependenciesQuery(promptKey, DependencyDirection.OUT))
@@ -42,7 +42,7 @@ class DependenciesHandlerTest {
     }
 
     @Test
-    fun `IN direction returns findInbound result`() {
+    fun `IN方向はfindInboundの結果を返す`() {
         val handler = DependenciesHandler(FakeDependencyRepository())
 
         val edges = handler.handle(DependenciesQuery(promptKey, DependencyDirection.IN))

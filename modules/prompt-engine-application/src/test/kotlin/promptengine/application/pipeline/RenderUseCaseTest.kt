@@ -33,7 +33,7 @@ class RenderUseCaseTest {
         )
 
     @Test
-    fun `summarizes the RenderedPrompt from PipelineContext`() {
+    fun `PipelineContextのRenderedPromptを結果に要約する`() {
         val orchestrator = mockk<PipelineOrchestrator>()
         val rendered =
             RenderedPrompt(
@@ -61,7 +61,7 @@ class RenderUseCaseTest {
     }
 
     @Test
-    fun `returns null fields and zero messages when rendered is absent`() {
+    fun `renderedが無ければ各フィールドはnullでmessageCountは0になる`() {
         val orchestrator = mockk<PipelineOrchestrator>()
         val context = PipelineContext(request = request, mode = PipelineMode.RENDER_ONLY, traceId = "trace-1")
         every { orchestrator.run(request, PipelineMode.RENDER_ONLY, "trace-1") } returns context

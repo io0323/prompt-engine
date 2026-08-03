@@ -17,7 +17,7 @@ class DiscardHandlerTest {
     private val semVer = SemVer(1, 0, 0)
 
     @Test
-    fun `discards a Draft version`() {
+    fun `Draft版をdiscardできる`() {
         val context =
             EventContext(actor = "tester", traceId = "trace-1", occurredAt = Instant.parse("2026-01-01T00:00:00Z"))
         val (draft, _) = Prompt.create(promptKey, NewPromptVersion(semVer, PromptContent("body")), context)
@@ -31,7 +31,7 @@ class DiscardHandlerTest {
     }
 
     @Test
-    fun `throws when the prompt does not exist`() {
+    fun `Promptが存在しなければ例外を投げる`() {
         val handler = DiscardHandler(InMemoryPromptRepository(), PassthroughIdempotentCommandExecutor())
 
         shouldThrow<PromptVersionNotFoundException> {
