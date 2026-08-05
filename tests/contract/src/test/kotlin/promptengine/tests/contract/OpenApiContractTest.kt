@@ -34,25 +34,26 @@ class OpenApiContractTest {
     @Test
     fun `api openapi yamlは有効なOpenAPIドキュメントであり設計書13-1の主要エンドポイントを含む`() {
         val document = Yaml().load<Map<String, Any?>>(openApiFile.readText())
-        document["openapi"] shouldBe "3.0.1"
+        document["openapi"] shouldBe "3.1.0"
 
         val paths = document["paths"] as Map<String, Any?>
+        // `{namespace}/{name}`の2パス変数構成はADR-0023（`PromptKey`のルーティング衝突対策）参照。
         listOf(
             "/api/v1/prompts",
-            "/api/v1/prompts/{key}",
-            "/api/v1/prompts/{key}/versions",
-            "/api/v1/prompts/{key}/versions/{version}",
-            "/api/v1/prompts/{key}/diff",
-            "/api/v1/prompts/{key}/versions/{version}/publish",
-            "/api/v1/prompts/{key}/rollback",
-            "/api/v1/prompts/{key}/versions/{version}/deprecate",
-            "/api/v1/prompts/{key}/compile",
-            "/api/v1/prompts/{key}/render",
-            "/api/v1/prompts/{key}/execute",
-            "/api/v1/prompts/{key}/aliases",
-            "/api/v1/prompts/{key}/dependencies",
+            "/api/v1/prompts/{namespace}/{name}",
+            "/api/v1/prompts/{namespace}/{name}/versions",
+            "/api/v1/prompts/{namespace}/{name}/versions/{version}",
+            "/api/v1/prompts/{namespace}/{name}/diff",
+            "/api/v1/prompts/{namespace}/{name}/versions/{version}/publish",
+            "/api/v1/prompts/{namespace}/{name}/rollback",
+            "/api/v1/prompts/{namespace}/{name}/versions/{version}/deprecate",
+            "/api/v1/prompts/{namespace}/{name}/compile",
+            "/api/v1/prompts/{namespace}/{name}/render",
+            "/api/v1/prompts/{namespace}/{name}/execute",
+            "/api/v1/prompts/{namespace}/{name}/aliases",
+            "/api/v1/prompts/{namespace}/{name}/dependencies",
             "/api/v1/audit-logs",
-            "/api/v1/metrics/prompts/{key}",
+            "/api/v1/metrics/prompts/{namespace}/{name}",
         ).forEach { path -> paths.keys shouldContain path }
     }
 }

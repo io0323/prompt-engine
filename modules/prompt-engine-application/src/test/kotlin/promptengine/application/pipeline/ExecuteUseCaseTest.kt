@@ -5,6 +5,7 @@ import io.mockk.every
 import io.mockk.mockk
 import org.junit.jupiter.api.Test
 import promptengine.application.command.PassthroughIdempotentCommandExecutor
+import promptengine.domain.event.EventContext
 import promptengine.domain.execution.ExecutionOutcome
 import promptengine.domain.execution.RawResponse
 import promptengine.domain.execution.Usage
@@ -13,15 +14,20 @@ import promptengine.domain.parsing.ParsedOutput
 import promptengine.domain.pipeline.PipelineContext
 import promptengine.domain.pipeline.PipelineMode
 import promptengine.domain.pipeline.PipelineRequest
+import promptengine.domain.prompt.NewPromptVersion
+import promptengine.domain.prompt.Prompt
+import promptengine.domain.prompt.PromptContent
 import promptengine.domain.prompt.PromptKey
 import promptengine.domain.prompt.VersionRef
 import promptengine.domain.render.OutputFormat
 import promptengine.domain.shared.Cost
 import promptengine.domain.shared.LatencyMs
 import promptengine.domain.shared.PromptRequest
+import promptengine.domain.shared.SemVer
 import promptengine.domain.shared.SensitiveValue
 import promptengine.domain.shared.TokenCount
 import java.math.BigDecimal
+import java.time.Instant
 
 /** [ExecuteUseCase]がexecuteLongRunning経由（2フェーズ）で実行され、結果を要約することを検証する。 */
 class ExecuteUseCaseTest {
@@ -86,5 +92,29 @@ class ExecuteUseCaseTest {
         result.usage shouldBe null
         result.latencyMs shouldBe null
         result.attemptCount shouldBe 0
+    }
+
+    @Test
+    fun `promptVersionがあればversionを結果へ反映する`() {
+        val orchestrator = mockk<PipelineOrchestrator>()
+        val promptVersion =
+            Prompt.create(
+                PromptKey("team/greeting"),
+                NewPromptVersion(SemVer(1, 0, 0), PromptContent("hello")),
+                EventContext(actor = "user:test", traceId = "trace-1", occurredAt = Instant.EPOCH),
+            ).first.versions.first()
+        val context =
+            PipelineContext(
+                request = request,
+                mode = PipelineMode.FULL_EXECUTION,
+                traceId = "trace-1",
+                promptVersion = promptVersion,
+            )
+        every { orchestrator.run(request, PipelineMode.FULL_EXECUTION, "trace-1") } returns context
+
+        val useCase = ExecuteUseCase(orchestrator, PassthroughIdempotentCommandExecutor())
+        val result = useCase.handle(ExecuteCommand(request, "trace-1"))
+
+        result.version shouldBe "1.0.0"
     }
 }

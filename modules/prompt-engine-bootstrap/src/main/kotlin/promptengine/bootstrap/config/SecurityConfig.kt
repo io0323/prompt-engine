@@ -94,7 +94,10 @@ class SecurityConfig {
             authorizeHttpRequests {
                 authorize("/actuator/health", permitAll)
                 authorize("/actuator/info", permitAll)
-                authorize("/v3/api-docs/**", permitAll)
+                // `/v3/api-docs/**`だけでは`/v3/api-docs`本体・`/v3/api-docs.yaml`
+                // （末尾が`/`で終わらない、springdocの実際のエンドポイント）にAntPathMatcherが
+                // マッチしないため401になる（`generateOpenApiDocs`実行時に判明、Issue #13）。
+                authorize("/v3/api-docs**", permitAll)
                 authorize("/swagger-ui/**", permitAll)
                 authorize("/swagger-ui.html", permitAll)
                 authorize(anyRequest, authenticated)
