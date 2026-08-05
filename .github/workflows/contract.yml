@@ -49,11 +49,21 @@ jobs:
         run: ./gradlew :tests:contract:test --no-daemon
       - name: Fetch base branch for breaking-change comparison
         if: steps.gradlew.outputs.exists == 'true' && github.event_name == 'pull_request'
-        run: git fetch --depth=1 origin ${{ github.base_ref }}
+        id: fetch-base
+        run: |
+          git fetch --depth=1 origin ${{ github.base_ref }}
+          # base側にapi/openapi.yamlがまだ存在しない場合（このファイルを初めて導入するPR）は
+          # 比較対象が無いためoasdiffをスキップする。
+          if git show "origin/${{ github.base_ref }}:api/openapi.yaml" > /dev/null 2>&1; then
+            echo "has_base=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_base=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::api/openapi.yaml does not exist on ${{ github.base_ref }} yet; skipping breaking-change check."
+          fi
       # 破壊的変更のみ失敗させる（fail-on: ERR）。フィールド追加等の非破壊的変更で
       # 誤ってPRをブロックしないため（M1時点でAPIサーフェス自体が発展途上のため）。
       - name: 破壊的変更検出 (oasdiff)
-        if: steps.gradlew.outputs.exists == 'true' && github.event_name == 'pull_request'
+        if: steps.gradlew.outputs.exists == 'true' && github.event_name == 'pull_request' && steps.fetch-base.outputs.has_base == 'true'
         uses: oasdiff/oasdiff-action/breaking@v0
         with:
           base: 'origin/${{ github.base_ref }}:api/openapi.yaml'
