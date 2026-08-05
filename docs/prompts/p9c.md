@@ -60,3 +60,10 @@ P1から現在までbootstrapのDI配線が未着手であり、このアプリ�
 
 - IdempotentCommandExecutor.executeLongRunningのIN_PROGRESS滞留対策はIssue #50でP10へ送り済み（9cはブロックしない）
 - Bootstrap DIはP1〜9a分も含め全く未着手。今回が初のDI配線
+- **E2Eスモークテストの`publish`について**: `submit-review`/`approve`/`reject`エンドポイントは
+  ADR-0016によりM2スコープ（ReviewCase Aggregate未実装のため）。M1のAPIサーフェスだけでは
+  Draft→Approvedへ遷移させる手段が無く、`publish`はApproved状態のVersionにしか実行できない
+  ため、E2Eスモークテストは実HTTPだけでは完走できない。Approved状態への遷移のみ
+  テストフィクスチャ（`PromptRepository`を直接操作）で先回りし、`publish`以降（`publish`・
+  `render`という実装済みエンドポイント自体の動作）は引き続き実HTTPで検証する
+  （`PromptLifecycleSmokeTest`のKDoc参照、ADR-0016・GitHub Issue #9）。

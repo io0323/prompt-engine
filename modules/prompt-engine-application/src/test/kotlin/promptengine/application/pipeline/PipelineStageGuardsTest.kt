@@ -21,6 +21,7 @@ import promptengine.domain.parsing.OutputSchema
 import promptengine.domain.pipeline.PipelineContext
 import promptengine.domain.pipeline.PipelineMode
 import promptengine.domain.pipeline.PipelineRequest
+import promptengine.domain.prompt.LifecycleState
 import promptengine.domain.prompt.NewPromptVersion
 import promptengine.domain.prompt.Prompt
 import promptengine.domain.prompt.PromptAlias
@@ -30,6 +31,7 @@ import promptengine.domain.prompt.PromptDomainEvent
 import promptengine.domain.prompt.PromptKey
 import promptengine.domain.prompt.PromptRepository
 import promptengine.domain.prompt.PromptVersionNotFoundException
+import promptengine.domain.prompt.PromptVersionStateNotAllowedException
 import promptengine.domain.prompt.VersionRef
 import promptengine.domain.render.RenderEngine
 import promptengine.domain.render.RenderedPrompt
@@ -315,15 +317,28 @@ class PipelineStageGuardsTest {
         semVer: SemVer,
     ): Prompt = Prompt.create(key, NewPromptVersion(semVer, PromptContent(wrap(key.value))), eventContext).first
 
+    private fun inReviewPrompt(
+        key: PromptKey,
+        semVer: SemVer,
+    ): Prompt = draftPrompt(key, semVer).submitForReview(semVer, validationPassed = true)
+
+    private fun approvedPrompt(
+        key: PromptKey,
+        semVer: SemVer,
+    ): Prompt = inReviewPrompt(key, semVer).approve(semVer, approvalCount = 1, requiredApprovalCount = 1)
+
     private fun publishedPrompt(
         key: PromptKey,
         semVer: SemVer,
     ): Prompt {
-        val created = draftPrompt(key, semVer)
-        val inReview = created.submitForReview(semVer, validationPassed = true)
-        val approved = inReview.approve(semVer, approvalCount = 1, requiredApprovalCount = 1)
+        val approved = approvedPrompt(key, semVer)
         return approved.publish(semVer, allDependenciesPublished = true, eventContext).first
     }
+
+    private fun deprecatedPrompt(
+        key: PromptKey,
+        semVer: SemVer,
+    ): Prompt = publishedPrompt(key, semVer).deprecate(semVer, null, eventContext).first
 
     @Test
     fun `LoadStage VersionRef Fixed は該当SemVerを解決する`() {
@@ -391,6 +406,79 @@ class PipelineStageGuardsTest {
 
         shouldThrow<PromptVersionNotFoundException> {
             stage.execute(PipelineContext(request, PipelineMode.COMPILE_ONLY, "trace"))
+        }
+    }
+
+    // ---- LoadStage: 状態ゲート（ADR-0024） ----
+
+    /**
+     * `VersionRef.Fixed`で解決したVersionの状態×`PipelineMode`の全組み合わせ
+     * （5状態×3モード=15ケース）を網羅する。`COMPILE_ONLY`は常に許可、
+     * `RENDER_ONLY`/`FULL_EXECUTION`は`Published`/`Deprecated`のみ許可
+     * （[PromptVersionStateNotAllowedException]、LoadStageのKDoc参照）。
+     */
+    @Test
+    fun `LoadStage VersionRef Fixed は状態とモードの全組み合わせで正しくゲートする`() {
+        val fixtures: List<Pair<LifecycleState, (PromptKey, SemVer) -> Prompt>> =
+            listOf(
+                LifecycleState.Draft to ::draftPrompt,
+                LifecycleState.InReview to ::inReviewPrompt,
+                LifecycleState.Approved to ::approvedPrompt,
+                LifecycleState.Published to ::publishedPrompt,
+                LifecycleState.Deprecated to ::deprecatedPrompt,
+            )
+        val modes = listOf(PipelineMode.COMPILE_ONLY, PipelineMode.RENDER_ONLY, PipelineMode.FULL_EXECUTION)
+        val allowedStatesOutsideCompileOnly = setOf(LifecycleState.Published, LifecycleState.Deprecated)
+
+        fixtures.forEachIndexed { index, (state, buildPrompt) ->
+            modes.forEach { mode ->
+                val key = PromptKey("support/state-gate-$index-${mode.name.lowercase().replace('_', '-')}")
+                val semVer = SemVer(1, 0, 0)
+                val repo = FakePromptRepository()
+                repo.put(buildPrompt(key, semVer))
+                val stage = LoadStage(repo, FakePromptAliasRepository())
+                val request =
+                    PipelineRequest(key, VersionRef.Fixed(semVer), PromptRequest(), modelProfile, TokenCount(1_000))
+
+                val shouldSucceed = mode == PipelineMode.COMPILE_ONLY || state in allowedStatesOutsideCompileOnly
+
+                withClue("state=$state, mode=$mode") {
+                    if (shouldSucceed) {
+                        val result = stage.execute(PipelineContext(request, mode, "trace"))
+                        result.promptVersion?.state shouldBe state
+                    } else {
+                        val exception =
+                            shouldThrow<PromptVersionStateNotAllowedException> {
+                                stage.execute(PipelineContext(request, mode, "trace"))
+                            }
+                        exception.state shouldBe state
+                    }
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `LoadStage VersionRef Alias もFixedと同じ状態ゲートが効く`() {
+        val key = PromptKey("support/alias-state-gate")
+        val semVer = SemVer(1, 0, 0)
+        val repo = FakePromptRepository()
+        repo.put(draftPrompt(key, semVer))
+        val aliasRepo = FakePromptAliasRepository()
+        aliasRepo.put(PromptAlias(key, "stable", semVer))
+        val stage = LoadStage(repo, aliasRepo)
+        val request = PipelineRequest(key, VersionRef.Alias("stable"), PromptRequest(), modelProfile, TokenCount(1_000))
+
+        // COMPILE_ONLYはDraftでも許可
+        val compileOnlyResult = stage.execute(PipelineContext(request, PipelineMode.COMPILE_ONLY, "trace"))
+        compileOnlyResult.promptVersion?.state shouldBe LifecycleState.Draft
+
+        // RENDER_ONLY/FULL_EXECUTIONはDraftを拒否
+        shouldThrow<PromptVersionStateNotAllowedException> {
+            stage.execute(PipelineContext(request, PipelineMode.RENDER_ONLY, "trace"))
+        }
+        shouldThrow<PromptVersionStateNotAllowedException> {
+            stage.execute(PipelineContext(request, PipelineMode.FULL_EXECUTION, "trace"))
         }
     }
 

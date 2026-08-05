@@ -1,9 +1,29 @@
 spring:
   application:
     name: prompt-engine
+  datasource:
+    url: ${PE_DATASOURCE_URL:jdbc:postgresql://localhost:5432/prompt_engine}
+    username: ${PE_DATASOURCE_USERNAME:prompt_engine}
+    password: ${PE_DATASOURCE_PASSWORD:prompt_engine}
+  flyway:
+    enabled: true
 
 management:
   endpoints:
     web:
       exposure:
         include: health,info
+
+pe:
+  # CIAP（設計書§1）が発行するJWTのJWKSエンドポイント。未設定時はローカル開発用に
+  # 起動時生成するRSA鍵ペアで自己署名検証する（CiapSecurityConfig参照。実運用では必須設定）。
+  ciap:
+    jwks-uri: ${PE_CIAP_JWKS_URI:}
+  validation:
+    banned-words: ${PE_VALIDATION_BANNED_WORDS:}
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html

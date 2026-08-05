@@ -57,11 +57,12 @@ class RenderUseCaseTest {
         result.outputFormat shouldBe "TEXT"
         result.tokenEstimate shouldBe 10
         result.renderHash shouldBe "sha256:abc"
-        result.messageCount shouldBe 1
+        result.messages shouldBe listOf(RenderedMessageSummary("USER", "hi"))
+        result.warnings shouldBe emptyList()
     }
 
     @Test
-    fun `renderedが無ければ各フィールドはnullでmessageCountは0になる`() {
+    fun `renderedが無ければ各フィールドはnullでmessagesは空になる`() {
         val orchestrator = mockk<PipelineOrchestrator>()
         val context = PipelineContext(request = request, mode = PipelineMode.RENDER_ONLY, traceId = "trace-1")
         every { orchestrator.run(request, PipelineMode.RENDER_ONLY, "trace-1") } returns context
@@ -72,6 +73,6 @@ class RenderUseCaseTest {
         result.outputFormat shouldBe null
         result.tokenEstimate shouldBe null
         result.renderHash shouldBe null
-        result.messageCount shouldBe 0
+        result.messages shouldBe emptyList()
     }
 }

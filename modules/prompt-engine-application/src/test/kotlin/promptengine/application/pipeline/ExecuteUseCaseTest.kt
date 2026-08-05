@@ -63,9 +63,12 @@ class ExecuteUseCaseTest {
         val result = useCase.handle(ExecuteCommand(request, "trace-1"))
 
         result.outputFormat shouldBe "TEXT"
-        result.inputTokens shouldBe 5
-        result.outputTokens shouldBe 7
+        result.rawContent shouldBe "hello"
+        result.usage?.inputTokens shouldBe 5
+        result.usage?.outputTokens shouldBe 7
+        result.usage?.cost shouldBe BigDecimal.ZERO
         result.latencyMs shouldBe 120
+        result.evaluationId shouldBe null
         result.attemptCount shouldBe 1
     }
 
@@ -79,8 +82,8 @@ class ExecuteUseCaseTest {
         val result = useCase.handle(ExecuteCommand(request, "trace-1"))
 
         result.outputFormat shouldBe null
-        result.inputTokens shouldBe null
-        result.outputTokens shouldBe null
+        result.rawContent shouldBe ""
+        result.usage shouldBe null
         result.latencyMs shouldBe null
         result.attemptCount shouldBe 0
     }

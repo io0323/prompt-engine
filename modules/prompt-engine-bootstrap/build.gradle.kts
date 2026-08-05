@@ -1,12 +1,25 @@
 plugins {
     id("promptengine.spring-boot-conventions")
+    id("org.springdoc.openapi-gradle-plugin") version "1.8.0"
 }
 
 // prompt-engine-bootstrap は Composition Root。具象クラスのDI結線はこのモジュールの
-// Configurationクラスでのみ行う（CLAUDE.md）。Spring Boot 依存（web / actuator）を
-// 持つのはこのモジュールのみ。
+// Configurationクラスでのみ行う（CLAUDE.md）。Spring Boot 依存（web / actuator / security /
+// data-jdbc）を持つのはこのモジュールのみ。
 springBoot {
     mainClass.set("promptengine.bootstrap.PromptEngineApplicationKt")
+}
+
+// `generateOpenApiDocs`（P9c、Issue #13のcontract.yml前提）: bootRunでアプリを起動し
+// `/v3/api-docs.yaml`を取得して`api/openapi.yaml`へ書き出す。`/v3/api-docs`は
+// `SecurityConfig`で`permitAll`のためBearerトークン不要だが、DataSource（PostgreSQL）への
+// 到達は必要（Flywayマイグレーションが起動時に走るため）。CIでは`contract.yml`が
+// postgresサービスコンテナを用意した上でこのタスクを実行する。
+openApi {
+    apiDocsUrl.set("http://localhost:8080/v3/api-docs.yaml")
+    outputDir.set(file("$rootDir/api"))
+    outputFileName.set("openapi.yaml")
+    waitTimeInSeconds.set(60)
 }
 
 dependencies {
@@ -17,18 +30,28 @@ dependencies {
     implementation(project(":modules:prompt-engine-interface"))
     implementation(project(":modules:prompt-engine-plugin-api"))
 
+    // P9c時点で存在する唯一のExecutionAdapter/OutputFormatter/TokenizerPlugin/ValidationRule実装。
+    // 本番プロファイルガードはFakeExecutionAdapter自身が持つ（ADR-0015方針をP9cで拡張）。
+    implementation(project(":plugins:execution-fake"))
+    implementation(project(":plugins:formatter-json"))
+    implementation(project(":plugins:tokenizer-approx"))
+    implementation(project(":plugins:validator-policy"))
+
     implementation(libs.spring.boot.starter.web)
     implementation(libs.spring.boot.starter.actuator)
+    implementation(libs.spring.boot.starter.data.jdbc)
+    implementation(libs.spring.boot.starter.security)
+    implementation(libs.spring.boot.starter.oauth2.resource.server)
+    implementation(libs.jackson.module.kotlin)
+    implementation(libs.flyway.core)
+    implementation(libs.flyway.postgresql)
+    implementation(libs.springdoc.openapi.webmvc.ui)
+    runtimeOnly(libs.postgresql)
 
     testImplementation(libs.spring.boot.starter.test)
+    testImplementation(libs.spring.security.test)
     testImplementation(libs.archunit.junit5)
-    // ArchitectureTestの規約6テストが検証対象を持つために必要（plugins/validator-policy、
-    // ADR-0003・ADR-0012）。テスト専用であり、本番のDI結線はP8/P9のConfigurationクラスで行う。
-    testImplementation(project(":plugins:validator-policy"))
-    // 同上（plugins/tokenizer-approx、ADR-0003・ADR-0013）。
-    testImplementation(project(":plugins:tokenizer-approx"))
-    // 同上（plugins/execution-fake、ADR-0003・ADR-0014）。
-    testImplementation(project(":plugins:execution-fake"))
-    // 同上（plugins/formatter-json、ADR-0003・ADR-0014）。
-    testImplementation(project(":plugins:formatter-json"))
+    testImplementation(platform(libs.testcontainers.bom))
+    testImplementation(libs.testcontainers.junit.jupiter)
+    testImplementation(libs.testcontainers.postgresql)
 }
