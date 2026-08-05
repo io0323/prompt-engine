@@ -4,7 +4,12 @@ import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
 import promptengine.domain.composition.CircularDependencyException
 import promptengine.domain.composition.CompositionDepthExceededException
+import promptengine.domain.composition.CompositionSizeExceededException
+import promptengine.domain.composition.DraftReferenceNotAllowedException
 import promptengine.domain.composition.FragmentReferenceNotFoundException
+import promptengine.domain.composition.MacroNotFoundException
+import promptengine.domain.composition.MacroRecursionException
+import promptengine.domain.composition.NestedPromptNotSupportedException
 import promptengine.domain.composition.TemplateReferenceNotFoundException
 import promptengine.domain.context.ContextUnavailableException
 import promptengine.domain.execution.ExecutionErrorType
@@ -13,10 +18,13 @@ import promptengine.domain.fragment.FragmentKey
 import promptengine.domain.optimization.TokenBudgetExceededException
 import promptengine.domain.parsing.ParseFailedException
 import promptengine.domain.pipeline.InvalidPipelineRequestException
+import promptengine.domain.prompt.LifecycleState
 import promptengine.domain.prompt.PromptKey
 import promptengine.domain.prompt.PromptVersionNotFoundException
+import promptengine.domain.prompt.PromptVersionStateNotAllowedException
 import promptengine.domain.render.OutputFormat
 import promptengine.domain.render.RenderFailedException
+import promptengine.domain.shared.SemVer
 import promptengine.domain.shared.TokenCount
 import promptengine.domain.shared.VersionRange
 import promptengine.domain.template.TemplateKey
@@ -115,8 +123,50 @@ class StageErrorMapperTest {
     }
 
     @Test
-    fun `未分類の例外型は常に INTERNAL_ERROR`() {
+    fun `MacroRecursionException は CIRCULAR_DEPENDENCY に便乗する(ADR-0021)`() {
+        val exception = MacroRecursionException("greeting")
+        StageErrorMapper.errorCodeFor(exception) shouldBe StageErrorMapper.CIRCULAR_DEPENDENCY
+    }
+
+    @Test
+    fun `CompositionDepthExceededException は COMPOSITION_LIMIT_EXCEEDED(ADR-0021)`() {
         val exception = CompositionDepthExceededException(10)
+        StageErrorMapper.errorCodeFor(exception) shouldBe StageErrorMapper.COMPOSITION_LIMIT_EXCEEDED
+    }
+
+    @Test
+    fun `CompositionSizeExceededException は COMPOSITION_LIMIT_EXCEEDED(ADR-0021)`() {
+        val exception = CompositionSizeExceededException(1_000_000, 2_000_000)
+        StageErrorMapper.errorCodeFor(exception) shouldBe StageErrorMapper.COMPOSITION_LIMIT_EXCEEDED
+    }
+
+    @Test
+    fun `DraftReferenceNotAllowedException は VALIDATION_FAILED に便乗する(ADR-0021)`() {
+        val exception = DraftReferenceNotAllowedException("templates/x@1.0.0")
+        StageErrorMapper.errorCodeFor(exception) shouldBe StageErrorMapper.VALIDATION_FAILED
+    }
+
+    @Test
+    fun `PromptVersionStateNotAllowedException は VALIDATION_FAILED に便乗する(ADR-0024)`() {
+        val exception = PromptVersionStateNotAllowedException(SemVer(1, 0, 0), LifecycleState.Draft)
+        StageErrorMapper.errorCodeFor(exception) shouldBe StageErrorMapper.VALIDATION_FAILED
+    }
+
+    @Test
+    fun `NestedPromptNotSupportedException は INVALID_REQUEST に便乗する(ADR-0021)`() {
+        val exception = NestedPromptNotSupportedException("prompt:support/x")
+        StageErrorMapper.errorCodeFor(exception) shouldBe StageErrorMapper.INVALID_REQUEST
+    }
+
+    @Test
+    fun `ADR-0021の対象外(MacroNotFoundException等)は INTERNAL_ERROR のまま`() {
+        val exception = MacroNotFoundException("undefined")
+        StageErrorMapper.errorCodeFor(exception) shouldBe StageErrorMapper.INTERNAL_ERROR
+    }
+
+    @Test
+    fun `未分類の例外型は常に INTERNAL_ERROR`() {
+        val exception = IllegalArgumentException("unclassified")
         StageErrorMapper.errorCodeFor(exception) shouldBe StageErrorMapper.INTERNAL_ERROR
     }
 }

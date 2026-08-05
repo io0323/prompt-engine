@@ -362,6 +362,9 @@ Model Profile（APAPのモデルメタデータを参照して構成）: `{ maxC
 - Diff: AST構造Diff + テキストDiffの両方を提供。
 - Rollback: 過去VersionをそのままPublishedへ再昇格（新Version採番はしない。PromptRolledBackイベントで記録）。
 - 実行時参照: クライアントは `latest`（Published最新）/ 固定Version / エイリアス（`stable`,`canary` 等）で参照。
+  Compile-only以外（Render-only/Full-execution）では、固定Version・エイリアス経由の参照であっても
+  Published/Deprecated状態のVersionしか参照できない（Draft/InReview/Approvedは拒否、ADR-0024）。
+  Compile-onlyのみ全状態を許可する（P3c CompositionServiceのDraft相互参照ルール、§2.10と同じ規則）。
 - 誤って `deprecate` したVersionの復帰は、専用の遷移を設けず既存の `rollback` で行う（ADR-0005）。
 
 ## 2.14 Repository仕様
@@ -639,7 +642,7 @@ Experiment ──(勝者昇格要求)──> Prompt Authoring
 
 | VO | 定義 |
 |---|---|
-| PromptKey | `namespace/name`（例 `support/faq-answer`）。正規表現 `[a-z0-9-]+(/[a-z0-9-]+)+` |
+| PromptKey | `namespace/name`（例 `support/faq-answer`）。ちょうど2セグメント。正規表現 `[a-z0-9-]+/[a-z0-9-]+`（3セグメント以上は不可、ADR-0023） |
 | SemVer | major.minor.patch |
 | VersionRef | 固定Version / `latest` / エイリアス名 |
 | PromptContent | DSLソース + contentHash(SHA-256) |
@@ -686,7 +689,7 @@ participant "Prompt API" as API
 participant "PipelineOrchestrator" as PO
 participant "PromptCache" as Cache
 participant "PromptRepository" as Repo
-Client -> API : GET /prompts/{key}/render (versionRef, params)
+Client -> API : GET /prompts/{namespace}/{name}/render (versionRef, params)
 API -> API : CIAPトークン検証・認可(prompt:read)
 API -> PO : run(RENDER_ONLY, request)
 PO -> Cache : get(compiledKey(key, versionRef))
@@ -695,7 +698,7 @@ alt cache hit
 else miss
   PO -> Repo : findVersion(key, versionRef)
   Repo --> PO : PromptVersion(DSL)
-  note right : Status=Published以外は\nPROMPT_NOT_FOUND(404)
+  note right : Draft/InReview/Approvedの固定参照は\nVALIDATION_FAILED(400)\n（Compile-only除く、ADR-0024）
 end
 @enduml
 ```
@@ -1455,40 +1458,44 @@ outbox }o--|| domain_events : event_id
 
 ## 13.1 エンドポイント一覧
 
+`PromptKey`を含むパスは`{namespace}/{name}`という2つの独立したパス変数で表す（単一の`{key}`ではない）。
+`PromptKey`が`namespace/name`ちょうど2セグメント必須（§4.4）であるのに対し、Spring MVC等
+一般的なフレームワークのパス変数はセグメント境界（`/`）をまたげないため（ADR-0023）。
+
 | Method | Path | 概要 | スコープ | 成功 |
 |---|---|---|---|---|
 | POST | /prompts | Prompt作成（初版Draft） | write | 201 |
 | GET | /prompts | 検索（q, tag, category, status, page） | read | 200 |
-| GET | /prompts/{key} | 詳細+Version一覧 | read | 200 |
-| PATCH | /prompts/{key} | メタデータ更新 | write | 200 |
-| DELETE | /prompts/{key} | Archive（論理削除） | admin | 204 |
-| POST | /prompts/{key}/versions | 新Version作成（Draft） | write | 201 |
-| GET | /prompts/{key}/versions/{v} | Version内容取得 | read | 200 |
-| GET | /prompts/{key}/diff?from=&to= | Version Diff | read | 200 |
-| POST | /prompts/{key}/versions/{v}/submit-review | レビュー依頼 | write | 200 |
-| POST | /prompts/{key}/versions/{v}/approve | 承認 | approve | 200 |
-| POST | /prompts/{key}/versions/{v}/reject | 差戻し（comment必須） | review | 200 |
-| POST | /prompts/{key}/versions/{v}/publish | 公開 | publish | 200 |
-| POST | /prompts/{key}/rollback | {targetVersion}へ復帰 | publish | 200 |
-| POST | /prompts/{key}/versions/{v}/deprecate | 非推奨化 | publish | 200 |
-| POST | /prompts/{key}/compile | Compile-only検証（CI用） | read | 200 |
-| POST | /prompts/{key}/render | Render-only（1〜8） | read | 200 |
-| POST | /prompts/{key}/execute | Full-execution（1〜12） | execute | 200 |
-| POST | /prompts/{key}/aliases | エイリアス設定 {alias, version} | publish | 201 |
-| GET | /prompts/{key}/dependencies?direction=in\|out | 依存/被依存 | read | 200 |
-| GET | /prompts/{key}/evaluations?version= | 評価履歴 | read | 200 |
+| GET | /prompts/{namespace}/{name} | 詳細+Version一覧 | read | 200 |
+| PATCH | /prompts/{namespace}/{name} | メタデータ更新 | write | 200 |
+| DELETE | /prompts/{namespace}/{name} | Archive（論理削除） | admin | 204 |
+| POST | /prompts/{namespace}/{name}/versions | 新Version作成（Draft） | write | 201 |
+| GET | /prompts/{namespace}/{name}/versions/{v} | Version内容取得 | read | 200 |
+| GET | /prompts/{namespace}/{name}/diff?from=&to= | Version Diff | read | 200 |
+| POST | /prompts/{namespace}/{name}/versions/{v}/submit-review | レビュー依頼 | write | 200 |
+| POST | /prompts/{namespace}/{name}/versions/{v}/approve | 承認 | approve | 200 |
+| POST | /prompts/{namespace}/{name}/versions/{v}/reject | 差戻し（comment必須） | review | 200 |
+| POST | /prompts/{namespace}/{name}/versions/{v}/publish | 公開 | publish | 200 |
+| POST | /prompts/{namespace}/{name}/rollback | {targetVersion}へ復帰 | publish | 200 |
+| POST | /prompts/{namespace}/{name}/versions/{v}/deprecate | 非推奨化 | publish | 200 |
+| POST | /prompts/{namespace}/{name}/compile | Compile-only検証（CI用） | read | 200 |
+| POST | /prompts/{namespace}/{name}/render | Render-only（1〜8） | read | 200 |
+| POST | /prompts/{namespace}/{name}/execute | Full-execution（1〜12） | execute | 200 |
+| POST | /prompts/{namespace}/{name}/aliases | エイリアス設定 {alias, version} | publish | 201 |
+| GET | /prompts/{namespace}/{name}/dependencies?direction=in\|out | 依存/被依存 | read | 200 |
+| GET | /prompts/{namespace}/{name}/evaluations?version= | 評価履歴 | read | 200 |
 | POST | /experiments | Experiment作成 | write | 201 |
 | POST | /experiments/{id}/start / stop | 開始/停止 | publish | 200 |
 | GET | /experiments/{id}/results | Variant別スコア・統計判定 | read | 200 |
 | POST | /experiments/{id}/promote | 勝者Publish | publish | 200 |
-| POST | /prompts/import / GET /prompts/{key}/export | DSLバンドル入出力 | write / read | 200 |
+| POST | /prompts/import / GET /prompts/{namespace}/{name}/export | DSLバンドル入出力 | write / read | 200 |
 | GET | /audit-logs?aggregateId=&actor=&from=&to= | 監査検索 | audit:read | 200 |
-| GET | /metrics/prompts/{key}?from=&to= | Token/Cost/Latency/成功率集計 | read | 200 |
+| GET | /metrics/prompts/{namespace}/{name}?from=&to= | Token/Cost/Latency/成功率集計 | read | 200 |
 | POST | /plugins / GET /plugins / POST /plugins/{id}/activate | Plugin管理 | admin | 201/200 |
 
 ## 13.2 Request / Response例
 
-`POST /prompts/{key}/render`
+`POST /prompts/{namespace}/{name}/render`（例: `POST /prompts/support/faq-answer/render`）
 
 ```json
 // Request
@@ -1519,7 +1526,7 @@ outbox }o--|| domain_events : event_id
 }
 ```
 
-`POST /prompts/{key}/execute` は上記+`executionPolicy {timeoutMs, maxRetries, parseRepair}` を受け、`{ parsedOutput, rawContent, usage {inputTokens, outputTokens, cost}, latencyMs, evaluationId }` を返す。
+`POST /prompts/{namespace}/{name}/execute` は上記+`executionPolicy {timeoutMs, maxRetries, parseRepair}` を受け、`{ parsedOutput, rawContent, usage {inputTokens, outputTokens, cost}, latencyMs, evaluationId }` を返す。
 
 ## 13.3 Error仕様
 
@@ -1536,15 +1543,21 @@ outbox }o--|| domain_events : event_id
 
 | HTTP | code |
 |---|---|
-| 400 | VALIDATION_FAILED / PARSE_FAILED / INVALID_REQUEST / CIRCULAR_DEPENDENCY |
+| 400 | VALIDATION_FAILED / PARSE_FAILED / INVALID_REQUEST / CIRCULAR_DEPENDENCY / COMPOSITION_LIMIT_EXCEEDED |
 | 401 | UNAUTHENTICATED |
 | 403 | PERMISSION_DENIED |
-| 404 | PROMPT_NOT_FOUND / VERSION_NOT_FOUND / FRAGMENT_NOT_FOUND / TEMPLATE_NOT_FOUND |
+| 404 | PROMPT_NOT_FOUND / VERSION_NOT_FOUND / FRAGMENT_NOT_FOUND / TEMPLATE_NOT_FOUND / NOT_FOUND（どの`@RequestMapping`にもマッチしないURL。マッチしたエンドポイント内のエラーではないため他コードとは性質が異なる、ADR-0023） |
 | 409 | INVALID_STATE_TRANSITION / VERSION_CONFLICT / DUPLICATE_KEY / IDEMPOTENCY_KEY_CONFLICT（同一Idempotency-Keyで異なるリクエスト内容） / IDEMPOTENCY_KEY_IN_PROGRESS（同一キーが処理中） |
 | 422 | VARIABLE_UNRESOLVED / CONTEXT_UNAVAILABLE / TOKEN_BUDGET_EXCEEDED |
 | 429 | RATE_LIMITED |
 | 502 | EXECUTION_FAILED（APAP起因） |
 | 500 | RENDER_ERROR（`RenderFailedException`、Engine/Plugin側の構成不備・実装不具合、ADR-0015） / INTERNAL_ERROR |
+
+`COMPOSITION_LIMIT_EXCEEDED`は`CompositionDepthExceededException`/
+`CompositionSizeExceededException`（設計書§2.6ステージ2〜3）に対応する（ADR-0021）。
+`MacroRecursionException`は`CIRCULAR_DEPENDENCY`に、`DraftReferenceNotAllowedException`は
+`VALIDATION_FAILED`に、`NestedPromptNotSupportedException`は`INVALID_REQUEST`に、
+それぞれ既存コードへ便乗させる（ADR-0021、便乗理由の詳細は同ADR参照）。
 
 # 14. イベント一覧
 

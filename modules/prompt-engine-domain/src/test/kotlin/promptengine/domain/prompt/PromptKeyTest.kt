@@ -32,4 +32,9 @@ class PromptKeyTest {
     fun `不正な記号を含む文字列だとIllegalArgumentExceptionを投げる`() {
         shouldThrow<IllegalArgumentException> { PromptKey("support/faq_answer!") }
     }
+
+    @Test
+    fun `3セグメント以上の文字列だとIllegalArgumentExceptionを投げる`() {
+        shouldThrow<IllegalArgumentException> { PromptKey("support/faq/answer") }
+    }
 }

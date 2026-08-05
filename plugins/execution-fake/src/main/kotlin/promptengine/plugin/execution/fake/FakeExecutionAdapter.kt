@@ -14,8 +14,24 @@ import promptengine.domain.shared.SensitiveValue
  * 設定された[scenario]に応じて固定の応答を返す/例外を投げるのみで、[execute]の引数
  * （[prompt]・[policy]）の内容には依存しない。リトライは行わない（[promptengine.domain.execution.ExecutionAdapter]の
  * KDoc参照。リトライは`RetryingExecutionAdapter`等の呼出側が付与する）。
+ *
+ * [activeProfiles]に`"production"`が含まれる場合、実際のプロンプト内容に関わらず固定応答を
+ * 返してしまうことは本番トラフィックにとって致命的なため、`InMemoryAuditRepository`/
+ * `InMemoryEventBusAdapter`（ADR-0015決定7）と同じ方針で起動時エラー（[IllegalStateException]）
+ * とする（P9c、実APAPアダプタはM2で追加予定）。
  */
-class FakeExecutionAdapter(private val scenario: FakeExecutionScenario) : ExecutionAdapter {
+class FakeExecutionAdapter(
+    private val scenario: FakeExecutionScenario,
+    activeProfiles: Set<String> = emptySet(),
+) : ExecutionAdapter {
+    init {
+        check(PRODUCTION_PROFILE !in activeProfiles) {
+            "FakeExecutionAdapter must not be selected under the '$PRODUCTION_PROFILE' profile: " +
+                "it returns a fixed canned response regardless of the actual prompt. " +
+                "A real APAP-backed ExecutionAdapter is planned for M2."
+        }
+    }
+
     override fun execute(
         prompt: RenderedPrompt,
         policy: ExecutionPolicy,
@@ -27,4 +43,8 @@ class FakeExecutionAdapter(private val scenario: FakeExecutionScenario) : Execut
             is FakeExecutionScenario.InvalidStructuredOutput ->
                 RawResponse(SensitiveValue.of(s.rawContent), s.usage, s.latency)
         }
+
+    companion object {
+        private const val PRODUCTION_PROFILE = "production"
+    }
 }

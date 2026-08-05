@@ -751,6 +751,14 @@ submit-review/approve/reject の3エンドポイントは M2（ReviewCase Aggreg
 Domain Event発行（監査ログの正規の記録経路）を伴わない状態遷移を外部から起こせて
 しまうため。
 
+**注意（9cのE2E確認で判明）**: 上記の帰結として、M1のAPIサーフェスだけではDraft→
+Approvedへ遷移させる手段が存在しない。`publish`はApproved状態のVersionにしか実行
+できないため、「Prompt作成→Version作成→publish→render」を実HTTPのみで完走させる
+E2Eテストは作れない。Approved状態への遷移のみテストフィクスチャ（`PromptRepository`
+の直接操作）で先回りし、`publish`以降（`publish`・`render`という実装済みエンドポイント
+自体の動作）を実HTTPで検証する方針とする（`PromptLifecycleSmokeTest`のKDoc・
+`docs/prompts/p9c.md`参照、GitHub Issue #9）。
+
 ```text
 >>>
 docs/PromptEngine_設計書.md の §13（API設計）全体を読んでください。
