@@ -80,9 +80,10 @@ chore(ci): add CodeQL workflow
 - マージは Squash merge のみ。マージ後、作業ブランチは自動削除される。
 - マージには以下の status check が全て green である必要がある: `build` / `lint` / `arch-test` / `test` / `contract`。
 - `contract`が検証するのは「実装 (springdoc生成のOpenAPI) と `api/openapi.yaml` の一致」および
-  前回コミットとの破壊的変更の有無のみ。契約（`api/openapi.yaml`）自体が正しいか
-  （例: クエリパラメータが個別に公開されているか、レスポンス形状が設計書§13.2と一致するか）は
-  検証しない。契約内容の正しさは `tests/contract` に明示的なアサーションを書いて担保すること。
+  PRのベースブランチとの破壊的変更の有無（PRのみ、pushイベントでは実行しない）のみ。契約
+  （`api/openapi.yaml`）自体が正しいか（例: クエリパラメータが個別に公開されているか、
+  レスポンス形状が設計書§13.2と一致するか）は検証しない。契約内容の正しさは `tests/contract`
+  に明示的なアサーションを書いて担保すること。
 
 ## テスト
 

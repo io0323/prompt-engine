@@ -7,8 +7,8 @@ import promptengine.application.query.MetricsHandler
 import java.time.Instant
 
 /**
- * `MetricsController.summarize`のfrom/to境界検証（CodeRabbitレビュー指摘: from>toだと
- * `JdbcMetricsRepository`が`BETWEEN`をそのまま発行し0件集計を返してしまう）。
+ * `MetricsController.summarize`のfrom/to境界検証。from>toだと`JdbcMetricsRepository`が
+ * `BETWEEN`をそのまま発行し0件集計を返してしまうため、境界で明示的に拒否する。
  *
  * `prompt-engine-interface`は`promptengine.domain..`型に依存できない（ArchUnitルール）ため、
  * `MetricsHandler.handle`が返す`MetricsSummary`（domain型）をこのモジュールのテストコードで

@@ -76,6 +76,20 @@ class SetAliasHandlerTest {
     }
 
     @Test
+    fun `エイリアス名に引用符やバックスラッシュを含んでもpayloadは妥当なJSONへエスケープされる`() {
+        val (draft, _) = Prompt.create(promptKey, NewPromptVersion(semVer, PromptContent("body")), context)
+        val promptRepository = InMemoryPromptRepository().apply { seed(draft) }
+        val auditRepository = RecordingAuditRepository()
+        val alias = """weird"alias\with\backslashes"""
+
+        handler(promptRepository, auditRepository = auditRepository)
+            .handle(SetAliasCommand(promptKey, alias, semVer, actor = "user:alice", traceId = "trace-42"))
+
+        val entry = auditRepository.recorded.single()
+        entry.payload shouldBe """{"alias":"weird\"alias\\with\\backslashes","semVer":"1.0.0"}"""
+    }
+
+    @Test
     fun `存在しないVersionを指すエイリアスは拒否される`() {
         val (draft, _) = Prompt.create(promptKey, NewPromptVersion(semVer, PromptContent("body")), context)
         val promptRepository = InMemoryPromptRepository().apply { seed(draft) }
@@ -93,5 +107,38 @@ class SetAliasHandlerTest {
         shouldThrow<PromptVersionNotFoundException> {
             handler().handle(SetAliasCommand(promptKey, "stable", semVer, actor = "user:alice", traceId = "trace-1"))
         }
+    }
+
+    @Test
+    fun `jsonEscaped は引用符をエスケープする`() {
+        val input = "a" + '"' + "b"
+        val expected = "a" + '\\' + '"' + "b"
+        input.jsonEscaped() shouldBe expected
+    }
+
+    @Test
+    fun `jsonEscaped はバックスラッシュをエスケープする`() {
+        val input = "a" + '\\' + "b"
+        val expected = "a" + '\\' + '\\' + "b"
+        input.jsonEscaped() shouldBe expected
+    }
+
+    @Test
+    fun `jsonEscaped は改行-復帰-タブをエスケープする`() {
+        val input = "a" + '\n' + "b" + '\r' + "c" + '\t' + "d"
+        val expected = "a\\nb\\rc\\td"
+        input.jsonEscaped() shouldBe expected
+    }
+
+    @Test
+    fun `jsonEscaped はその他の制御文字をuXXXX形式でエスケープする`() {
+        val input = "a" + 1.toChar() + "b"
+        val expected = "a\\u0001b"
+        input.jsonEscaped() shouldBe expected
+    }
+
+    @Test
+    fun `jsonEscaped は通常文字をそのまま通す`() {
+        "stable-v1".jsonEscaped() shouldBe "stable-v1"
     }
 }

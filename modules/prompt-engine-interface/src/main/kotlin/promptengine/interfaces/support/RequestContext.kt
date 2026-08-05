@@ -10,8 +10,8 @@ import org.springframework.security.oauth2.server.resource.authentication.JwtAut
  * `CiapAuthAdapter`は`scope`/`scp`クレームのみを認可判定用に変換するため、Subjectの取得は
  * 別途このヘルパーが担う。
  *
- * `sub`は`SecurityConfig`の`JwtDecoder`が必須クレームとして検証しない（CodeRabbitレビュー
- * 指摘）ため、認証自体は成功しても`sub`が欠落したJWTが本メソッドまで到達し得る。その場合、
+ * `sub`は`SecurityConfig`の`JwtDecoder`が必須クレームとして検証しないため、認証自体は
+ * 成功しても`sub`が欠落したJWTが本メソッドまで到達し得る。その場合、
  * `Jwt.getSubject()`のnull許容プラットフォーム型をそのまま非null`String`として扱うと未分類の
  * `NullPointerException`（`GlobalExceptionHandler`の`handleUnclassified`経由で500）になり、
  * クライアントに原因が伝わらない。ここで明示的に検証し、`GlobalExceptionHandler`の

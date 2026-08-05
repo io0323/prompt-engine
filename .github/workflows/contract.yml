@@ -1,6 +1,7 @@
 # このジョブが検証するのは「実装(springdoc生成物)とapi/openapi.yamlの一致」および
-# 前回コミットとの破壊的変更の有無のみで、契約自体の正しさ（クエリパラメータの表現等）は
-# 検証しない（CONTRIBUTING.md参照）。契約内容の正しさはtests/contractのアサーションで担保する。
+# PRのベースブランチとの破壊的変更の有無（PRイベントのみ）で、契約自体の正しさ
+# （クエリパラメータの表現等）は検証しない（CONTRIBUTING.md参照）。
+# 契約内容の正しさはtests/contractのアサーションで担保する。
 name: contract
 on:
   pull_request:

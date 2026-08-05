@@ -7,9 +7,9 @@ import org.junit.jupiter.api.Test
 import java.time.Instant
 
 /**
- * ページング・実行ポリシー系DTOの境界値検証（CodeRabbitレビュー指摘: 上限が無いと
- * `size`等に極端な値を渡すリクエストを弾けない）。`jakarta.validation.Validator`を直接使い、
- * Spring MVCの`@Valid`バインディングを介さず制約アノテーション自体の正しさを検証する。
+ * ページング・実行ポリシー系DTOの境界値検証。上限が無いと`size`等に極端な値を渡す
+ * リクエストを弾けない。`jakarta.validation.Validator`を直接使い、Spring MVCの`@Valid`
+ * バインディングを介さず制約アノテーション自体の正しさを検証する。
  */
 class BoundsValidationTest {
     private val validator = Validation.buildDefaultValidatorFactory().validator
