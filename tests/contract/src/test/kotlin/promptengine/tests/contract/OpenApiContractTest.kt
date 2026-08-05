@@ -56,4 +56,37 @@ class OpenApiContractTest {
             "/api/v1/metrics/prompts/{namespace}/{name}",
         ).forEach { path -> paths.keys shouldContain path }
     }
+
+    /**
+     * `PromptController.search`/`AuditLogController.search`は`@ModelAttribute`でDTOを束ねて
+     * 受け取る（Spring MVC的にはフラットなクエリキーで正しくバインドされる）が、springdocに
+     * `@ParameterObject`を付けないと、OpenAPI上は`params`という単一の必須オブジェクト
+     * パラメータとして誤って公開されてしまう（生成クライアントが`?params=...`を送り、
+     * サーバー側でバインドできない。CodeRabbitレビュー指摘）。このテストは、生成物が
+     * 個別のクエリパラメータへ正しく展開されていることを明示的に検証し、`@ParameterObject`が
+     * 将来剥がされる回帰を検出する。
+     */
+    @Suppress("UNCHECKED_CAST")
+    @Test
+    fun `検索系エンドポイントのクエリパラメータは個別のqueryパラメータとして公開される`() {
+        val document = Yaml().load<Map<String, Any?>>(openApiFile.readText())
+        val paths = document["paths"] as Map<String, Any?>
+
+        val promptsSearchParams = queryParamNames(paths, "/api/v1/prompts", "get")
+        promptsSearchParams shouldBe setOf("q", "tag", "category", "status", "page", "size")
+
+        val auditLogSearchParams = queryParamNames(paths, "/api/v1/audit-logs", "get")
+        auditLogSearchParams shouldBe setOf("aggregateId", "actor", "from", "to", "page", "size")
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun queryParamNames(
+        paths: Map<String, Any?>,
+        path: String,
+        method: String,
+    ): Set<String> {
+        val operation = (paths[path] as Map<String, Any?>)[method] as Map<String, Any?>
+        val parameters = operation["parameters"] as List<Map<String, Any?>>
+        return parameters.filter { it["in"] == "query" }.map { it["name"] as String }.toSet()
+    }
 }

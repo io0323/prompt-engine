@@ -15,7 +15,7 @@ Approved/Published/Deprecated）を問わず素通しで返す実装であるこ
 
 P3c `CompositionService`は既に同種の問題を解決済みである: `CompositionMode.STANDARD`
 （`COMPILE_ONLY`以外）では、参照解決候補にDraft版しか無い場合
-[DraftReferenceNotAllowedException][promptengine.domain.composition.DraftReferenceNotAllowedException]
+`DraftReferenceNotAllowedException`（`promptengine.domain.composition`）
 を投げてDraft参照を拒否する（ADR-0009・ADR-0012、設計書§2.10 DependencyValidation
 「Draft相互参照はCompile-onlyで許可」）。この規則はTemplate/Fragmentへの**間接**参照
 （Compositionが解決する依存）にのみ適用され、クライアントが`versionRef`で直接指定する
@@ -28,7 +28,7 @@ P3c `CompositionService`は既に同種の問題を解決済みである: `Compo
 
 - `PipelineMode.COMPILE_ONLY`: 全状態（Draft/InReview/Approved/Published/Deprecated）を許可
 - `PipelineMode.RENDER_ONLY` / `PipelineMode.FULL_EXECUTION`: `Published`/`Deprecated`のみ許可
-- 拒否時は新設の[PromptVersionStateNotAllowedException][promptengine.domain.prompt.PromptVersionStateNotAllowedException]
+- 拒否時は新設の`PromptVersionStateNotAllowedException`
   （`promptengine.domain.prompt`）を投げる。設計書§13.3の既存コード`VALIDATION_FAILED`
   （400）に便乗させる（ADR-0021が`DraftReferenceNotAllowedException`を`VALIDATION_FAILED`に
   便乗させたのと同一の理由: 「リクエストされた構成が現在の状態では受理できない」という
@@ -42,6 +42,28 @@ P3c `CompositionService`は既に同種の問題を解決済みである: `Compo
   `when`で解決した結果に対して後段で共通に適用するため、分岐ごとに実装する必要がない）。
   `VersionRef.Latest`は`resolveLatestPublished`が既にPublishedのみ返すため、同じゲートを
   通しても実質的な影響はない。
+
+## 追記: 400（VALIDATION_FAILED）と404（PROMPT_NOT_FOUND）の選択（CodeRabbitレビュー指摘）
+
+固定Version参照が拒否された際に400を返すと、そのVersion番号自体は実在する（状態が
+不適格なだけ）という情報がクライアントに漏れる（404ならVersion不在と区別が付かない）
+のではないかという指摘があった。検討の結果、400を維持する:
+
+- `compile`/`render`は`prompt:read`スコープを要求し、同じスコープで呼べる
+  `GET /prompts/{namespace}/{name}`が全Version（状態問わず）を返す（設計書§13.2）ため、
+  400が新たに漏らす情報は無い（`prompt:read`保持者は既にVersion一覧と状態を見られる）。
+- `execute`は`prompt:execute`スコープのみで`prompt:read`を伴わない付与もあり得るため、
+  この経路に限れば「指定したSemVerが実在するかどうか」を400/404の違いから読み取れる
+  余地は残る。ただし`VersionRef.Fixed`はクライアントが具体的なSemVer文字列を指定する
+  必要があり、総当たりで存在確認できる一覧取得オラクルにはならない（推測したSemVer
+  1件ずつの存在有無に限られる）。
+- 404に寄せて情報を隠すには、`LoadStage`（application層）に「呼出元がどのスコープを
+  持つか」というHTTP/認可層の知識を持ち込む必要があり、Clean Architectureの層境界
+  （domain/applicationはHTTP・認可を知らない、CLAUDE.md）を破る。上記の残存リスクの
+  小ささに対して不釣り合いに大きい設計変更となるため見送る。
+- P3c確立済みの`DraftReferenceNotAllowedException`（Composition依存の間接参照）も同じ
+  理由で400のまま据え置いており、本ADRの主Version参照だけ404に倒すと、同種の状態不整合
+  なのに個別参照と間接参照とでコードが割れて一貫性を欠く。
 
 ## 影響範囲
 

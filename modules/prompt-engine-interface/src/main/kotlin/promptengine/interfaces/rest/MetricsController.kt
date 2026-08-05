@@ -26,6 +26,9 @@ class MetricsController(private val metricsHandler: MetricsHandler) {
         @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) from: Instant,
         @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) to: Instant,
     ): MetricsSummaryDto {
+        // `JdbcMetricsRepository`は`BETWEEN :from AND :to`をそのまま発行するため、from>toだと
+        // クエリ自体は成立し0件集計を返してしまう（CodeRabbitレビュー指摘）。境界で明示的に拒否する。
+        require(!from.isAfter(to)) { "from must not be after to: from=$from, to=$to" }
         val key = DomainValueFactory.promptKeyText(namespace, name)
         val view = metricsHandler.handleView(QueryFactory.metricsQuery(key, from, to))
         return MetricsSummaryDto(

@@ -2,6 +2,7 @@ package promptengine.interfaces.rest
 
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.validation.Valid
+import org.springdoc.core.annotations.ParameterObject
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.security.access.prepost.PreAuthorize
@@ -109,7 +110,7 @@ class PromptController(
     @GetMapping
     @PreAuthorize("hasAuthority('prompt:read')")
     fun search(
-        @ModelAttribute params: PromptSearchQueryParams,
+        @Valid @ParameterObject @ModelAttribute params: PromptSearchQueryParams,
     ): PageDto<PromptSummaryDto> {
         val query =
             PromptCommandFactory.searchPromptsQuery(

@@ -137,19 +137,30 @@ class PromptLifecycleSmokeTest {
         publishResponse.statusCode shouldBe HttpStatus.OK
 
         // 5. render（HTTP）: 状態ゲート（ADR-0024）導入後もPublished済み1.1.0なら成功する。
+        // 同一入力で2回呼び、renderHashが決定論的（同じ入力なら常に同じハッシュ）であることも
+        // 確認する（CodeRabbitレビュー指摘: 従来はmessagesが空でないことしか検証していなかった）。
         val renderBody = mapOf("versionRef" to "1.1.0", "modelProfile" to "gpt-class-large")
-        val renderResponse =
-            restTemplate.exchange(
-                url("/api/v1/prompts/$promptKey/render"),
-                HttpMethod.POST,
-                HttpEntity(renderBody, headers),
-                Map::class.java,
-            )
-        renderResponse.statusCode shouldBe HttpStatus.OK
+        val firstRenderResponse = render(renderBody, headers)
+        firstRenderResponse.statusCode shouldBe HttpStatus.OK
         @Suppress("UNCHECKED_CAST")
-        val messages = (renderResponse.body?.get("messages") as? List<Map<String, Any?>>).orEmpty()
+        val messages = (firstRenderResponse.body?.get("messages") as? List<Map<String, Any?>>).orEmpty()
         messages.isNotEmpty() shouldBe true
+
+        val secondRenderResponse = render(renderBody, headers)
+        secondRenderResponse.statusCode shouldBe HttpStatus.OK
+        firstRenderResponse.body?.get("renderHash") shouldBe secondRenderResponse.body?.get("renderHash")
+        (firstRenderResponse.body?.get("renderHash") as? String).isNullOrBlank() shouldBe false
     }
+
+    private fun render(
+        body: Map<String, String>,
+        headers: HttpHeaders,
+    ) = restTemplate.exchange(
+        url("/api/v1/prompts/$promptKey/render"),
+        HttpMethod.POST,
+        HttpEntity(body, headers),
+        Map::class.java,
+    )
 
     /**
      * `submit-review`/`approve`相当をRepository直接操作で行う（クラスKDoc参照、ADR-0016・

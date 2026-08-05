@@ -11,12 +11,14 @@ import java.time.Instant
  * [DomainValueFactory]のKDoc参照（`prompt-engine-interface`がdomain型を直接構築できない理由）。
  */
 object QueryFactory {
+    /** `GET /prompts/{namespace}/{name}/dependencies?direction=`用の[DependenciesQuery]を構築する。 */
     fun dependenciesQuery(
         key: String,
         direction: String,
     ): DependenciesQuery =
         DependenciesQuery(DomainValueFactory.promptKey(key), DependencyDirection.valueOf(direction.uppercase()))
 
+    /** `GET /metrics/prompts/{namespace}/{name}?from=&to=`用の[MetricsQuery]を構築する。 */
     fun metricsQuery(
         key: String,
         from: Instant,

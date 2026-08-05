@@ -1,5 +1,7 @@
 package promptengine.interfaces.rest
 
+import jakarta.validation.Valid
+import org.springdoc.core.annotations.ParameterObject
 import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.ModelAttribute
@@ -20,7 +22,7 @@ class AuditLogController(private val auditLogsHandler: AuditLogsHandler) {
     @GetMapping
     @PreAuthorize("hasAuthority('audit:read')")
     fun search(
-        @ModelAttribute params: AuditLogQueryParams,
+        @Valid @ParameterObject @ModelAttribute params: AuditLogQueryParams,
     ): PageDto<AuditLogEntryDto> {
         val view =
             auditLogsHandler.handleView(

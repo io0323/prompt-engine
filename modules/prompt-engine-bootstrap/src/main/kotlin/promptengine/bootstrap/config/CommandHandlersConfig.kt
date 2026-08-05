@@ -11,6 +11,7 @@ import promptengine.application.command.PublishHandler
 import promptengine.application.command.RollbackHandler
 import promptengine.application.command.SetAliasHandler
 import promptengine.application.command.UpdatePromptMetadataHandler
+import promptengine.domain.audit.AuditRepository
 import promptengine.domain.dependency.DependencyRepository
 import promptengine.domain.fragment.FragmentRepository
 import promptengine.domain.prompt.PromptAliasRepository
@@ -103,6 +104,8 @@ class CommandHandlersConfig {
     fun setAliasHandler(
         promptRepository: PromptRepository,
         promptAliasRepository: PromptAliasRepository,
+        auditRepository: AuditRepository,
         idempotentCommandExecutor: IdempotentCommandExecutor,
-    ): SetAliasHandler = SetAliasHandler(promptRepository, promptAliasRepository, idempotentCommandExecutor)
+    ): SetAliasHandler =
+        SetAliasHandler(promptRepository, promptAliasRepository, auditRepository, idempotentCommandExecutor)
 }

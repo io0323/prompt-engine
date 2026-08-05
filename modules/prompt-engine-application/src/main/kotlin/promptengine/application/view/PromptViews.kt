@@ -20,6 +20,8 @@ import promptengine.domain.variable.VariableDefinition
  * [DependencyMetricsAuditViews]、detekt TooManyFunctions閾値対策でファイル分割）は、値を
  * 保持するだけの型（プリミティブ型のみで構成したView）へすべて変換する関数群を提供する。
  * Controllerはこの変換後のView型のみを扱う。
+ *
+ * [PageView]は`Page<T>`のView。
  */
 data class PageView<T>(
     val items: List<T>,
@@ -28,8 +30,10 @@ data class PageView<T>(
     val totalElements: Long,
 )
 
+/** `Page<T>`をPageView<R>へ変換する（`items`の各要素へ[mapper]を適用）。 */
 fun <T, R> Page<T>.toView(mapper: (T) -> R): PageView<R> = PageView(items.map(mapper), page, size, totalElements)
 
+/** `VariableDefinition`のView。 */
 data class VariableDefinitionView(
     val name: String,
     val type: String,
@@ -40,13 +44,17 @@ data class VariableDefinitionView(
     val sensitive: Boolean,
 )
 
+/** `VariableDefinition`を[VariableDefinitionView]へ変換する。 */
 fun VariableDefinition.toView(): VariableDefinitionView =
     VariableDefinitionView(name, type.name, source.name, required, default, constraints, sensitive)
 
+/** `ContextRequirement`のView。 */
 data class ContextRequirementView(val scope: String, val required: List<String>, val optional: List<String>)
 
+/** `ExtendsRef`のView。 */
 data class ExtendsRefView(val key: String, val range: String?)
 
+/** `ValidationSettings`のView。 */
 data class ValidationSettingsView(
     val maxLength: Int?,
     val maxTokens: Int?,
@@ -54,8 +62,10 @@ data class ValidationSettingsView(
     val placeholders: String,
 )
 
+/** `OutputDeclaration`のView。 */
 data class OutputDeclarationView(val format: String, val schemaRef: String?)
 
+/** `PromptVersion`のView。 */
 data class PromptVersionView(
     val semVer: String,
     val state: String,
@@ -68,6 +78,7 @@ data class PromptVersionView(
     val output: OutputDeclarationView?,
 )
 
+/** `PromptVersion`を[PromptVersionView]へ変換する。 */
 fun PromptVersion.toView(): PromptVersionView =
     PromptVersionView(
         semVer = semVer.toString(),
@@ -87,6 +98,7 @@ fun PromptVersion.toView(): PromptVersionView =
         output = output?.let { OutputDeclarationView(it.format.name, it.schemaRef) },
     )
 
+/** `PromptMetadata`のView。 */
 data class PromptMetadataView(
     val key: String,
     val name: String,
@@ -95,12 +107,16 @@ data class PromptMetadataView(
     val tags: List<String>,
 )
 
+/** `PromptMetadata`を[PromptMetadataView]へ変換する。 */
 fun PromptMetadata.toView(): PromptMetadataView = PromptMetadataView(key.value, name, category, description, tags)
 
+/** `GET /prompts/{namespace}/{name}`（[GetPromptResult]）のView。 */
 data class GetPromptView(val metadata: PromptMetadataView?, val versions: List<PromptVersionView>)
 
+/** [GetPromptResult]を[GetPromptView]へ変換する。 */
 fun GetPromptResult.toView(): GetPromptView = GetPromptView(metadata?.toView(), versions.map { it.toView() })
 
+/** `PromptSummary`（`GET /prompts`検索結果の1行）のView。 */
 data class PromptSummaryView(
     val key: String,
     val name: String,
@@ -111,6 +127,7 @@ data class PromptSummaryView(
     val publishedVersion: String?,
 )
 
+/** `PromptSummary`を[PromptSummaryView]へ変換する。 */
 fun PromptSummary.toView(): PromptSummaryView =
     PromptSummaryView(
         key = key.value,
@@ -122,6 +139,7 @@ fun PromptSummary.toView(): PromptSummaryView =
         publishedVersion = publishedVersion,
     )
 
+/** `GET /prompts/{namespace}/{name}/diff`（`PromptVersionDiff`）のView。 */
 data class PromptVersionDiffView(
     val key: String,
     val from: String,
@@ -136,6 +154,7 @@ data class PromptVersionDiffView(
     val outputChanged: Boolean,
 )
 
+/** `PromptVersionDiff`を[PromptVersionDiffView]へ変換する。 */
 fun PromptVersionDiff.toView(): PromptVersionDiffView =
     PromptVersionDiffView(
         key = key.value,

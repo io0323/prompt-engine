@@ -1,3 +1,6 @@
+# このジョブが検証するのは「実装(springdoc生成物)とapi/openapi.yamlの一致」および
+# 前回コミットとの破壊的変更の有無のみで、契約自体の正しさ（クエリパラメータの表現等）は
+# 検証しない（CONTRIBUTING.md参照）。契約内容の正しさはtests/contractのアサーションで担保する。
 name: contract
 on:
   pull_request:
@@ -40,8 +43,13 @@ jobs:
         if: steps.gradlew.outputs.exists == 'true'
         run: |
           ./gradlew :modules:prompt-engine-bootstrap:generateOpenApiDocs --no-daemon
-          if ! git diff --exit-code -- api/openapi.yaml; then
-            echo "::error::api/openapi.yaml is out of date. Run './gradlew :modules:prompt-engine-bootstrap:generateOpenApiDocs' and commit the result."
+          # `git diff --exit-code`だけだと未追跡ファイルの削除を見逃す（PRがコミット済みの
+          # api/openapi.yamlを削除しても、generateOpenApiDocsが作業ツリーへ再生成した
+          # 未追跡ファイルとdiffが無いためgreenになってしまう、CodeRabbitレビュー指摘）。
+          # `git ls-files --error-unmatch`でコミットに実在することも別途確認する。
+          if ! git diff --exit-code -- api/openapi.yaml ||
+             ! git ls-files --error-unmatch -- api/openapi.yaml > /dev/null 2>&1; then
+            echo "::error::api/openapi.yaml is out of date or not committed. Run './gradlew :modules:prompt-engine-bootstrap:generateOpenApiDocs' and commit the result."
             exit 1
           fi
       - name: 契約テスト (tests/contract)
@@ -70,9 +78,14 @@ jobs:
           revision: 'HEAD:api/openapi.yaml'
           fail-on: ERR
           github-token: ${{ github.token }}
-      - name: Skip (Gradle not yet initialized — P0 pending)
+      # `contract`はrequired status check（ブランチ保護）であるため、他ジョブ（ci.ymlのbuild/lint/
+      # arch-test/test）と違い「gradlewが無ければ黙って成功」は許容しない（CodeRabbitレビュー
+      # 指摘: PRが./gradlewを削除すると、契約検証を何も実行せずgreenになってしまう）。
+      - name: Fail when Gradle wrapper is missing
         if: steps.gradlew.outputs.exists == 'false'
-        run: echo "::notice::./gradlew not found. Skipping until P0 (repository init) is complete."
+        run: |
+          echo "::error::./gradlew is required for contract validation."
+          exit 1
       - uses: actions/upload-artifact@v7
         if: always() && steps.gradlew.outputs.exists == 'true'
         with: { name: contract-reports, path: '**/build/reports/**' }

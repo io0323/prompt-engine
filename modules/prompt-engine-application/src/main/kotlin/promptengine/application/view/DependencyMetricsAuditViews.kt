@@ -19,7 +19,9 @@ import java.math.BigDecimal
 import java.time.Instant
 import java.util.UUID
 
-/** dependency/metrics/audit-logs系のView変換（[PromptViews.kt][promptengine.application.view]のKDoc参照）。 */
+/**
+ * dependency/metrics/audit-logs系のView変換（[PromptViews.kt][promptengine.application.view]のKDoc参照）。
+ */
 data class DependencyEdgeView(
     val fromKey: String,
     val fromVersion: String,
@@ -28,9 +30,11 @@ data class DependencyEdgeView(
     val toVersion: String?,
 )
 
+/** `DependencyEdge`を[DependencyEdgeView]へ変換する。 */
 fun DependencyEdge.toView(): DependencyEdgeView =
     DependencyEdgeView(fromKey.value, fromVersion.toString(), toKind.name, toKey, toVersion)
 
+/** `MetricsSummary`（`GET /metrics/prompts/{namespace}/{name}`）のView。 */
 data class MetricsSummaryView(
     val promptKey: String,
     val from: Instant,
@@ -44,6 +48,7 @@ data class MetricsSummaryView(
     val averageLatencyMs: Long,
 )
 
+/** `MetricsSummary`を[MetricsSummaryView]へ変換する。 */
 fun MetricsSummary.toView(): MetricsSummaryView =
     MetricsSummaryView(
         promptKey = promptKey.value,
@@ -58,6 +63,7 @@ fun MetricsSummary.toView(): MetricsSummaryView =
         averageLatencyMs = averageLatency.value,
     )
 
+/** `AuditLogEntry`（`GET /audit-logs`結果の1行）のView。 */
 data class AuditLogEntryView(
     val auditId: UUID,
     val aggregateType: String,
@@ -69,6 +75,7 @@ data class AuditLogEntryView(
     val occurredAt: Instant,
 )
 
+/** `AuditLogEntry`を[AuditLogEntryView]へ変換する。 */
 fun AuditLogEntry.toView(): AuditLogEntryView =
     AuditLogEntryView(auditId, aggregateType, aggregateId, action, actor, payload, traceId, occurredAt)
 
@@ -88,19 +95,27 @@ fun AuditLogEntry.toView(): AuditLogEntryView =
  * （[PromptCommandFactory]等へ切り出さず、プリミティブ引数を直接受ける）。他は戻り値のみが
  * domain型なので、application層の型（各`*Query`）を引数に取れる。[TimeRange]・[Paging]は
  * detekt LongParameterList閾値（拡張関数はレシーバも計上されるため実質5）対策のグルーピング。
+ *
+ * [GetVersionHandler.handleView]は`GET /prompts/{namespace}/{name}/versions/{version}`。
+ * [GetVersionHandler.handle]の結果をViewへ変換する。
  */
 fun GetVersionHandler.handleView(query: GetVersionQuery): PromptVersionView = handle(query).toView()
 
+/** `GET /prompts/{namespace}/{name}/diff`。[DiffHandler.handle]の結果をViewへ変換する。 */
 fun DiffHandler.handleView(query: DiffQuery): PromptVersionDiffView = handle(query).toView()
 
+/** `GET /prompts/{namespace}/{name}/dependencies`。[DependenciesHandler.handle]の結果をViewへ変換する。 */
 fun DependenciesHandler.handleView(query: DependenciesQuery): List<DependencyEdgeView> =
     handle(query).map { it.toView() }
 
+/** `GET /metrics/prompts/{namespace}/{name}`。[MetricsHandler.handle]の結果をViewへ変換する。 */
 fun MetricsHandler.handleView(query: MetricsQuery): MetricsSummaryView = handle(query).toView()
 
+/** `GET /prompts`（検索）。[SearchPromptsHandler.handle]の結果をViewへ変換する。 */
 fun SearchPromptsHandler.handleView(query: SearchPromptsQuery): PageView<PromptSummaryView> =
     handle(query).toView { it.toView() }
 
+/** `GET /audit-logs`。プリミティブ引数から`AuditQuery`を組み立て、[AuditLogsHandler.handle]の結果をViewへ変換する。 */
 fun AuditLogsHandler.handleView(
     aggregateId: String?,
     actor: String?,

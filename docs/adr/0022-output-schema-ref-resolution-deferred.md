@@ -28,9 +28,9 @@ P9（REST API）実装までにこの経路を決めておく必要があった�
 
 案2を採用する。M1では`SchemaRepository`を新設しない。
 
-- `POST /prompts/{key}/render`のレスポンスは、設計書§13.2の例の通り`outputSchemaRef`
-  を解決せずそのまま返す（文字列のエコーバックのみ）
-- `POST /prompts/{key}/execute`は、Structured Output検証を行いたいクライアントが
+- `POST /prompts/{namespace}/{name}/render`のレスポンスは、設計書§13.2の例の通り
+  `outputSchemaRef`を解決せずそのまま返す（文字列のエコーバックのみ）
+- `POST /prompts/{namespace}/{name}/execute`は、Structured Output検証を行いたいクライアントが
   リクエストボディで`outputSchema`（`{id, fields: [{name, type, required}]}`、
   `OutputSchema`のフィールド構成に対応するJSON）を明示的に渡せるようにする。
   渡さない場合は検証なし（`schema=null`で`ExecutionEngine.run`を呼ぶ）

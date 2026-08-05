@@ -76,13 +76,15 @@ class PromptCommandFactoryTest {
     }
 
     @Test
-    fun `setAliasCommand はkey-alias-semVer-idempotencyKeyを正しくCommandへ変換する`() {
-        val command = PromptCommandFactory.setAliasCommand("support/faq-answer", "stable", "1.0.0", "idem-2")
+    fun `setAliasCommand はkey-alias-semVer-metaを正しくCommandへ変換する`() {
+        val command = PromptCommandFactory.setAliasCommand("support/faq-answer", "stable", "1.0.0", meta)
 
         command.key shouldBe PromptKey("support/faq-answer")
         command.alias shouldBe "stable"
         command.semVer shouldBe SemVer(1, 0, 0)
-        command.idempotencyKey shouldBe "idem-2"
+        command.actor shouldBe "user:test"
+        command.traceId shouldBe "trace-1"
+        command.idempotencyKey shouldBe "idem-1"
     }
 
     @Test

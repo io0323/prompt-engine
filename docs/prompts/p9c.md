@@ -12,7 +12,7 @@ P1から現在までbootstrapのDI配線が未着手であり、このアプリ�
 
 - `prompt-engine-bootstrap`で全モジュールの実装を`@Bean`として結線する（domainのInterfaceに対してcore/infrastructure/pluginsの実装を割り当てる）
 - Springコンテキストが起動することを検証するテストを必ず置く（`@SpringBootTest`によるコンテキストロードテスト）
-- Testcontainers でPostgreSQLを起動した状態でアプリケーションを立ち上げ、実際にHTTPリクエストを投げてレスポンスが返ることを確認するE2Eスモークテストを1本以上置く（最低限: Prompt作成→Version作成→publish→renderの通し）
+- Testcontainers でPostgreSQLを起動した状態でアプリケーションを立ち上げ、Prompt作成・Version作成・publish・renderをHTTPで検証するE2Eスモークテストを1本以上置く。Approved化はテストフィクスチャ（`PromptRepository`直接操作）で準備する（下記「引き継ぎ事項」参照）
 - 本番プロファイルでInMemory実装が選択された場合に起動時エラーとなること（P8のADR-0015で決めた方針）を検証する
 
 ## 実装スコープ
@@ -20,7 +20,7 @@ P1から現在までbootstrapのDI配線が未着手であり、このアプリ�
 - §13.1の表のうちM1対象分のController（Prompt CRUD/Version/diff/lifecycle遷移/compile/render/execute/aliases/dependencies/audit-logs/metrics）※submit-review/approve/reject/experiments系はM2のため実装しない
 - DTOは§13.2のJSON例と完全一致させる（フィールド名・ネスト構造）
 - GlobalExceptionHandlerで§13.3のHTTP↔code対応表を網羅。P8のStageErrorMapperが出すコードと1対1で対応すること
-- Spring Security Resource Server（JWT）+ CiapAuthAdapter。スコープ（prompt:read/write/publish/execute/admin, audit:read）を強制
+- Spring Security Resource Server（JWT）+ CiapAuthAdapter。スコープ（prompt:read/write/review/approve/publish/execute/admin, audit:read）を強制
 - Idempotency-Keyの受け取りと、9bのIdempotentCommandExecutorへの引き渡し
 - ページング（既定20・上限100）、X-Trace-Idの受け取りと伝播
 - springdoc-openapiの設定と、生成物をapi/openapi.yamlとして出力するGradleタスク
@@ -39,7 +39,7 @@ P1から現在までbootstrapのDI配線が未着手であり、このアプリ�
 
 ## テスト要件
 
-- 認可: 各エンドポイントについて「スコープ有り200/スコープ無し403/トークン無し401」を網羅
+- 認可: 各エンドポイントについて「スコープ有り→§13.3/OpenAPI定義通りの成功ステータス（作成系は201等）/スコープ無し403/トークン無し401」を網羅
 - §13.3の全エラーコードについて、対応するHTTPステータスが返ることを検証
 - Idempotency: 同一キーの再送、同一キー・異なるボディでのIDEMPOTENCY_KEY_CONFLICT、IN_PROGRESS中の再送
 - ページング境界（上限超過時の扱い）

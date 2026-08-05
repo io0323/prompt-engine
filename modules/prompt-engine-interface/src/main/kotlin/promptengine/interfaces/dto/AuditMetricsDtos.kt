@@ -1,5 +1,7 @@
 package promptengine.interfaces.dto
 
+import jakarta.validation.constraints.Max
+import jakarta.validation.constraints.Min
 import org.springframework.format.annotation.DateTimeFormat
 import java.math.BigDecimal
 import java.time.Instant
@@ -14,8 +16,8 @@ data class AuditLogQueryParams(
     val actor: String? = null,
     @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) val from: Instant? = null,
     @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) val to: Instant? = null,
-    val page: Int = 0,
-    val size: Int = 20,
+    @field:Min(0) val page: Int = 0,
+    @field:Min(1) @field:Max(MAX_PAGE_SIZE) val size: Int = 20,
 )
 
 data class AuditLogEntryDto(

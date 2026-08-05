@@ -24,6 +24,7 @@ private const val SEMVER_PARTS_COUNT = 3
  * [PromptCommandFactory]・[VersionCommandFactory]・[QueryFactory]から共通利用される。
  */
 object DomainValueFactory {
+    /** `text`から`PromptKey`を構築する。不正な形式は`PromptKey`の`init`が投げる`IllegalArgumentException`をそのまま伝播させる。 */
     fun promptKey(text: String): PromptKey = PromptKey(text)
 
     /**
@@ -40,12 +41,14 @@ object DomainValueFactory {
         name: String,
     ): String = promptKey("$namespace/$name").value
 
+    /** `"major.minor.patch"`形式の文字列から`SemVer`を構築する。形式が異なれば`IllegalArgumentException`。 */
     fun semVer(text: String): SemVer {
         val parts = text.split(".")
         require(parts.size == SEMVER_PARTS_COUNT) { "invalid semVer format (expected major.minor.patch): $text" }
         return SemVer(parts[0].toInt(), parts[1].toInt(), parts[2].toInt())
     }
 
+    /** `"latest"`（大小無視）/SemVer形式/それ以外（Alias名）を判別して`VersionRef`を構築する。 */
     fun versionRef(text: String): VersionRef =
         when {
             text.equals("latest", ignoreCase = true) -> VersionRef.Latest
@@ -53,6 +56,7 @@ object DomainValueFactory {
             else -> VersionRef.Alias(text)
         }
 
+    /** `LifecycleState`の名前（`Draft`等）から`LifecycleState`を構築する。未知の値は`IllegalArgumentException`。 */
     fun lifecycleState(text: String): LifecycleState =
         when (text) {
             "Draft" -> LifecycleState.Draft
@@ -64,6 +68,7 @@ object DomainValueFactory {
             else -> throw IllegalArgumentException("invalid status: $text")
         }
 
+    /** [VariableDefinitionInput]をdomain型`VariableDefinition`へ変換する。 */
     fun variableDefinition(input: VariableDefinitionInput): VariableDefinition =
         VariableDefinition(
             name = input.name,
@@ -75,14 +80,17 @@ object DomainValueFactory {
             sensitive = input.sensitive,
         )
 
+    /** [ContextRequirementInput]をdomain型`ContextRequirement`へ変換する。 */
     fun contextRequirement(input: ContextRequirementInput): ContextRequirement =
         ContextRequirement(input.scope, input.required, input.optional)
 
+    /** [ValidationSettingsInput]をdomain型`ValidationSettings`へ変換する。`null`なら既定値。 */
     fun validationSettings(input: ValidationSettingsInput?): ValidationSettings =
         input?.let {
             ValidationSettings(it.maxLength, it.maxTokens, it.policies, PlaceholderMode.valueOf(it.placeholders))
         } ?: ValidationSettings()
 
+    /** [OutputDeclarationInput]をdomain型`OutputDeclaration`へ変換する。`null`なら`null`。 */
     fun outputDeclaration(input: OutputDeclarationInput?): OutputDeclaration? =
         input?.let { OutputDeclaration(OutputFormat.valueOf(it.format), it.schemaRef) }
 

@@ -18,19 +18,26 @@ import promptengine.interfaces.dto.VariableDefinitionDto
 
 /**
  * application層View→レスポンスDTOへの変換関数群（P9c、[RequestDtoMappers.kt]のKDoc参照）。
+ *
+ * [VariableDefinitionView.toDto]は[VariableDefinitionView]を[VariableDefinitionDto]へ変換する。
  */
 fun VariableDefinitionView.toDto(): VariableDefinitionDto =
     VariableDefinitionDto(name, type, source, required, default, constraints, sensitive)
 
+/** [ContextRequirementView]を[ContextRequirementDto]へ変換する。 */
 fun ContextRequirementView.toDto(): ContextRequirementDto = ContextRequirementDto(scope, required, optional)
 
+/** [ValidationSettingsView]を[ValidationSettingsDto]へ変換する。 */
 fun ValidationSettingsView.toDto(): ValidationSettingsDto =
     ValidationSettingsDto(maxLength, maxTokens, policies, placeholders)
 
+/** [OutputDeclarationView]を[OutputDeclarationDto]へ変換する。 */
 fun OutputDeclarationView.toDto(): OutputDeclarationDto = OutputDeclarationDto(format, schemaRef)
 
+/** [PromptMetadataView]を[PromptMetadataDto]へ変換する。 */
 fun PromptMetadataView.toDto(): PromptMetadataDto = PromptMetadataDto(key, name, category, description, tags)
 
+/** [PromptVersionView]を[PromptVersionDto]へ変換する。 */
 fun PromptVersionView.toDto(): PromptVersionDto =
     PromptVersionDto(
         semVer = semVer,
@@ -44,5 +51,6 @@ fun PromptVersionView.toDto(): PromptVersionDto =
         output = output?.toDto(),
     )
 
+/** [PromptSummaryView]を[PromptSummaryDto]へ変換する。 */
 fun PromptSummaryView.toDto(): PromptSummaryDto =
     PromptSummaryDto(key, name, category, tags, status, latestVersion, publishedVersion)

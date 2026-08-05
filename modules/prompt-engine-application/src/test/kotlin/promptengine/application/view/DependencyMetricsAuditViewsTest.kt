@@ -228,11 +228,17 @@ class DependencyMetricsAuditViewsTest {
     }
 
     private class FakeAuditRepository(private val page: Page<AuditLogEntry>) : AuditRepository {
+        var receivedQuery: AuditQuery? = null
+            private set
+
         override fun append(record: promptengine.domain.audit.AuditRecord) = Unit
 
         override fun record(entry: AuditLogEntry) = Unit
 
-        override fun search(query: AuditQuery): Page<AuditLogEntry> = page
+        override fun search(query: AuditQuery): Page<AuditLogEntry> {
+            receivedQuery = query
+            return page
+        }
     }
 
     @Test
@@ -248,16 +254,21 @@ class DependencyMetricsAuditViewsTest {
                 "trace-1",
                 Instant.EPOCH,
             )
-        val handler = AuditLogsHandler(FakeAuditRepository(Page(listOf(entry), 0, 20, 1)))
+        val repository = FakeAuditRepository(Page(listOf(entry), 0, 20, 1))
+        val handler = AuditLogsHandler(repository)
+        val range = TimeRange(Instant.EPOCH, Instant.EPOCH.plusSeconds(1))
 
-        val view =
-            handler.handleView(
-                "agg-1",
-                "user:test",
-                TimeRange(Instant.EPOCH, Instant.EPOCH.plusSeconds(1)),
-                Paging(0, 20),
-            )
+        val view = handler.handleView("agg-1", "user:test", range, Paging(3, 50))
 
         view.items shouldBe listOf(entry.toView())
+        repository.receivedQuery shouldBe
+            AuditQuery(
+                aggregateId = "agg-1",
+                actor = "user:test",
+                from = Instant.EPOCH,
+                to = Instant.EPOCH.plusSeconds(1),
+                page = 3,
+                size = 50,
+            )
     }
 }

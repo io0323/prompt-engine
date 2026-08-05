@@ -28,18 +28,21 @@ import promptengine.domain.shared.TokenCount
  * 非空検証のみ呼出元（Controller）が行う契約とする。
  */
 class PipelineRequestFactory(private val modelProfile: ModelProfile) {
+    /** `POST /prompts/{namespace}/{name}/compile`用の[CompileCommand]を構築する。 */
     fun createCompileCommand(
         input: PipelineRequestInput,
         traceId: String,
         idempotencyKey: String?,
     ): CompileCommand = CompileCommand(toPipelineRequest(input), traceId, idempotencyKey)
 
+    /** `POST /prompts/{namespace}/{name}/render`用の[RenderCommand]を構築する。 */
     fun createRenderCommand(
         input: PipelineRequestInput,
         traceId: String,
         idempotencyKey: String?,
     ): RenderCommand = RenderCommand(toPipelineRequest(input), traceId, idempotencyKey)
 
+    /** `POST /prompts/{namespace}/{name}/execute`用の[ExecuteCommand]を構築する。 */
     fun createExecuteCommand(
         input: PipelineRequestInput,
         traceId: String,

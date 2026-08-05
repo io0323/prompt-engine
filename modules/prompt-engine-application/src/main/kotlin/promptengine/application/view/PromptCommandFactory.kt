@@ -71,9 +71,16 @@ object PromptCommandFactory {
         key: String,
         alias: String,
         semVer: String,
-        idempotencyKey: String?,
+        meta: RequestMeta,
     ): SetAliasCommand =
-        SetAliasCommand(DomainValueFactory.promptKey(key), alias, DomainValueFactory.semVer(semVer), idempotencyKey)
+        SetAliasCommand(
+            DomainValueFactory.promptKey(key),
+            alias,
+            DomainValueFactory.semVer(semVer),
+            meta.actor,
+            meta.traceId,
+            meta.idempotencyKey,
+        )
 
     fun getPromptQuery(key: String): GetPromptQuery = GetPromptQuery(DomainValueFactory.promptKey(key))
 

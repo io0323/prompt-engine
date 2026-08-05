@@ -698,7 +698,7 @@ alt cache hit
 else miss
   PO -> Repo : findVersion(key, versionRef)
   Repo --> PO : PromptVersion(DSL)
-  note right : Status=Published以外は\nPROMPT_NOT_FOUND(404)
+  note right : Draft/InReview/Approvedの固定参照は\nVALIDATION_FAILED(400)\n（Compile-only除く、ADR-0024）
 end
 @enduml
 ```
@@ -1546,7 +1546,7 @@ outbox }o--|| domain_events : event_id
 | 400 | VALIDATION_FAILED / PARSE_FAILED / INVALID_REQUEST / CIRCULAR_DEPENDENCY / COMPOSITION_LIMIT_EXCEEDED |
 | 401 | UNAUTHENTICATED |
 | 403 | PERMISSION_DENIED |
-| 404 | PROMPT_NOT_FOUND / VERSION_NOT_FOUND / FRAGMENT_NOT_FOUND / TEMPLATE_NOT_FOUND |
+| 404 | PROMPT_NOT_FOUND / VERSION_NOT_FOUND / FRAGMENT_NOT_FOUND / TEMPLATE_NOT_FOUND / NOT_FOUND（どの`@RequestMapping`にもマッチしないURL。マッチしたエンドポイント内のエラーではないため他コードとは性質が異なる、ADR-0023） |
 | 409 | INVALID_STATE_TRANSITION / VERSION_CONFLICT / DUPLICATE_KEY / IDEMPOTENCY_KEY_CONFLICT（同一Idempotency-Keyで異なるリクエスト内容） / IDEMPOTENCY_KEY_IN_PROGRESS（同一キーが処理中） |
 | 422 | VARIABLE_UNRESOLVED / CONTEXT_UNAVAILABLE / TOKEN_BUDGET_EXCEEDED |
 | 429 | RATE_LIMITED |
