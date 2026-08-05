@@ -1,0 +1,68 @@
+name: contract
+on:
+  pull_request:
+  push: { branches: [main] }
+concurrency:
+  group: contract-${{ github.ref }}
+  cancel-in-progress: true
+permissions:
+  contents: read
+  pull-requests: write
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: prompt_engine
+          POSTGRES_USER: prompt_engine
+          POSTGRES_PASSWORD: prompt_engine
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U prompt_engine -d prompt_engine"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v5.6.0
+        with: { distribution: temurin, java-version: '21' }
+      - uses: gradle/actions/setup-gradle@v6
+      - name: Check for Gradle wrapper
+        id: gradlew
+        run: echo "exists=$( [ -f ./gradlew ] && echo true || echo false )" >> "$GITHUB_OUTPUT"
+      # `application.yml`のdatasourceデフォルト（localhost:5432, prompt_engine/prompt_engine/prompt_engine）が
+      # 上のpostgresサービスコンテナの設定と一致するため、env override不要でそのまま起動できる。
+      - name: springdocからapi-docsを再生成しapi/openapi.yamlとの差分を検証
+        if: steps.gradlew.outputs.exists == 'true'
+        run: |
+          ./gradlew :modules:prompt-engine-bootstrap:generateOpenApiDocs --no-daemon
+          if ! git diff --exit-code -- api/openapi.yaml; then
+            echo "::error::api/openapi.yaml is out of date. Run './gradlew :modules:prompt-engine-bootstrap:generateOpenApiDocs' and commit the result."
+            exit 1
+          fi
+      - name: 契約テスト (tests/contract)
+        if: steps.gradlew.outputs.exists == 'true'
+        run: ./gradlew :tests:contract:test --no-daemon
+      - name: Fetch base branch for breaking-change comparison
+        if: steps.gradlew.outputs.exists == 'true' && github.event_name == 'pull_request'
+        run: git fetch --depth=1 origin ${{ github.base_ref }}
+      # 破壊的変更のみ失敗させる（fail-on: ERR）。フィールド追加等の非破壊的変更で
+      # 誤ってPRをブロックしないため（M1時点でAPIサーフェス自体が発展途上のため）。
+      - name: 破壊的変更検出 (oasdiff)
+        if: steps.gradlew.outputs.exists == 'true' && github.event_name == 'pull_request'
+        uses: oasdiff/oasdiff-action/breaking@v0
+        with:
+          base: 'origin/${{ github.base_ref }}:api/openapi.yaml'
+          revision: 'HEAD:api/openapi.yaml'
+          fail-on: ERR
+          github-token: ${{ github.token }}
+      - name: Skip (Gradle not yet initialized — P0 pending)
+        if: steps.gradlew.outputs.exists == 'false'
+        run: echo "::notice::./gradlew not found. Skipping until P0 (repository init) is complete."
+      - uses: actions/upload-artifact@v7
+        if: always() && steps.gradlew.outputs.exists == 'true'
+        with: { name: contract-reports, path: '**/build/reports/**' }
