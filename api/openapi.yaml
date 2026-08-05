@@ -2,7 +2,7 @@ openapi: 3.1.0
 info:
   title: Prompt Engine API
   description: 設計書§13 API設計（REST）
-  version: v1
+  version: v9
 servers:
 - url: http://localhost:8080
   description: Generated server url
