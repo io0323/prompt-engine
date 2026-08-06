@@ -22,6 +22,16 @@ pe:
   validation:
     banned-words: ${PE_VALIDATION_BANNED_WORDS:}
 
+promptengine:
+  eventbus:
+    # Outbox → Broker中継のポーリング設定（productionプロファイルのみ有効、ADR-0025決定5）。
+    relay:
+      poll-interval-ms: ${PE_EVENTBUS_RELAY_POLL_INTERVAL_MS:750}
+      batch-size: ${PE_EVENTBUS_RELAY_BATCH_SIZE:50}
+      claim-timeout-seconds: ${PE_EVENTBUS_RELAY_CLAIM_TIMEOUT_SECONDS:30}
+    kafka:
+      bootstrap-servers: ${PE_EVENTBUS_KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+
 springdoc:
   api-docs:
     path: /v3/api-docs
