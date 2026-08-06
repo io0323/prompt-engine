@@ -24,5 +24,8 @@ dependencies {
     implementation(libs.jackson.module.kotlin)
     runtimeOnly(libs.postgresql)
 
+    // OutboxRelayerがBrokerへ送信するために使うProducerクライアント（ADR-0025決定9）。
+    implementation(libs.kafka.clients)
+
     testImplementation(libs.spring.boot.starter.test)
 }

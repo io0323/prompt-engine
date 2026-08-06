@@ -13,6 +13,7 @@ flyway = "10.20.1"
 snakeyaml = "2.6"
 jackson = "2.18.2"
 springdoc-openapi = "2.8.6"
+kafka = "3.8.1"
 
 [libraries]
 kotlin-reflect = { module = "org.jetbrains.kotlin:kotlin-reflect", version.ref = "kotlin" }
@@ -44,6 +45,13 @@ archunit-junit5 = { module = "com.tngtech.archunit:archunit-junit5", version.ref
 testcontainers-bom = { module = "org.testcontainers:testcontainers-bom", version.ref = "testcontainers" }
 testcontainers-junit-jupiter = { module = "org.testcontainers:junit-jupiter" }
 testcontainers-postgresql = { module = "org.testcontainers:postgresql" }
+# Redpanda（Kafkaワイヤプロトコル互換）。ADR-0006「Kafka互換Broker」・ADR-0025決定9で採用。
+# testcontainers-bom管理下のため個別バージョン指定は不要（testcontainers-postgresqlと同じ方針）。
+testcontainers-redpanda = { module = "org.testcontainers:redpanda" }
+
+# OutboxRelayerのBroker送信・購読側冪等性テストfixtureで使うProducer/Consumer（ADR-0025）。
+# Redpandaはこのクライアントとワイヤプロトコルレベルで通信できる。
+kafka-clients = { module = "org.apache.kafka:kafka-clients", version.ref = "kafka" }
 
 flyway-core = { module = "org.flywaydb:flyway-core", version.ref = "flyway" }
 flyway-postgresql = { module = "org.flywaydb:flyway-database-postgresql", version.ref = "flyway" }
