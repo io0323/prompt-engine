@@ -48,6 +48,9 @@ dependencies {
     implementation(libs.springdoc.openapi.webmvc.ui)
     runtimeOnly(libs.postgresql)
 
+    // OutboxRelayConfigがKafka Producerを構築するために必要（ADR-0025決定9）。
+    implementation(libs.kafka.clients)
+
     testImplementation(libs.spring.boot.starter.test)
     testImplementation(libs.spring.security.test)
     testImplementation(libs.archunit.junit5)

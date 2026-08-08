@@ -16,6 +16,7 @@ import promptengine.engine.compiler.ExtendsFieldResolverImpl
 import promptengine.infrastructure.audit.InMemoryAuditRepository
 import promptengine.infrastructure.audit.Slf4jAuditFailureHandler
 import promptengine.infrastructure.messaging.InMemoryEventBusAdapter
+import promptengine.infrastructure.messaging.OutboxEventBusAdapter
 import promptengine.infrastructure.persistence.JdbcAuditRepository
 import promptengine.infrastructure.persistence.JdbcIdempotentCommandExecutor
 
@@ -23,11 +24,13 @@ import promptengine.infrastructure.persistence.JdbcIdempotentCommandExecutor
  * 冪等性実行・監査・イベント配送のDI配線（P9c、[RepositoryConfig]のKDoc参照。
  * detekt TooManyFunctions閾値対策で[PersistenceConfig.kt][promptengine.bootstrap.config]を分割）。
  *
- * [auditRepositoryProduction]/[auditRepositoryDefault]・[eventBusAdapter]は、`production`
- * プロファイルでInMemory実装が選択された場合に起動時エラーとする方針（ADR-0015決定7）を
- * `activeProfiles`経由で反映する。`EventBusAdapter`は本番向けの実装（Kafka互換Broker中継、
- * Issue #11）がまだ存在しないため、現状`production`プロファイルでは本アプリケーション自体が
- * 起動できない（意図した制約。P10で解消予定）。
+ * [auditRepositoryProduction]/[auditRepositoryDefault]・[eventBusAdapterProduction]/
+ * [eventBusAdapterDefault]は、`production`プロファイルでInMemory実装が選択された場合に
+ * 起動時エラーとする方針（ADR-0015決定7）を`activeProfiles`経由で反映する。`EventBusAdapter`の
+ * 本番実装（[OutboxEventBusAdapter]、`event_bus_outbox`への書き込みのみ。実際のBroker中継は
+ * [OutboxRelayConfig][promptengine.bootstrap.config.OutboxRelayConfig]が配線する
+ * `OutboxRelayer`が非同期に行う）をADR-0025（P10a、Issue #35）で追加し、`production`
+ * プロファイルが`EventBusAdapter`起因では起動失敗しなくなった。
  */
 @Configuration
 class AuditEventConfig {
@@ -62,7 +65,22 @@ class AuditEventConfig {
     fun auditRepositoryDefault(environment: Environment): AuditRepository =
         InMemoryAuditRepository(environment.activeProfiles.toSet())
 
+    /** イベント配送の本来の実装（`production`プロファイルではこちらを使う、ADR-0025決定6）。 */
     @Bean
-    fun eventBusAdapter(environment: Environment): EventBusAdapter =
+    @Profile("production")
+    fun eventBusAdapterProduction(
+        jdbcTemplate: NamedParameterJdbcTemplate,
+        transactionTemplate: TransactionTemplate,
+        objectMapper: ObjectMapper,
+    ): EventBusAdapter = OutboxEventBusAdapter(jdbcTemplate, transactionTemplate, objectMapper)
+
+    /**
+     * ローカル開発・テスト用の既定（ADR-0015決定7）。`production`プロファイルでは
+     * [eventBusAdapterProduction]が選ばれるため生成されないが、万一の誤配線に備え
+     * `InMemoryEventBusAdapter`自身もactiveProfilesを見て起動時エラーとする（多層防御）。
+     */
+    @Bean
+    @Profile("!production")
+    fun eventBusAdapterDefault(environment: Environment): EventBusAdapter =
         InMemoryEventBusAdapter(environment.activeProfiles.toSet())
 }
