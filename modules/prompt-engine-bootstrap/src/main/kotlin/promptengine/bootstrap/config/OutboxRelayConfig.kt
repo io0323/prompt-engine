@@ -135,5 +135,16 @@ class OutboxRelayConfig {
             properties.batchSize,
         )
 
+    /**
+     * [OutboxRelayScheduler]は`@Component`で自己登録せず、ここで`@Bean`として構築する
+     * （CLAUDE.md「具象クラスのDI結線はbootstrapのConfigurationクラスでのみ行う」、
+     * CodeRabbitレビュー指摘）。
+     */
+    @Bean
+    fun outboxRelayScheduler(
+        @Qualifier("eventBusOutboxRelayer") eventBusOutboxRelayer: OutboxRelayer,
+        @Qualifier("domainEventOutboxRelayer") domainEventOutboxRelayer: OutboxRelayer,
+    ): OutboxRelayScheduler = OutboxRelayScheduler(eventBusOutboxRelayer, domainEventOutboxRelayer)
+
     private fun hostName(): String = runCatching { InetAddress.getLocalHost().hostName }.getOrDefault("unknown-host")
 }

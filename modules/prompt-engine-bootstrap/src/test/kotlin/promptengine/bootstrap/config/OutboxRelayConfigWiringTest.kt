@@ -18,10 +18,13 @@ import promptengine.infrastructure.messaging.OutboxRelayer
  * `production`プロファイルの起動全体は[promptengine.bootstrap.ProductionProfileGuardTest]が
  * 検証するが、そちらは`FakeExecutionAdapter`のガードで必ず起動が失敗するため（Bean生成順序に
  * 依存し、決定的ではない）、`OutboxRelayConfig`のBean定義（2つの`OutboxSource`を
- * `@Qualifier`で区別し2つの`OutboxRelayer`へ正しく注入する部分、`OutboxRelayScheduler`が
- * その2つを`@Qualifier`で正しく受け取る部分）が実際に解決されることを、独立した
- * 最小コンテキストで直接確認する。`@Qualifier`の付け間違い・Bean名の衝突は
+ * `@Qualifier`で区別し2つの`OutboxRelayer`へ正しく注入する部分、`OutboxRelayConfig.
+ * outboxRelayScheduler`がその2つを`@Qualifier`で正しく受け取る部分）が実際に解決されることを、
+ * 独立した最小コンテキストで直接確認する。`@Qualifier`の付け間違い・Bean名の衝突は
  * 単体テスト（各クラスの直接インスタンス化）では検出できない、DI配線固有の欠陥のため。
+ * `OutboxRelayScheduler`は`@Component`で自己登録しない（CLAUDE.md「具象クラスのDI結線は
+ * bootstrapのConfigurationクラスでのみ行う」）ため、`context.register()`には
+ * `OutboxRelayConfig`のみを渡し、`OutboxRelayScheduler`自体はそのBean定義経由で解決する。
  *
  * `KafkaProducer`の構築はBrokerへの同期接続を行わない（バックグラウンドのメタデータ更新
  * スレッドが非同期にリトライするのみ）ため、実Brokerなしでも安全にBeanを構築できる。
@@ -33,7 +36,6 @@ class OutboxRelayConfigWiringTest {
         context.environment.setActiveProfiles("production")
         context.register(
             OutboxRelayConfig::class.java,
-            OutboxRelayScheduler::class.java,
             StubJdbcBeansConfig::class.java,
         )
         context.refresh()
@@ -48,7 +50,7 @@ class OutboxRelayConfigWiringTest {
             properties.batchSize shouldBe 50
             properties.claimTimeoutSeconds shouldBe 30L
 
-            // OutboxRelayScheduler自体が例外無く解決できることが、コンストラクタの
+            // OutboxRelayConfig.outboxRelayScheduler Beanが例外無く解決できることが、
             // @Qualifier注入が正しく2つのOutboxRelayerへ解決されたことの証明になる。
             context.getBean(OutboxRelayScheduler::class.java) shouldNotBe null
 
