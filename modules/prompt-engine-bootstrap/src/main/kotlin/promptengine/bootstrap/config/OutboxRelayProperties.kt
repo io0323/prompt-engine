@@ -15,6 +15,20 @@ data class OutboxRelayProperties(
     /** クレームしたプロセスがクラッシュしたとみなすまでの秒数。既定30秒。 */
     val claimTimeoutSeconds: Long = DEFAULT_CLAIM_TIMEOUT_SECONDS,
 ) {
+    init {
+        // 誤設定（0以下）はOutboxRelayerを機能不全にする（batchSize<=0は毎回0件クレーム、
+        // claimTimeoutSeconds<=0は自分がクレームした行を次のポーリングで即座に再クレーム
+        // 対象にしてしまう）。Bean生成前の設定バインディング時点でfail-fastする
+        // （CodeRabbitレビュー指摘）。
+        require(batchSize > 0) { "promptengine.eventbus.relay.batch-size must be positive: $batchSize" }
+        require(claimTimeoutSeconds > 0) {
+            "promptengine.eventbus.relay.claim-timeout-seconds must be positive: $claimTimeoutSeconds"
+        }
+        require(pollIntervalMs > 0) {
+            "promptengine.eventbus.relay.poll-interval-ms must be positive: $pollIntervalMs"
+        }
+    }
+
     companion object {
         private const val DEFAULT_POLL_INTERVAL_MS = 750L
         private const val DEFAULT_BATCH_SIZE = 50

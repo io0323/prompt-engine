@@ -8,6 +8,7 @@ import org.springframework.context.annotation.AnnotationConfigApplicationContext
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
+import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler
 import org.springframework.transaction.support.TransactionTemplate
 import promptengine.infrastructure.messaging.OutboxRelayer
 
@@ -50,6 +51,11 @@ class OutboxRelayConfigWiringTest {
             // OutboxRelayScheduler自体が例外無く解決できることが、コンストラクタの
             // @Qualifier注入が正しく2つのOutboxRelayerへ解決されたことの証明になる。
             context.getBean(OutboxRelayScheduler::class.java) shouldNotBe null
+
+            // 2つの@Scheduledジョブが単一スレッドで直列化しないことの配線面の保証
+            // （CodeRabbitレビュー指摘）。プールサイズ1のままだと片方の遅延がもう片方を止める。
+            val taskScheduler = context.getBean(ThreadPoolTaskScheduler::class.java)
+            taskScheduler.poolSize shouldBe 2
         } finally {
             context.close()
         }

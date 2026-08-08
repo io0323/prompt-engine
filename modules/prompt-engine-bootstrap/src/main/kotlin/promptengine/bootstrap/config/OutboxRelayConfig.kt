@@ -12,6 +12,7 @@ import org.springframework.context.annotation.Configuration
 import org.springframework.context.annotation.Profile
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
 import org.springframework.scheduling.annotation.EnableScheduling
+import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler
 import org.springframework.transaction.support.TransactionTemplate
 import promptengine.infrastructure.messaging.DomainEventOutboxSource
 import promptengine.infrastructure.messaging.EventBusOutboxSource
@@ -26,6 +27,9 @@ import java.util.UUID
 
 private const val EVENT_BUS_SOURCE_QUALIFIER = "eventBusOutboxSource"
 private const val DOMAIN_EVENT_SOURCE_QUALIFIER = "domainEventOutboxSource"
+
+/** [OutboxRelayScheduler]の2ジョブ分（`event_bus_outbox`用・既存`outbox`用）。 */
+private const val SCHEDULER_POOL_SIZE = 2
 
 /**
  * このプロセスのクレーム識別子（`claimed_by`、ADR-0025決定3）。プロセス起動ごとに1回生成し、
@@ -51,6 +55,20 @@ data class OutboxRelayInstanceId(val value: String)
 @EnableScheduling
 @EnableConfigurationProperties(OutboxRelayProperties::class)
 class OutboxRelayConfig {
+    /**
+     * [OutboxRelayScheduler]の2つの`@Scheduled`メソッド用スレッドプール（CodeRabbitレビュー指摘）。
+     * Springの既定`TaskScheduler`はプールサイズ1であり、`event_bus_outbox`用と既存`outbox`用の
+     * 2ジョブが単一スレッドで直列実行されてしまう（片方のBroker送信が遅延すると、もう片方の
+     * ポーリングサイクルも止まる）。プールサイズ2でこの2ジョブが独立して並行実行されるようにする。
+     */
+    @Bean
+    fun outboxRelayTaskScheduler(): ThreadPoolTaskScheduler =
+        ThreadPoolTaskScheduler().apply {
+            poolSize = SCHEDULER_POOL_SIZE
+            threadNamePrefix = "outbox-relay-"
+            initialize()
+        }
+
     @Bean
     fun outboxRelayInstanceId(): OutboxRelayInstanceId = OutboxRelayInstanceId("${hostName()}-${UUID.randomUUID()}")
 

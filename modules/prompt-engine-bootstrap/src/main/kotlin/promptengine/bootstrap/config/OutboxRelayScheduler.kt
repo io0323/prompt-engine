@@ -10,6 +10,10 @@ import promptengine.infrastructure.messaging.OutboxRelayer
  * `event_bus_outbox`・既存`outbox`それぞれを独立したポーリングジョブで中継する
  * （ADR-0025決定2・5）。`production`プロファイルのみで動作する（[OutboxRelayConfig]参照）。
  * ポーリング間隔は`promptengine.eventbus.relay.poll-interval-ms`（[OutboxRelayProperties]）。
+ *
+ * [OutboxRelayConfig.outboxRelayTaskScheduler]（プールサイズ2）が実行を担うため、
+ * この2メソッドは互いをブロックしない（片方のBroker送信が遅延しても、もう片方の
+ * ポーリングサイクルは独立して進む。CodeRabbitレビュー指摘）。
  */
 @Component
 @Profile("production")
