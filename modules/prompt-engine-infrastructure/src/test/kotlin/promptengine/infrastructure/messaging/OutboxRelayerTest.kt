@@ -1,17 +1,40 @@
 package promptengine.infrastructure.messaging
 
+import ch.qos.logback.classic.Logger
+import ch.qos.logback.classic.spi.ILoggingEvent
+import ch.qos.logback.core.read.ListAppender
+import io.kotest.matchers.collections.shouldNotBeEmpty
 import io.kotest.matchers.shouldBe
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import io.mockk.verifyOrder
+import org.junit.jupiter.api.AfterEach
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.slf4j.LoggerFactory
 import java.time.Duration
 import java.time.Instant
 import java.util.UUID
 
 /** [OutboxRelayer]の単体テスト（ADR-0025決定2〜4）。[OutboxSource]/[EventProducer]をモックする。 */
 class OutboxRelayerTest {
+    private lateinit var logAppender: ListAppender<ILoggingEvent>
+    private lateinit var logger: Logger
+
+    @BeforeEach
+    fun setUp() {
+        logger = LoggerFactory.getLogger(OutboxRelayer::class.java) as Logger
+        logAppender = ListAppender()
+        logAppender.start()
+        logger.addAppender(logAppender)
+    }
+
+    @AfterEach
+    fun tearDown() {
+        logger.detachAppender(logAppender)
+    }
+
     private fun envelope(
         eventType: String = "PromptExecuted",
         aggregateId: String = "prompt/example",
@@ -35,14 +58,16 @@ class OutboxRelayerTest {
         val producer = mockk<EventProducer>(relaxed = true)
         val env = envelope()
         every { source.claimBatch(any(), any(), any()) } returns listOf(env)
+        every { source.markDispatched(env.outboxId, "worker-1") } returns true
 
         val relayer = OutboxRelayer(source, producer, instanceId = "worker-1")
         val dispatched = relayer.relayOnce()
 
         dispatched shouldBe 1
-        verify { producer.send("pe.execution", "prompt/example", """{"k":"v"}""") }
-        verify { source.markDispatched(env.outboxId) }
-        verify(exactly = 0) { source.markFailed(any(), any()) }
+        verify { producer.send("pe.execution", "prompt/example", """{"k":"v"}""", env.eventId) }
+        verify { source.markDispatched(env.outboxId, "worker-1") }
+        verify(exactly = 0) { source.markFailed(any(), any(), any()) }
+        logAppender.list shouldBe emptyList()
     }
 
     @Test
@@ -54,7 +79,7 @@ class OutboxRelayerTest {
 
         OutboxRelayer(source, producer, instanceId = "worker-1").relayOnce()
 
-        verify { producer.send("pe.execution", env.eventId.toString(), any()) }
+        verify { producer.send("pe.execution", env.eventId.toString(), any(), env.eventId) }
     }
 
     @Test
@@ -63,14 +88,16 @@ class OutboxRelayerTest {
         val producer = mockk<EventProducer>()
         val env = envelope(attempts = 0)
         every { source.claimBatch(any(), any(), any()) } returns listOf(env)
-        every { producer.send(any(), any(), any()) } throws RuntimeException("broker unavailable")
+        every { producer.send(any(), any(), any(), any()) } throws RuntimeException("broker unavailable")
+        every { source.markFailed(env.outboxId, "worker-1", any()) } returns true
 
         val relayer = OutboxRelayer(source, producer, instanceId = "worker-1")
         val dispatched = relayer.relayOnce()
 
         dispatched shouldBe 0
-        verify(exactly = 0) { source.markDispatched(any()) }
-        verify { source.markFailed(env.outboxId, any()) }
+        verify(exactly = 0) { source.markDispatched(any(), any()) }
+        verify { source.markFailed(env.outboxId, "worker-1", any()) }
+        logAppender.list shouldBe emptyList()
     }
 
     @Test
@@ -82,7 +109,7 @@ class OutboxRelayerTest {
         val dispatched = OutboxRelayer(source, producer, instanceId = "worker-1").relayOnce()
 
         dispatched shouldBe 0
-        verify(exactly = 0) { producer.send(any(), any(), any()) }
+        verify(exactly = 0) { producer.send(any(), any(), any(), any()) }
     }
 
     @Test
@@ -102,9 +129,9 @@ class OutboxRelayerTest {
         } catch (e: IllegalArgumentException) {
             e.message?.contains("NotInDesignDoc") shouldBe true
         }
-        verify(exactly = 0) { producer.send(any(), any(), any()) }
-        verify(exactly = 0) { source.markDispatched(any()) }
-        verify(exactly = 0) { source.markFailed(any(), any()) }
+        verify(exactly = 0) { producer.send(any(), any(), any(), any()) }
+        verify(exactly = 0) { source.markDispatched(any(), any()) }
+        verify(exactly = 0) { source.markFailed(any(), any(), any()) }
     }
 
     @Test
@@ -118,10 +145,50 @@ class OutboxRelayerTest {
 
         dispatched shouldBe 3
         verifyOrder {
-            producer.send(any(), any(), any())
-            producer.send(any(), any(), any())
-            producer.send(any(), any(), any())
+            producer.send(any(), any(), any(), any())
+            producer.send(any(), any(), any(), any())
+            producer.send(any(), any(), any(), any())
         }
+    }
+
+    @Test
+    fun `送信成功後にmarkDispatchedがfalseを返す場合(別インスタンスに再claimされていた)はfencing_lostをログに残し件数はカウントする`() {
+        // 送信自体はBrokerへ成功しているため件数には数える。ただしDB側の確定は
+        // 別インスタンス（claim_timeout後に再claimしたインスタンス）の所有物になっており、
+        // このインスタンスが上書きしてはならない（フェンシング、ADR-0025決定3）。
+        val source = mockk<OutboxSource>(relaxed = true)
+        val producer = mockk<EventProducer>(relaxed = true)
+        val env = envelope()
+        every { source.claimBatch(any(), any(), any()) } returns listOf(env)
+        every { source.markDispatched(env.outboxId, "worker-1") } returns false
+
+        val dispatched = OutboxRelayer(source, producer, instanceId = "worker-1").relayOnce()
+
+        dispatched shouldBe 1
+        logAppender.list.shouldNotBeEmpty()
+        val logged = logAppender.list.single().formattedMessage
+        logged.contains("outbox_relay_fencing_lost") shouldBe true
+        logged.contains(env.outboxId.toString()) shouldBe true
+        logged.contains("markDispatched") shouldBe true
+    }
+
+    @Test
+    fun `送信失敗後にmarkFailedがfalseを返す場合(別インスタンスに再claimされていた)はfencing_lostをログに残す`() {
+        val source = mockk<OutboxSource>(relaxed = true)
+        val producer = mockk<EventProducer>()
+        val env = envelope()
+        every { source.claimBatch(any(), any(), any()) } returns listOf(env)
+        every { producer.send(any(), any(), any(), any()) } throws RuntimeException("broker unavailable")
+        every { source.markFailed(env.outboxId, "worker-1", any()) } returns false
+
+        val dispatched = OutboxRelayer(source, producer, instanceId = "worker-1").relayOnce()
+
+        dispatched shouldBe 0
+        logAppender.list.shouldNotBeEmpty()
+        val logged = logAppender.list.single().formattedMessage
+        logged.contains("outbox_relay_fencing_lost") shouldBe true
+        logged.contains(env.outboxId.toString()) shouldBe true
+        logged.contains("markFailed") shouldBe true
     }
 
     @Test

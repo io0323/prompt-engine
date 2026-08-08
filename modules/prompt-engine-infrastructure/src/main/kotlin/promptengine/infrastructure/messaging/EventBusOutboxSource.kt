@@ -62,32 +62,39 @@ class EventBusOutboxSource(
             }
         } ?: emptyList()
 
-    override fun markDispatched(outboxId: UUID) {
-        transactionTemplate.executeWithoutResult {
+    override fun markDispatched(
+        outboxId: UUID,
+        instanceId: String,
+    ): Boolean =
+        transactionTemplate.execute {
             jdbcTemplate.update(
-                "UPDATE event_bus_outbox SET dispatched_at = :now WHERE outbox_id = :outboxId",
+                """
+                UPDATE event_bus_outbox SET dispatched_at = :now
+                WHERE outbox_id = :outboxId AND claimed_by = :instanceId
+                """.trimIndent(),
                 MapSqlParameterSource()
                     .addValue("now", Timestamp.from(Instant.now()))
-                    .addValue("outboxId", outboxId),
+                    .addValue("outboxId", outboxId)
+                    .addValue("instanceId", instanceId),
             )
-        }
-    }
+        } == 1
 
     override fun markFailed(
         outboxId: UUID,
+        instanceId: String,
         nextAttemptAt: Instant,
-    ) {
-        transactionTemplate.executeWithoutResult {
+    ): Boolean =
+        transactionTemplate.execute {
             jdbcTemplate.update(
                 """
                 UPDATE event_bus_outbox
                 SET claimed_at = NULL, claimed_by = NULL, attempts = attempts + 1, next_attempt_at = :nextAttemptAt
-                WHERE outbox_id = :outboxId
+                WHERE outbox_id = :outboxId AND claimed_by = :instanceId
                 """.trimIndent(),
                 MapSqlParameterSource()
                     .addValue("nextAttemptAt", Timestamp.from(nextAttemptAt))
-                    .addValue("outboxId", outboxId),
+                    .addValue("outboxId", outboxId)
+                    .addValue("instanceId", instanceId),
             )
-        }
-    }
+        } == 1
 }

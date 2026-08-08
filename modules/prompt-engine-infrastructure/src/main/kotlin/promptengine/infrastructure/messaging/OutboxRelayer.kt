@@ -1,5 +1,6 @@
 package promptengine.infrastructure.messaging
 
+import org.slf4j.LoggerFactory
 import promptengine.domain.event.EventTopicResolver
 import java.time.Duration
 import java.time.Instant
@@ -14,6 +15,11 @@ import java.time.Instant
  * 1. [OutboxSource.claimBatch]で未配信行をクレーム（短いトランザクション）
  * 2. [producer]でBrokerへ送信（DBトランザクションを開かない）
  * 3. 成否に応じて[OutboxSource.markDispatched]/[OutboxSource.markFailed]で確定（行単位の短いトランザクション）
+ *
+ * フェーズ3は[instanceId]によるフェンシング（`claimed_by`の一致確認、ADR-0025決定3）を
+ * 前提に成立する。フェンシングが無ければ、claim_timeoutを超えて別インスタンスに再クレーム
+ * された行を元のインスタンスが後から`markDispatched`/`markFailed`で上書きしてしまい、
+ * 「クレームは一時点で1インスタンスにのみ属する」という3段階Claim方式の前提が破れる。
  */
 class OutboxRelayer(
     private val source: OutboxSource,
@@ -29,18 +35,40 @@ class OutboxRelayer(
         claimed.forEach { envelope ->
             val topic = EventTopicResolver.resolve(envelope.eventType)
             val key = envelope.aggregateId.ifBlank { envelope.eventId.toString() }
-            val sendResult = runCatching { producer.send(topic.topicName, key, envelope.payload) }
+            val sendResult = runCatching { producer.send(topic.topicName, key, envelope.payload, envelope.eventId) }
             if (sendResult.isSuccess) {
-                source.markDispatched(envelope.outboxId)
                 dispatchedCount++
+                val owned = source.markDispatched(envelope.outboxId, instanceId)
+                if (!owned) logFencingLost(envelope, "markDispatched")
             } else {
-                source.markFailed(envelope.outboxId, Instant.now().plus(backoffFor(envelope.attempts + 1)))
+                val nextAttemptAt = Instant.now().plus(backoffFor(envelope.attempts + 1))
+                val owned = source.markFailed(envelope.outboxId, instanceId, nextAttemptAt)
+                if (!owned) logFencingLost(envelope, "markFailed")
             }
         }
         return dispatchedCount
     }
 
+    /**
+     * claim_timeoutを超えて別インスタンスに再クレームされたため、この行の確定を
+     * 諦めたことを記録する（ADR-0025決定3）。黙って成功扱いにしない。メトリクスへの
+     * 反映はMonitoring実装（10cスコープ、ADR-0025「スコープ外」）で行う想定。
+     */
+    private fun logFencingLost(
+        envelope: OutboxEnvelope,
+        phase: String,
+    ) {
+        logger.warn(
+            "outbox_relay_fencing_lost outboxId={} eventId={} phase={} instanceId={}",
+            envelope.outboxId,
+            envelope.eventId,
+            phase,
+            instanceId,
+        )
+    }
+
     companion object {
+        private val logger = LoggerFactory.getLogger(OutboxRelayer::class.java)
         private val DEFAULT_CLAIM_TIMEOUT = Duration.ofSeconds(30)
         private const val DEFAULT_BATCH_SIZE = 50
         private val BACKOFF_BASE = Duration.ofSeconds(1)

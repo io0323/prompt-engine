@@ -23,17 +23,28 @@ interface OutboxSource {
         batchSize: Int,
     ): List<OutboxEnvelope>
 
-    /** [outboxId]の行をBroker配信済みとして確定する（ADR-0025決定3フェーズ3）。 */
-    fun markDispatched(outboxId: UUID)
+    /**
+     * [outboxId]の行をBroker配信済みとして確定する（ADR-0025決定3フェーズ3）。
+     * [instanceId]が現在も`claimed_by`の値と一致する場合のみ更新する（フェンシング、
+     * ADR-0025決定3）。claim_timeoutを超えて別インスタンスに再クレームされていた場合は
+     * 何も更新せず`false`を返す（呼出元は自分がこの行の所有者でなくなったと判断する）。
+     */
+    fun markDispatched(
+        outboxId: UUID,
+        instanceId: String,
+    ): Boolean
 
     /**
      * [outboxId]の行を配信失敗として記録し、クレームを解放して[nextAttemptAt]以降に
-     * 再クレーム可能にする（ADR-0025決定3フェーズ3・決定4）。
+     * 再クレーム可能にする（ADR-0025決定3フェーズ3・決定4）。[markDispatched]と同様に
+     * [instanceId]による所有権検証（フェンシング）を行い、別インスタンスに再クレームされて
+     * いた場合は何も更新せず`false`を返す。
      */
     fun markFailed(
         outboxId: UUID,
+        instanceId: String,
         nextAttemptAt: Instant,
-    )
+    ): Boolean
 }
 
 /**

@@ -55,60 +55,76 @@ class DomainEventOutboxSource(
                 )
             if (claimedIds.isEmpty()) return@execute emptyList()
 
+            // claimedIdsの順序（claimBatchのORDER BY created_at）を、この後のIN句クエリの
+            // 結果順序としてそのまま使う。SQLの `IN (:eventIds)` は行の返却順序を保証しないため
+            // （CodeRabbitレビュー指摘）、DB結果はeventId→行のMapとしてのみ使い、実際の出力順は
+            // claimedIds（クレーム順）でこちら側から明示的に組み立てる。
+            val claimOrder = claimedIds.map { it["event_id"] as UUID }
             val attemptsByEventId = claimedIds.associate { it["event_id"] as UUID to it["attempts"] as Int }
             val outboxIdByEventId = claimedIds.associate { it["event_id"] as UUID to it["outbox_id"] as UUID }
 
-            jdbcTemplate.query(
-                """
-                SELECT event_id, event_type, aggregate_type, aggregate_id, actor, trace_id,
-                       payload::text AS payload, occurred_at
-                FROM domain_events
-                WHERE event_id IN (:eventIds)
-                """.trimIndent(),
-                MapSqlParameterSource("eventIds", attemptsByEventId.keys.toList()),
-            ) { rs, _ ->
-                val eventId = rs.getObject("event_id", UUID::class.java)
-                OutboxEnvelope(
-                    outboxId = outboxIdByEventId.getValue(eventId),
-                    eventId = eventId,
-                    eventType = rs.getString("event_type"),
-                    aggregateType = rs.getString("aggregate_type"),
-                    aggregateId = rs.getObject("aggregate_id", UUID::class.java).toString(),
-                    actor = rs.getString("actor"),
-                    traceId = rs.getString("trace_id"),
-                    payload = rs.getString("payload"),
-                    occurredAt = rs.getTimestamp("occurred_at").toInstant(),
-                    attempts = attemptsByEventId.getValue(eventId),
-                )
-            }
+            val domainEventsByEventId =
+                jdbcTemplate.query(
+                    """
+                    SELECT event_id, event_type, aggregate_type, aggregate_id, actor, trace_id,
+                           payload::text AS payload, occurred_at
+                    FROM domain_events
+                    WHERE event_id IN (:eventIds)
+                    """.trimIndent(),
+                    MapSqlParameterSource("eventIds", claimOrder),
+                ) { rs, _ ->
+                    val eventId = rs.getObject("event_id", UUID::class.java)
+                    eventId to
+                        OutboxEnvelope(
+                            outboxId = outboxIdByEventId.getValue(eventId),
+                            eventId = eventId,
+                            eventType = rs.getString("event_type"),
+                            aggregateType = rs.getString("aggregate_type"),
+                            aggregateId = rs.getObject("aggregate_id", UUID::class.java).toString(),
+                            actor = rs.getString("actor"),
+                            traceId = rs.getString("trace_id"),
+                            payload = rs.getString("payload"),
+                            occurredAt = rs.getTimestamp("occurred_at").toInstant(),
+                            attempts = attemptsByEventId.getValue(eventId),
+                        )
+                }.toMap()
+
+            claimOrder.map { eventId -> domainEventsByEventId.getValue(eventId) }
         } ?: emptyList()
 
-    override fun markDispatched(outboxId: UUID) {
-        transactionTemplate.executeWithoutResult {
+    override fun markDispatched(
+        outboxId: UUID,
+        instanceId: String,
+    ): Boolean =
+        transactionTemplate.execute {
             jdbcTemplate.update(
-                "UPDATE outbox SET dispatched_at = :now WHERE outbox_id = :outboxId",
+                """
+                UPDATE outbox SET dispatched_at = :now
+                WHERE outbox_id = :outboxId AND claimed_by = :instanceId
+                """.trimIndent(),
                 MapSqlParameterSource()
                     .addValue("now", Timestamp.from(Instant.now()))
-                    .addValue("outboxId", outboxId),
+                    .addValue("outboxId", outboxId)
+                    .addValue("instanceId", instanceId),
             )
-        }
-    }
+        } == 1
 
     override fun markFailed(
         outboxId: UUID,
+        instanceId: String,
         nextAttemptAt: Instant,
-    ) {
-        transactionTemplate.executeWithoutResult {
+    ): Boolean =
+        transactionTemplate.execute {
             jdbcTemplate.update(
                 """
                 UPDATE outbox
                 SET claimed_at = NULL, claimed_by = NULL, attempts = attempts + 1, next_attempt_at = :nextAttemptAt
-                WHERE outbox_id = :outboxId
+                WHERE outbox_id = :outboxId AND claimed_by = :instanceId
                 """.trimIndent(),
                 MapSqlParameterSource()
                     .addValue("nextAttemptAt", Timestamp.from(nextAttemptAt))
-                    .addValue("outboxId", outboxId),
+                    .addValue("outboxId", outboxId)
+                    .addValue("instanceId", instanceId),
             )
-        }
-    }
+        } == 1
 }
