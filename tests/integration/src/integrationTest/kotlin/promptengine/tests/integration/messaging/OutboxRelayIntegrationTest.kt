@@ -96,7 +96,9 @@ class OutboxRelayIntegrationTest {
         Admin.create(
             Properties().apply { put(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, redpanda.bootstrapServers) },
         ).use { admin ->
-            admin.createTopics(listOf("pe.execution", "pe.prompt").map { NewTopic(it, 1, 1.toShort()) }).all().get()
+            admin.createTopics(listOf("pe.execution", "pe.prompt").map { NewTopic(it, 1, 1.toShort()) })
+                .all()
+                .get(30, TimeUnit.SECONDS)
         }
     }
 
@@ -332,12 +334,12 @@ class OutboxRelayIntegrationTest {
         // という順序を実際のPostgresに対して再現する（CodeRabbitレビュー指摘）。
         val eventId = insertEventBusOutboxRow(eventType = "PromptExecuted")
         val source = EventBusOutboxSource(jdbcTemplate, transactionTemplate)
-        val shortClaimTimeout = Duration.ofMillis(200)
+        val shortClaimTimeout = Duration.ofSeconds(1)
 
         val claimedByA = source.claimBatch("instance-a", shortClaimTimeout, 10)
         claimedByA.map { it.eventId } shouldBe listOf(eventId)
 
-        Thread.sleep(shortClaimTimeout.toMillis() + 100)
+        Thread.sleep(shortClaimTimeout.toMillis() + 2000)
 
         val claimedByB = source.claimBatch("instance-b", shortClaimTimeout, 10)
         claimedByB.map { it.eventId } shouldBe listOf(eventId)
@@ -365,10 +367,10 @@ class OutboxRelayIntegrationTest {
         // フェンシングの検証にならないため、Bはクレームしたままにする。
         val eventId = insertEventBusOutboxRow(eventType = "PromptExecuted")
         val source = EventBusOutboxSource(jdbcTemplate, transactionTemplate)
-        val shortClaimTimeout = Duration.ofMillis(200)
+        val shortClaimTimeout = Duration.ofSeconds(1)
 
         val claimedByA = source.claimBatch("instance-a", shortClaimTimeout, 10)
-        Thread.sleep(shortClaimTimeout.toMillis() + 100)
+        Thread.sleep(shortClaimTimeout.toMillis() + 2000)
         val claimedByB = source.claimBatch("instance-b", shortClaimTimeout, 10)
         claimedByB.map { it.eventId } shouldBe listOf(eventId)
 

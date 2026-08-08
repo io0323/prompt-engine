@@ -50,9 +50,8 @@ class OutboxRelayer(
     }
 
     /**
-     * claim_timeoutを超えて別インスタンスに再クレームされたため、この行の確定を
-     * 諦めたことを記録する（ADR-0025決定3）。黙って成功扱いにしない。メトリクスへの
-     * 反映はMonitoring実装（10cスコープ、ADR-0025「スコープ外」）で行う想定。
+     * claim_timeoutを超えて別インスタンスに再クレームされた行は、元の所有者が確定してはならない
+     * （ADR-0025決定3、3段階Claim方式のフェンシング前提）。
      */
     private fun logFencingLost(
         envelope: OutboxEnvelope,
