@@ -94,6 +94,11 @@ class OutboxEventBusAdapterIntegrationTest {
         row["aggregate_id"] shouldBe "prompt/support/faq-answer"
         row["actor"] shouldBe "system"
         row["trace_id"] shouldBe "trace-xyz"
+        // payloadはobjectMapper.writeValueAsStringと::jsonキャストを経由する唯一のフィールドで、
+        // OutboxRelayerがBrokerへそのまま送る値でもある。シリアライズ・キャストの欠陥は
+        // これらのフィールドを見なければ検出できない（CodeRabbitレビュー指摘）。
+        row["payload"].toString() shouldBe """{"promptKey":"support/faq-answer","inputTokens":10}"""
+        (row["occurred_at"] as java.sql.Timestamp).toInstant() shouldBe occurredAt
         row["dispatched_at"] shouldBe null
         row["claimed_at"] shouldBe null
         row["attempts"] shouldBe 0

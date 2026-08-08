@@ -4,6 +4,9 @@ import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
+import org.apache.kafka.clients.admin.Admin
+import org.apache.kafka.clients.admin.AdminClientConfig
+import org.apache.kafka.clients.admin.NewTopic
 import org.apache.kafka.clients.consumer.ConsumerConfig
 import org.apache.kafka.clients.consumer.KafkaConsumer
 import org.apache.kafka.clients.producer.KafkaProducer
@@ -85,6 +88,16 @@ class OutboxRelayIntegrationTest {
             }
         kafkaProducer = KafkaProducer(producerProps)
         producer = KafkaEventProducer(kafkaProducer)
+
+        // Topicの自動作成・リーダー選出待ちで初回送信がタイムアウトに近づく事象
+        // （relayUntilDispatchedのKDoc参照）を減らすため、このテストで使う全Topicを
+        // 事前に作成しておく（CodeRabbitレビュー指摘）。retryUntilDispatchedの
+        // リトライループ自体は、事前作成後も残る自動作成外の一過性遅延に備えて維持する。
+        Admin.create(
+            Properties().apply { put(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, redpanda.bootstrapServers) },
+        ).use { admin ->
+            admin.createTopics(listOf("pe.execution", "pe.prompt").map { NewTopic(it, 1, 1.toShort()) }).all().get()
+        }
     }
 
     @AfterAll
@@ -314,6 +327,66 @@ class OutboxRelayIntegrationTest {
     }
 
     @Test
+    fun `claim_timeoutを過ぎて別インスタンスに再claimされた行を元インスタンスのmarkDispatchedは上書きしない`() {
+        // ADR-0025決定3「フェンシング」。A→claim_timeout経過→B→AがmarkDispatchedを試みる、
+        // という順序を実際のPostgresに対して再現する（CodeRabbitレビュー指摘）。
+        val eventId = insertEventBusOutboxRow(eventType = "PromptExecuted")
+        val source = EventBusOutboxSource(jdbcTemplate, transactionTemplate)
+        val shortClaimTimeout = Duration.ofMillis(200)
+
+        val claimedByA = source.claimBatch("instance-a", shortClaimTimeout, 10)
+        claimedByA.map { it.eventId } shouldBe listOf(eventId)
+
+        Thread.sleep(shortClaimTimeout.toMillis() + 100)
+
+        val claimedByB = source.claimBatch("instance-b", shortClaimTimeout, 10)
+        claimedByB.map { it.eventId } shouldBe listOf(eventId)
+
+        // Aはクレームした時点のoutboxIdをまだ持っている（クラッシュしていなかった、または
+        // Broker送信の応答が遅れていただけのケースを模す）が、行の所有権はもうBにある。
+        val owned = source.markDispatched(claimedByA.single().outboxId, "instance-a")
+        owned shouldBe false
+
+        val row =
+            jdbcTemplate.queryForMap(
+                "SELECT claimed_by, dispatched_at FROM event_bus_outbox WHERE event_id = :eventId",
+                MapSqlParameterSource("eventId", eventId),
+            )
+        row["claimed_by"] shouldBe "instance-b"
+        row["dispatched_at"] shouldBe null
+    }
+
+    @Test
+    fun `claim_timeoutを過ぎて別インスタンスに再claimされた行を元インスタンスのmarkFailedは上書きしない`() {
+        // BがmarkDispatched/markFailedのいずれも呼ぶ前（＝Bがまだ行をアクティブに
+        // クレームしたままの状態）に、AがmarkFailedを試みるケースを再現する。
+        // 先にBが自分のmarkFailedを呼んでしまうと（claimed_by=NULLへ解放されるのが
+        // 元々の仕様、ADR-0025決定3フェーズ3）、Bの所有権自体が消えてしまい
+        // フェンシングの検証にならないため、Bはクレームしたままにする。
+        val eventId = insertEventBusOutboxRow(eventType = "PromptExecuted")
+        val source = EventBusOutboxSource(jdbcTemplate, transactionTemplate)
+        val shortClaimTimeout = Duration.ofMillis(200)
+
+        val claimedByA = source.claimBatch("instance-a", shortClaimTimeout, 10)
+        Thread.sleep(shortClaimTimeout.toMillis() + 100)
+        val claimedByB = source.claimBatch("instance-b", shortClaimTimeout, 10)
+        claimedByB.map { it.eventId } shouldBe listOf(eventId)
+
+        // Aが自分のクレーム時点のoutboxIdでmarkFailedを試みても、所有権は既にBにあるため
+        // 反映されない（Bはまだ自分の確定処理を呼んでいない、フェンシングが試される状態）。
+        val owned = source.markFailed(claimedByA.single().outboxId, "instance-a", Instant.now().plusSeconds(1))
+        owned shouldBe false
+
+        val row =
+            jdbcTemplate.queryForMap(
+                "SELECT claimed_by, attempts FROM event_bus_outbox WHERE event_id = :eventId",
+                MapSqlParameterSource("eventId", eventId),
+            )
+        row["claimed_by"] shouldBe "instance-b"
+        row["attempts"] shouldBe 0
+    }
+
+    @Test
     fun `event_bus_outboxのBroker送信失敗はmarkFailedでクレーム解放と再試行時刻の前進が実DBへ反映される`() {
         // OutboxRelayerTest（単体テスト）はOutboxSourceをモックするため、markFailedの
         // 実SQL（claimed_atのNULL化・attemptsの加算・next_attempt_atの前進）自体は
@@ -322,7 +395,7 @@ class OutboxRelayIntegrationTest {
         val eventId = insertEventBusOutboxRow(eventType = "PromptExecuted")
         val source = EventBusOutboxSource(jdbcTemplate, transactionTemplate)
         val failingProducer =
-            EventProducer { _, _, _ ->
+            EventProducer { _, _, _, _ ->
                 throw RuntimeException("simulated broker failure")
             }
         val relayer = OutboxRelayer(source, failingProducer, instanceId = "instance-3")
@@ -349,7 +422,7 @@ class OutboxRelayIntegrationTest {
         val eventId = insertDomainEventOutboxRow(eventType = "PromptPublished")
         val source = DomainEventOutboxSource(jdbcTemplate, transactionTemplate)
         val failingProducer =
-            EventProducer { _, _, _ ->
+            EventProducer { _, _, _, _ ->
                 throw RuntimeException("simulated broker failure")
             }
         val relayer = OutboxRelayer(source, failingProducer, instanceId = "instance-3")
