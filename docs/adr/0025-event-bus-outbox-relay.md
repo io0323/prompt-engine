@@ -138,6 +138,24 @@ Broker送信（ネットワークI/O）をDBトランザクションの中で行
 イベントが失われない」ことを保証する機構**（テスト要件、`claimed_at`を過去に手動更新して
 シミュレートする）。
 
+**フェンシング（`markDispatched`/`markFailed`の所有権検証）は3段階Claim方式の正しさの
+前提であり、省略できない。** クラッシュ再claim（前段落）は「claim_timeoutを過ぎたら別
+インスタンスが同じ行を再クレームしてよい」という設計だが、これは同時に「元のインスタンス
+（フェーズ2でBroker送信中に応答が遅れていただけで、実際にはクラッシュしていなかった場合を
+含む）が、フェーズ3で自分の送信結果を確定しようとする時点では、その行の所有者がもう自分では
+ない可能性がある」ことを意味する。フェンシングが無いと、元のインスタンスの`markDispatched`/
+`markFailed`が`WHERE outbox_id = :outboxId`のみで無条件に成功してしまい、既に別インスタンスが
+書き込んだ`claimed_at`/`claimed_by`/`attempts`/`next_attempt_at`を意図せず上書きする
+（CodeRabbitレビュー指摘: 「クレームは一時点で1インスタンスにのみ属する」という前提が
+壊れる）。このため`markDispatched(outboxId, instanceId)`/`markFailed(outboxId, instanceId,
+nextAttemptAt)`のUPDATE文は`WHERE outbox_id = :outboxId AND claimed_by = :instanceId`を
+条件とし、0行更新（＝別インスタンスに再claimされていた）の場合は`false`を返す。
+`OutboxRelayer`は`false`が返った場合、黙って成功扱いにせず`outbox_relay_fencing_lost`を
+SLF4J WARNログへ記録する（`outboxId`/`eventId`/`phase`/`instanceId`を構造化して残す）。
+メトリクスへの反映はMonitoring実装（10cスコープ）に委ねる。なお、送信自体（フェーズ2）は
+Brokerへは成功しているため、フェンシングを失っても`relayOnce()`の戻り値（配信件数）には
+そのまま数える（Broker送信の成否と、DB側の確定の所有権は別の関心事のため）。
+
 ### 4. リトライ・バックオフ: 指数バックオフ（上限あり）、DLQは10bへ先送り
 
 `attempts`回数に基づき、`base=1秒 * 2^(attempts-1)`、上限`5分`の指数バックオフで
@@ -149,11 +167,16 @@ Broker送信（ネットワークI/O）をDBトランザクションの中で行
 
 ### 5. ポーリング間隔・バッチサイズは`@ConfigurationProperties`で外出しする
 
+```yaml
+promptengine.eventbus.relay.poll-interval-ms: 750   # 既定
+promptengine.eventbus.relay.batch-size: 50           # 既定
+promptengine.eventbus.relay.claim-timeout-seconds: 30 # 既定
 ```
-promptengine.eventbus.relay.poll-interval-ms: 750   (既定)
-promptengine.eventbus.relay.batch-size: 50           (既定)
-promptengine.eventbus.relay.claim-timeout-seconds: 30 (既定)
-```
+
+`OutboxRelayProperties`のコンストラクタ`init`ブロックで3値すべてが正であることを検証する
+（0以下はOutboxRelayerを機能不全にする: `batchSize<=0`は毎回0件クレーム、
+`claimTimeoutSeconds<=0`は自分がクレームした行を次のポーリングで即座に再クレーム対象に
+してしまう。設定バインディング時点でfail-fastする、CodeRabbitレビュー指摘）。
 
 `OutboxRelayProperties`（`prompt-engine-bootstrap`）にバインドする。中継エンジン
 自体（`OutboxRelayer`、`prompt-engine-infrastructure`）はSpringの`@ConfigurationProperties`
@@ -162,8 +185,15 @@ promptengine.eventbus.relay.claim-timeout-seconds: 30 (既定)
 配線自体はDI結線としてbootstrapに閉じる、CLAUDE.md「具象クラスのDI結線はbootstrapの
 Configurationクラスでのみ行う」）。
 
-`@Scheduled`ジョブおよび関連Bean（Kafka `Producer`、`OutboxRelayer`×2）は
-`@Profile("production")`のみで有効化する。既存の`AuditRepository`/`EventBusAdapter`の
+2つの`@Scheduled`ジョブ（`event_bus_outbox`用・既存`outbox`用）は、専用の
+`ThreadPoolTaskScheduler`（プールサイズ2、`OutboxRelayConfig.outboxRelayTaskScheduler`）上で
+実行する。Springの既定`TaskScheduler`はプールサイズ1であり、2ジョブが単一スレッドで
+直列化されると片方のBroker送信遅延がもう片方のポーリングサイクルまで止めてしまう
+（CodeRabbitレビュー指摘）。
+
+`@Scheduled`ジョブおよび関連Bean（Kafka `Producer`、`OutboxRelayer`×2、
+`ThreadPoolTaskScheduler`）は`@Profile("production")`のみで有効化する。既存の
+`AuditRepository`/`EventBusAdapter`の
 `production`/`!production`分岐（ADR-0015決定7）と同じ扱いとし、非productionプロファイルは
 引き続き`InMemoryEventBusAdapter`を使い中継は起動しない。これは非productionで
 既存`outbox`が中継されず溜まり続ける既存の挙動（ADR-0006時点から変化なし）を
@@ -232,6 +262,17 @@ Kafkaメッセージキーは`aggregateId`を使う（同一Aggregate/ビジネ�
 `aggregateId`が空文字列になるケースは現行コードには存在しないが、防御的に
 `eventId.toString()`へフォールバックする（`OutboxRelayer`内、`ifBlank`）。
 
+`domain_events`をJOINして封筒を取得する`DomainEventOutboxSource`は、`claimBatch`が
+`SELECT event_id, ... FROM domain_events WHERE event_id IN (:eventIds)`で封筒データを
+取り直す際、SQLの`IN`句自体は行の返却順序を保証しない（CodeRabbitレビュー指摘）。
+クレーム時（`ORDER BY created_at`）に確定した順序をKotlin側でMapとして保持し、
+最終的な`List<OutboxEnvelope>`はそのクレーム順に組み立てる（DB側のソートに依存しない）。
+購読側がイベント順序を前提にする可能性があるため、この順序保証は重要。
+
+`KafkaEventProducer`は`eventId`をペイロードに加え、Kafkaメッセージヘッダ（`event-id`、
+UTF-8文字列）にも同じ値を載せる（CodeRabbitレビュー指摘）。購読側が決定8のUNIQUE制約
+チェックをペイロードの逆シリアライズ無しに行えるようにするため。
+
 ### 8. 冪等性: 購読側それぞれが`event_id UNIQUE` + `ON CONFLICT DO NOTHING`を持つ（方針のみ）
 
 Outbox+Brokerの配信はat-least-onceになる（決定1〜3のクレームタイムアウト再クレームが
@@ -271,6 +312,23 @@ Broker起動には`org.testcontainers:redpanda`（Redpanda、単一バイナリ�
 同じ扱いとし、Redpandaベースの統合テストにも環境依存のスキップ機構を導入しない
 （「0件ガードと同じ問題になります」という方針、`docs/prompts/p10a.md`）。
 
+`kafka-clients`のバージョンは初版レビュー後3.8.1から3.9.2へ更新した（CodeRabbitレビュー
+指摘: 3.8.1系に既知の修正が入った3.9.2以上を使う）。Redpandaとのワイヤプロトコル互換性は
+バージョンに依存しないため、この更新はクライアント側のみの変更で済む。
+
+### 10. `V12__outbox_relay_columns.sql`のインデックスは`CONCURRENTLY`を使わない（見送り、判断記録）
+
+CodeRabbitレビューで`idx_outbox_pending`の作成を`CREATE INDEX CONCURRENTLY`にする提案が
+あったが、見送った。理由は`V12__outbox_relay_columns.sql`のコメントに残す:
+PostgreSQLの`CONCURRENTLY`はトランザクションブロック内で実行できない仕様だが、Flywayは
+既定でマイグレーションをトランザクション内実行するため、素朴に置き換えると失敗する
+（`transactional=false`相当の設定変更が別途必要になる）。本マイグレーションは
+`outbox`（V1）へ列を追加した直後に同じテーブルへインデックスを張るデプロイ時の
+スキーマ変更であり、対象テーブルが本番稼働で肥大化する前の段階で実行される想定のため、
+通常の`CREATE INDEX`が取得する短時間のロックが実運用上の問題になるケースは想定しない。
+将来、稼働中の大きな`outbox`に対してインデックスを追加し直す必要が生じた場合は、
+その時点で改めて非トランザクション実行の手段を検討する。
+
 ## 影響範囲
 
 - `prompt-engine-domain`: `domain.event`に`EventTopic`（enum）・`EventTopicResolver`
@@ -291,9 +349,12 @@ Broker起動には`org.testcontainers:redpanda`（Redpanda、単一バイナリ�
     従来通り`InMemoryEventBusAdapter`）。これにより`production`プロファイルが
     `EventBusAdapter`起因では起動失敗しなくなる（Issue #35クローズの一部）。
   - `OutboxRelayConfig`（新設、`@Profile("production")`）: Kafka `Producer`・
-    `EventProducer`・`OutboxSource`×2・`OutboxRelayer`×2のBean定義。
-  - `OutboxRelayProperties`（`@ConfigurationProperties(prefix = "promptengine.eventbus.relay")`）。
-  - `OutboxRelayScheduler`（`@Profile("production")`、`@Scheduled`×2）。
+    `EventProducer`・`OutboxSource`×2・`OutboxRelayer`×2・`ThreadPoolTaskScheduler`
+    （プールサイズ2）のBean定義。
+  - `OutboxRelayProperties`（`@ConfigurationProperties(prefix = "promptengine.eventbus.relay")`、
+    `init`ブロックで3値すべてが正であることを検証）。
+  - `OutboxRelayScheduler`（`@Profile("production")`、`@Scheduled`×2、
+    専用`ThreadPoolTaskScheduler`上で並行実行）。
   - `application.yml`に`promptengine.eventbus.relay.*`・`promptengine.eventbus.kafka.*`の
     既定値を追加。
   - `EventBusAdapterProductionProfileGuardTest`（新設）: 
@@ -303,10 +364,11 @@ Broker起動には`org.testcontainers:redpanda`（Redpanda、単一バイナリ�
     紛れ込んだ場合に起動失敗すること、の両方を実際にSpringコンテキストを
     起動して検証する（`ProductionProfileGuardTest`と同じ、`SpringApplicationBuilder`
     直接操作の手法）。
-- `gradle/libs.versions.toml`: `kafka-clients`・`testcontainers-redpanda`を追加。
+- `gradle/libs.versions.toml`: `kafka-clients`（3.9.2）・`testcontainers-redpanda`を追加。
 - `tests/integration`: Redpanda統合テスト一式（中継・クラッシュ再クレーム・
-  多重配信排除・複数インスタンス排他）、`kafka-clients`・`testcontainers-redpanda`を
-  `integrationTestImplementation`へ追加。
+  多重配信排除・複数インスタンス排他・**フェンシング**（claim_timeout後に別インスタンスへ
+  再claimされた行を元インスタンスが上書きしないこと）、`kafka-clients`・
+  `testcontainers-redpanda`を`integrationTestImplementation`へ追加。
 - GitHub Issue #35（`EventBusAdapter`本実装への置換）・#11（Outbox→Broker中継）を
   本PRでクローズする。Issue #37（実DLQ）・#38・#48・#50は引き続き10b/10cで追跡する。
 
