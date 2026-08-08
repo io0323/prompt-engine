@@ -2,7 +2,9 @@ package promptengine.infrastructure.messaging
 
 import org.apache.kafka.clients.producer.Producer
 import org.apache.kafka.clients.producer.ProducerRecord
+import java.nio.charset.StandardCharsets
 import java.time.Duration
+import java.util.UUID
 import java.util.concurrent.TimeUnit
 
 /**
@@ -20,11 +22,17 @@ class KafkaEventProducer(
         topic: String,
         key: String,
         value: String,
+        eventId: UUID,
     ) {
-        producer.send(ProducerRecord(topic, key, value)).get(sendTimeout.toMillis(), TimeUnit.MILLISECONDS)
+        val record = ProducerRecord(topic, key, value)
+        record.headers().add(EVENT_ID_HEADER, eventId.toString().toByteArray(StandardCharsets.UTF_8))
+        producer.send(record).get(sendTimeout.toMillis(), TimeUnit.MILLISECONDS)
     }
 
     companion object {
         private val DEFAULT_SEND_TIMEOUT = Duration.ofSeconds(10)
+
+        /** 購読側が`payload`を逆シリアライズせずeventIdを読めるようにするヘッダ名（ADR-0025決定8）。 */
+        const val EVENT_ID_HEADER = "event-id"
     }
 }
