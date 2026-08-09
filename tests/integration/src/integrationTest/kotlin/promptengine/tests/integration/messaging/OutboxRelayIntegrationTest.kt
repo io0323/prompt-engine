@@ -125,13 +125,28 @@ class OutboxRelayIntegrationTest {
         jdbcTemplate.update("TRUNCATE TABLE event_bus_outbox, outbox, domain_events", MapSqlParameterSource())
     }
 
+    /** [fragment]を含むレコードの本文そのものを返す（見つからなければnull）。 */
+    private fun pollForBodyContaining(
+        kafkaConsumer: KafkaConsumer<String, String>,
+        fragment: String,
+        timeout: Duration = Duration.ofSeconds(15),
+    ): String? {
+        val deadline = System.currentTimeMillis() + timeout.toMillis()
+        while (System.currentTimeMillis() < deadline) {
+            val records = kafkaConsumer.poll(Duration.ofSeconds(2))
+            records.firstOrNull { it.value().contains(fragment) }?.let { return it.value() }
+        }
+        return null
+    }
+
     /**
      * 本文に[expectedFragment]を含むレコードを受信するまで、[timeout]を上限にポーリングし続ける。
      *
-     * P10b（ADR-0026決定1）でBrokerメッセージ本文がpayload単体から封筒全体のJSONへ変わったため、
-     * 完全一致ではなく部分一致で判定する（購読側がeventType/actor/traceId/occurredAtを
-     * 必要とするための変更。本テストの関心は「対象イベントがBrokerへ届いたか」であり、
-     * 本文の完全な形はEventEnvelopeCodecTestが固定する）。
+     * P10b（ADR-0025訂正E1・ADR-0026決定1a）でBrokerメッセージ本文がpayload単体から
+     * 設計書§14の封筒全体のJSONへ変わったため、完全一致ではなく部分一致で判定する
+     * （本テストの関心は「対象イベントがBrokerへ届いたか」であり、封筒8フィールドが
+     * 揃っていることは`Brokerへ中継されるメッセージ本文は設計書14の封筒8フィールドを
+     * すべて含む`が検証する）。
      */
     private fun pollUntilContains(
         kafkaConsumer: KafkaConsumer<String, String>,
@@ -258,6 +273,58 @@ class OutboxRelayIntegrationTest {
                     MapSqlParameterSource("eventId", eventId),
                 ) { rs, _ -> rs.getTimestamp("dispatched_at") }.single()
             dispatchedAt.shouldNotBeNull()
+        } finally {
+            kafkaConsumer.close()
+        }
+    }
+
+    /**
+     * 設計書§14「イベント封筒: {eventId, eventType, occurredAt, aggregateType, aggregateId,
+     * actor, traceId, payload}」への準拠を、実Brokerへ中継した実メッセージで固定する。
+     *
+     * P10a時点の実装は本文に`payload`列のJSONだけを載せており、封筒の他の7フィールドが
+     * 欠落していた（設計書§14違反。ADR-0025訂正E1）。P10bで封筒全体を送る形へ是正したため、
+     * 8フィールドすべてが実際にBrokerを通って受信側へ届くことをここで検証する。
+     */
+    @Test
+    fun `Brokerへ中継されるメッセージ本文は設計書14の封筒8フィールドをすべて含む`() {
+        val aggregateId = "prompt/envelope-conformance-${UUID.randomUUID()}"
+        val eventId = insertEventBusOutboxRow(eventType = "PromptExecuted", aggregateId = aggregateId)
+        val source = EventBusOutboxSource(jdbcTemplate, transactionTemplate)
+        val relayer = OutboxRelayer(source, producer, envelopeCodec, instanceId = "instance-1")
+        val kafkaConsumer = consumer("pe.execution")
+
+        try {
+            relayUntilDispatched(relayer) shouldBe 1
+
+            val body = pollForBodyContaining(kafkaConsumer, eventId.toString())
+            body.shouldNotBeNull()
+
+            // 受信側が封筒として復元でき、8フィールドすべてが中継元の値と一致すること。
+            val received = envelopeCodec.decode(body)
+            received.eventId shouldBe eventId
+            received.eventType shouldBe "PromptExecuted"
+            received.aggregateType shouldBe "Prompt"
+            received.aggregateId shouldBe aggregateId
+            received.actor shouldBe "system"
+            received.traceId shouldBe "trace-1"
+            received.occurredAt.shouldNotBeNull()
+            // payloadは文字列エスケープされず入れ子のJSONオブジェクトとして埋め込まれる。
+            jacksonObjectMapper().readTree(received.payload).get("eventId").asText() shouldBe eventId.toString()
+
+            // 本文のトップレベルに§14の8キーが揃っていること（復元経路とは独立に生JSONで確認）。
+            val fieldNames = jacksonObjectMapper().readTree(body).fieldNames().asSequence().toSet()
+            fieldNames shouldBe
+                setOf(
+                    "eventId",
+                    "eventType",
+                    "occurredAt",
+                    "aggregateType",
+                    "aggregateId",
+                    "actor",
+                    "traceId",
+                    "payload",
+                )
         } finally {
             kafkaConsumer.close()
         }
