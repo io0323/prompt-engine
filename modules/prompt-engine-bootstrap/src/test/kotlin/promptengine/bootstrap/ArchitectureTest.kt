@@ -9,6 +9,7 @@ import com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses
 import io.kotest.matchers.collections.shouldNotBeEmpty
 import org.junit.jupiter.api.Test
 import org.springframework.context.annotation.Configuration
+import org.springframework.stereotype.Component
 import java.io.File
 
 /**
@@ -204,6 +205,30 @@ class ArchitectureTest {
         classes()
             .that().areAnnotatedWith(Configuration::class.java)
             .should().resideInAPackage("promptengine.bootstrap..")
+            .allowEmptyShould(true)
+            .check(importedClasses)
+    }
+
+    /**
+     * 上のテストは「`@Configuration`クラスは`bootstrap`配下にある」しか検証しておらず、
+     * 「`@Component`/`@Service`/`@Repository`によるコンポーネントスキャン自己登録が
+     * 存在しない」ことは検証していなかった（ADR-0025 CodeRabbitレビューで発覚:
+     * `OutboxRelayScheduler`が`@Component`+`@Profile`で自己登録しており、`bootstrap`配下
+     * （検証対象の`@Configuration`ではない）のクラスだったため上のテストをすり抜けていた）。
+     * 本テストがその欠落を埋める: `promptengine.interfaces..`（`@RestController`/
+     * `@RestControllerAdvice`等、Spring MVCの標準的な自己登録）を除き、`@Component`で
+     * メタ注釈された具象クラス（`@Configuration`自身・`@SpringBootApplication`も
+     * `@Component`のメタ注釈を持つため、それらは別途除外する）が存在しないことを検証する。
+     * CLAUDE.mdが指す「具象クラスのDI結線」は、本番/テスト実装の選択（`InMemory`/`Jdbc`/
+     * `Kafka`実装の切替等）を伴う実装クラスを指し、Controller層にはそのような「切替候補」が
+     * 存在しないため対象外とする（Controllerの自己登録自体は禁止しない）。
+     */
+    @Test
+    fun `interfaces以外の具象クラスはComponent Service Repositoryで自己登録せずbootstrapのBean定義で結線する`() {
+        noClasses()
+            .that().resideOutsideOfPackages("promptengine.interfaces..")
+            .and().areNotMetaAnnotatedWith(Configuration::class.java)
+            .should().beMetaAnnotatedWith(Component::class.java)
             .allowEmptyShould(true)
             .check(importedClasses)
     }

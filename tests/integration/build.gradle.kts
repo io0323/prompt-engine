@@ -166,4 +166,8 @@ dependencies {
     "integrationTestImplementation"(platform(libs.testcontainers.bom))
     "integrationTestImplementation"(libs.testcontainers.junit.jupiter)
     "integrationTestImplementation"(libs.testcontainers.postgresql)
+
+    // Redpanda（Kafka互換Broker）統合テスト（ADR-0025決定9）。
+    "integrationTestImplementation"(libs.testcontainers.redpanda)
+    "integrationTestImplementation"(libs.kafka.clients)
 }
