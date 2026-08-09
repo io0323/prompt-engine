@@ -287,26 +287,80 @@ ADR-0025決定8は「各購読側が自分の書き込み先テーブルに`even
 `audit_logs.event_id`はNULL許容とする。既存のCRUD/lifecycle経路（`AuditRepository.record()`、
 ADR-0017）とPipeline Stage 12（`append()`、ADR-0015決定7）はキーにできるイベントを持たないため。
 
-### 8. `prompt-engine-infrastructure`にカバレッジ下限は設定しない（判断記録）
+### 8. `prompt-engine-infrastructure`は統合テストのカバレッジを集約して下限ゲートを掛ける
 
 `docs/prompts/p10b.md`は「カバレッジはbuildSrcの下限を下回らないこと」を要求し、P10bでは
-`prompt-engine-infrastructure`に相当量の新規コードが入る。下限を新設すべきか検討したが、
-**今回は設定しない**。
+`prompt-engine-infrastructure`に相当量の新規コードが入る。
 
-理由: このモジュールのjacocoレポートは`:modules:prompt-engine-infrastructure:test`
-（単体テスト）の実行データしか含まない。一方、モジュールの主要部分であるJDBC Repositoryは
-CLAUDE.mdのテスト規約（「Infrastructureは Testcontainers を使った統合テスト」）に従い
-`tests/integration`で検証しており、そちらは独立したGradleプロジェクトで実行データが
-このレポートへマージされない。この数値に下限を設けると、
+このモジュールの既定の`jacocoTestReport`は自プロジェクトの`test`（単体テスト）のexecしか
+読まない。一方モジュールの主要部分であるJDBC RepositoryはCLAUDE.mdのテスト規約
+（「Infrastructureは Testcontainers を使った統合テスト」）に従い`tests/integration`で
+検証しており、そちらは別Gradleプロジェクトのため実行データがこのレポートへ入らない。
+そのため単体のみの実測は 行24.01% / 分岐35.46% と、実態から大きく乖離した値になっていた。
 
-- 実態を反映しない低い値にする → 劣化を検知できず、下限としての意味を成さない
-- 意味のある値にする → SQLに対するモックベースの単体テストを書かざるを得ず、
-  上記テスト規約に反する
+**この層はテストが薄いのではなく、測り方が実態と合っていなかった。** 統合テストの
+実行時カバレッジを合算すると 行**95.88%** / 分岐**84.87%** である。P10bで実際に見つかった
+不具合（Secretマスキングのフィールド名誤検知）がこの層に集中したことも踏まえ、
+ゲート対象外のままにはしない。
 
-のいずれかになる。意味のある下限を設けるには、まず`integrationTest`の実行データを
-モジュールのjacocoレポートへマージするビルド基盤の変更が必要であり、それはP10bのスコープ外の
-独立した変更として扱うべきと判断した（`prompt-engine-interface`が同じ理由で下限未設定で
-あることとも整合する）。
+実装:
+
+- `tests/integration`に`jacoco`プラグインを適用し、`integrationTest`の実行時カバレッジを
+  `build/jacoco/integrationTest.exec`へ固定パスで出力する
+- buildSrcの`promptengine.kotlin-conventions`に、オプトイン式の集約タスク対
+  `jacocoAggregatedReport` / `jacocoAggregatedCoverageVerification`を追加する
+- `prompt-engine-infrastructure`が下限 行90% / 分岐80%（集約後の実測を下回る切りの良い値。
+  他モジュールと同じ「劣化のみ検知」方針）を設定する
+- CIの`test`ジョブが`integrationTest`のあとに`jacocoAggregatedCoverageVerification`を呼ぶ
+
+**既定の`jacocoTestCoverageVerification`（`extra["jacocoMinLineCoverage"]`）へ統合テストの
+execを合流させるのではなく、専用タスク・専用キーにした理由**: 既定の検証タスクは`check`
+（延いては`build`）へ配線済みであり、そこへ統合テストのexecを合流させると
+**`./gradlew build`だけでDocker（Testcontainers）が必要になる**。これは
+`tests/integration/build.gradle.kts`冒頭が明示的に避けている挙動であり、CLAUDE.mdの
+`test`と`integrationTest`の使い分けにも反する。集約検証は`check`に配線せず、
+CIから明示的に呼ぶ形にすることで、ゲートを効かせつつローカルの`build`をDocker非依存に保つ。
+
+（プリコンパイル済みスクリプトプラグインの本体はモジュールの`build.gradle.kts`が`extra`を
+設定する**前**に実行されるため、設定の読み取りとタスク登録は`afterEvaluate`で行う必要がある。
+既存の`minLineCoverage`が動いていたのは、`tasks.named{}`の設定アクションが遅延評価される
+副次的な理由による。）
+
+### 9. P10bで行った判断の棚卸し（設計書・ADRへの反映要否）
+
+P10bの実装過程で、設計書に明示が無い判断を複数行った。レビュー可能性のため、
+それぞれについて (a) 設計書の記述と食い違うか (b) 観測可能な意味論（同じ入力に対する
+出力・APIの挙動・永続化される値）を確定させるか を判定し、いずれかに該当するものは
+設計書本体へも反映した（CLAUDE.md「設計上の決定をコミットメッセージやコードコメントにのみ
+記録しない」）。
+
+| # | 判断 | a | b | 反映先 |
+|---|---|---|---|---|
+| 1 | Brokerメッセージ本文を封筒8フィールド全体にする | ○ | ○ | ADR-0025訂正E1 / 本ADR決定1a / §14 |
+| 2 | `semVer`をSemVerオブジェクトとして運ぶ（文字列にしない） | − | ○ | 本ADR決定1b / §14 |
+| 3 | `costPerToken`を実行時点の値としてイベントへ載せる | − | ○ | 本ADR決定1b / §2.12 |
+| 4 | `latencyMs`未計測時は各試行のlatency合算へフォールバック | − | ○ | 本ADR決定1b / §2.12 |
+| 5 | `status`はM1では常に`SUCCESS` | − | ○ | 本ADR決定1b / §2.12 |
+| 6 | `evaluation_records`の冪等キーを`(event_id, metric_type)`にする | − | ○ | 本ADR決定7 / §12 |
+| 7 | `execution_logs.event_id`はNOT NULL、`audit_logs.event_id`はNULL許容 | − | ○ | 本ADR決定7 / §12 |
+| 8 | DLQの冪等キーを`(event_id, subscriber_name)`にする（NULLは都度1行） | − | ○ | 本ADR決定2 / §12 |
+| 9 | `variant_id`はM1では常にNULL | − | ○ | 本ADR決定3 / §2.12 |
+| 10 | 処理に失敗したメッセージもオフセットをコミットする | − | ○ | 本ADR決定2 / §14 |
+| 11 | `failure_reason`は例外クラス名のみ（メッセージ本文を入れない） | − | ○ | 本ADR決定2 / §12 |
+| 12 | 重複再配信時は`PromptEvaluationCompleted`を再発行しない | − | ○ | 本ADR決定3 / §14 |
+| 13 | `metric_type`は空白なし識別子（"Token Usage"→`TokenUsage`） | ○ | ○ | 本ADR決定3 / §2.12 |
+| 14 | `caller_system`はイベントの`actor`で代替。Costは単一のブレンド単価 | − | ○ | 本ADR決定1b・3 / §2.12 |
+| 15 | キャッシュ無効化は`PromptRolledBack`/`Archived`/`Discarded`でも発火 | − | ○ | 本ADR決定6 / §14 |
+| 16 | archiveガードのcutoff仕様（cutoff前はforce必須） | − | ○ | 本ADR決定5 / §2.5 |
+| 17 | Secretマスクを型ベース＋名前ベースの2層にし、型ベースは全体の`ObjectMapper`へ適用 | − | ○ | 本ADR決定4 / §14 |
+| 18 | `EvaluationEngine`をdomainポートにし実装をcoreへ置く | − | − | 本ADR決定3のみ（内部構成） |
+| 19 | `EvaluationRuleFailureHandler`を新設（coreがSLF4Jへ依存できないため） | − | − | 本ADR決定3のみ（内部構成） |
+| 20 | `ArchiveGuardSettings`・`SubscriberDeadLetterRecorder`の切り出し、bootstrapのConfig分割 | − | − | 反映不要（内部構成・detekt閾値対応） |
+| 21 | `EvaluationConfig`は`production`限定にしない（ArchiveHandlerが全プロファイルで必要） | − | − | 反映不要（DI配線の詳細） |
+| 22 | 統合テストの決定性確保（配信回数カウンタ＋DB状態ポーリング） | − | − | 反映不要（テスト実装の詳細） |
+
+18〜22は純粋な内部実装の選択であり、外部から観測できる意味論を変えないため設計書本体への
+反映は行わない。
 
 ## 影響範囲
 
