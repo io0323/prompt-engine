@@ -228,7 +228,7 @@ Promptがアプリケーションコード内に散在すると、(a) 変更に�
 | Approved→Published | publish | prompt:publish | 依存先が全てPublished（他Versionが現在Publishedの場合、そのVersionを自動的にDeprecatedへ遷移させるアトミック操作。ADR-0005） |
 | Published→Published | rollback(過去Versionを再Publish) | prompt:publish | 対象Versionが存在 |
 | Published→Deprecated | deprecate | prompt:publish | 代替Version推奨設定 |
-| Deprecated→Archived | archive | prompt:admin | 参照クライアントゼロ確認 or 強制フラグ |
+| Deprecated→Archived | archive | prompt:admin | 参照クライアントゼロ確認（`execution_logs`のN日間ウィンドウ判定。cutoff前作成のVersionは判定不能のため`force=true`必須）or 強制フラグ |
 | Draft→Archived | discard | prompt:write | - |
 
 ルール: Published Versionの内容はImmutable。修正は必ず新Versionとして作成。1 Promptにつき「Published」は同時に1 Version（Experiment中はVariantとして複数配信可）。
@@ -236,8 +236,24 @@ Promptがアプリケーションコード内に散在すると、(a) 変更に�
 `archive`の「参照クライアントゼロ確認」について: P10bで`execution_logs`（本節下部・§12）への書き込み経路（`PromptExecuted`を購読する`ExecutionLogSubscriber`）が入り、「直近N日間に実行が無いこと」を自動確認できるようになった（[Issue #48](https://github.com/io0323/prompt-engine/issues/48)をクローズ、ADR-0026決定5）。判定は`prompt_versions.created_at`とカットオーバー時刻（`promptengine.archive.execution-logs-cutover-at`）の比較を伴う。
 
 - カットオーバー**以降**に作られたVersion: 判定窓（`promptengine.archive.inactivity-threshold-days`、既定90日）に実行記録が無ければ`force`無しでarchiveできる。実行記録があれば拒否する。
-- カットオーバー**以前**に作られたVersion: `execution_logs`はP10b以降にしか行が入らないため、「実行記録が無い」ことから参照ゼロを結論できない（「一度も実行されていない」と「記録が残っていないだけ」を区別できない）。判断不能として扱い、従来通り`force=true`を必須とする。**これらのVersionは恒久的にforce専用のまま残る**（意図的に受け入れた限界。判断不能を許可側へ倒すとガードの目的を果たさないため）。
-- `force=true`は判定によらず常に受け付ける。
+- カットオーバー**以前**に作られたVersion: 判定不能として扱い、`force=false`のarchiveを**常に拒否する**（`ArchiveRequiresForceException`）。`force=true`が必須。**これらのVersionは恒久的にforce専用のまま残る。**
+- `force=true`は判定によらず常に受け付ける（ガード自体を評価しない）。
+
+判定結果と挙動の対応（`ArchiveEligibility`、ADR-0026決定5）:
+
+| 判定 | 条件 | `force=false`での挙動 |
+|---|---|---|
+| `VersionNotFound` | 対象Versionが存在しない | `PromptVersionNotFoundException` |
+| `PreCutover` | `prompt_versions.created_at` < cutoff | **拒否**（`ArchiveRequiresForceException`） |
+| `RecentlyExecuted` | 判定窓に`execution_logs`の行がある | 拒否（`ArchiveRequiresForceException`） |
+| `Inactive` | 判定窓に`execution_logs`の行が無い | **許可** |
+
+**「実行記録が無い」と「一度も実行されていない」は区別できていない。** `execution_logs`への書き込みはcutoff以降にしか存在しないため、cutoff前に作成されたVersionについてこの2つは同じ「行が無い」状態として現れる。具体的には、現在の実装は以下の2つを**どちらも`PreCutover`として同じ扱い**（force必須）にする。
+
+1. cutoff前に作成され、その後一度も実行されていない古いPrompt（＝本当に参照ゼロ。本来はforce無しでarchiveできてよい）
+2. cutoff前に作成され、cutoff前は活発に実行されていたが記録が残っていないだけのPrompt（＝実際には参照されている可能性がある）
+
+この2つを取り違えた場合の損害は非対称である。1を誤って拒否しても運用者が`force=true`を付け直すだけで済むが、2を誤って許可すると**現に参照されているPromptを警告なく落とす**。したがって判断不能は拒否側へfail closedさせる。cutoff以降に作成されたVersionについてはこの曖昧さは存在せず、「行が無い＝実行されていない」と結論できる。
 
 ## 2.6 Prompt Pipeline仕様
 
