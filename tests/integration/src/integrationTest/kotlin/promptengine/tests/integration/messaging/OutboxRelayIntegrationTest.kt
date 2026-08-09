@@ -1,5 +1,6 @@
 package promptengine.tests.integration.messaging
 
+import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
 import io.kotest.matchers.nulls.shouldNotBeNull
@@ -29,6 +30,7 @@ import org.testcontainers.junit.jupiter.Testcontainers
 import org.testcontainers.redpanda.RedpandaContainer
 import promptengine.infrastructure.messaging.DomainEventOutboxSource
 import promptengine.infrastructure.messaging.EventBusOutboxSource
+import promptengine.infrastructure.messaging.EventEnvelopeCodec
 import promptengine.infrastructure.messaging.EventProducer
 import promptengine.infrastructure.messaging.KafkaEventProducer
 import promptengine.infrastructure.messaging.OutboxRelayer
@@ -59,6 +61,8 @@ private const val RETRY_INTERVAL_MS = 500L
 @Testcontainers
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class OutboxRelayIntegrationTest {
+    private val envelopeCodec = EventEnvelopeCodec(jacksonObjectMapper())
+
     private lateinit var dataSource: DataSource
     private lateinit var jdbcTemplate: NamedParameterJdbcTemplate
     private lateinit var transactionTemplate: TransactionTemplate
@@ -121,16 +125,23 @@ class OutboxRelayIntegrationTest {
         jdbcTemplate.update("TRUNCATE TABLE event_bus_outbox, outbox, domain_events", MapSqlParameterSource())
     }
 
-    /** [expectedValue]を含むレコードを受信するまで、[timeout]を上限にポーリングし続ける。 */
+    /**
+     * 本文に[expectedFragment]を含むレコードを受信するまで、[timeout]を上限にポーリングし続ける。
+     *
+     * P10b（ADR-0026決定1）でBrokerメッセージ本文がpayload単体から封筒全体のJSONへ変わったため、
+     * 完全一致ではなく部分一致で判定する（購読側がeventType/actor/traceId/occurredAtを
+     * 必要とするための変更。本テストの関心は「対象イベントがBrokerへ届いたか」であり、
+     * 本文の完全な形はEventEnvelopeCodecTestが固定する）。
+     */
     private fun pollUntilContains(
         kafkaConsumer: KafkaConsumer<String, String>,
-        expectedValue: String,
+        expectedFragment: String,
         timeout: Duration = Duration.ofSeconds(15),
     ): Boolean {
         val deadline = System.currentTimeMillis() + timeout.toMillis()
         while (System.currentTimeMillis() < deadline) {
             val records = kafkaConsumer.poll(Duration.ofSeconds(2))
-            if (records.any { it.value() == expectedValue }) return true
+            if (records.any { it.value().contains(expectedFragment) }) return true
         }
         return false
     }
@@ -232,7 +243,7 @@ class OutboxRelayIntegrationTest {
     fun `event_bus_outboxに書かれたイベントがEventBusOutboxSource経由でBrokerへ中継される`() {
         val eventId = insertEventBusOutboxRow(eventType = "PromptExecuted")
         val source = EventBusOutboxSource(jdbcTemplate, transactionTemplate)
-        val relayer = OutboxRelayer(source, producer, instanceId = "instance-1")
+        val relayer = OutboxRelayer(source, producer, envelopeCodec, instanceId = "instance-1")
         val kafkaConsumer = consumer("pe.execution")
 
         try {
@@ -256,7 +267,7 @@ class OutboxRelayIntegrationTest {
     fun `既存outboxとdomain_eventsに書かれたPrompt状態遷移イベントがDomainEventOutboxSource経由でBrokerへ中継される`() {
         val eventId = insertDomainEventOutboxRow(eventType = "PromptPublished")
         val source = DomainEventOutboxSource(jdbcTemplate, transactionTemplate)
-        val relayer = OutboxRelayer(source, producer, instanceId = "instance-1")
+        val relayer = OutboxRelayer(source, producer, envelopeCodec, instanceId = "instance-1")
         val kafkaConsumer = consumer("pe.prompt")
 
         try {
@@ -282,7 +293,13 @@ class OutboxRelayIntegrationTest {
             )
         val source = EventBusOutboxSource(jdbcTemplate, transactionTemplate)
         val relayer =
-            OutboxRelayer(source, producer, instanceId = "instance-2", claimTimeout = Duration.ofSeconds(1))
+            OutboxRelayer(
+                source,
+                producer,
+                envelopeCodec,
+                instanceId = "instance-2",
+                claimTimeout = Duration.ofSeconds(1),
+            )
         val kafkaConsumer = consumer("pe.execution")
 
         try {
@@ -400,7 +417,7 @@ class OutboxRelayIntegrationTest {
             EventProducer { _, _, _, _ ->
                 throw RuntimeException("simulated broker failure")
             }
-        val relayer = OutboxRelayer(source, failingProducer, instanceId = "instance-3")
+        val relayer = OutboxRelayer(source, failingProducer, envelopeCodec, instanceId = "instance-3")
 
         val dispatched = relayer.relayOnce()
 
@@ -427,7 +444,7 @@ class OutboxRelayIntegrationTest {
             EventProducer { _, _, _, _ ->
                 throw RuntimeException("simulated broker failure")
             }
-        val relayer = OutboxRelayer(source, failingProducer, instanceId = "instance-3")
+        val relayer = OutboxRelayer(source, failingProducer, envelopeCodec, instanceId = "instance-3")
 
         val dispatched = relayer.relayOnce()
 

@@ -94,11 +94,16 @@ class JdbcMetricsRepositoryIntegrationTest {
         jdbcTemplate.update(
             """
             INSERT INTO execution_logs
-                (execution_id, version_id, caller_system, trace_id, latency_ms, input_tokens, output_tokens, cost, status, executed_at)
-            VALUES (:id, :versionId, 'test', :traceId, :latencyMs, :inputTokens, :outputTokens, :cost, :status, :executedAt)
+                (execution_id, version_id, caller_system, trace_id, latency_ms, input_tokens, output_tokens,
+                 cost, status, executed_at, event_id)
+            VALUES (:id, :versionId, 'test', :traceId, :latencyMs, :inputTokens, :outputTokens,
+                    :cost, :status, :executedAt, :eventId)
             """.trimIndent(),
             MapSqlParameterSource()
                 .addValue("id", UUID.randomUUID())
+                // P10b（V13）で execution_logs へ event_id UNIQUE NOT NULL を追加した
+                // （購読側冪等性、ADR-0025決定8）。本テストは直接INSERTするため自前で採番する。
+                .addValue("eventId", UUID.randomUUID())
                 .addValue("versionId", versionId)
                 .addValue("traceId", "trace-${UUID.randomUUID()}")
                 .addValue("latencyMs", latencyMs)
