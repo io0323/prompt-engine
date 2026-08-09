@@ -59,18 +59,27 @@ class SecretMaskingJsonSanitizer(
 
     private fun isSensitiveName(name: String): Boolean {
         val normalized = name.lowercase().replace("_", "").replace("-", "")
-        return SENSITIVE_NAME_FRAGMENTS.any { normalized.contains(it) }
+        return SENSITIVE_NAME_SUFFIXES.any { normalized.endsWith(it) }
     }
 
     private companion object {
         /**
-         * フィールド名（小文字化し`_`/`-`を除去したもの）にこれらが含まれる場合、値をマスクする。
-         * 誤検知（本来Secretでない値までマスクされる）よりも、見逃し（Secretが監査ログへ
-         * 平文で残る）の方が損害が大きいため、広めに取る。
+         * フィールド名（小文字化し`_`/`-`を除去したもの）がこれらのいずれかで**終わる**場合、
+         * 値をマスクする。
+         *
+         * 部分一致（`contains`）ではなく後方一致にしているのは、`inputTokens`/`outputTokens`/
+         * `totalTokens`/`tokenizerId`のような正当なフィールドが`"token"`を含むために
+         * マスクされてしまうため。これらは`PromptExecuted`のpayloadに常に現れる中心的な
+         * データであり、マスクしてしまうと監査記録・DLQ退避が実質的に無意味になる
+         * （実装時にテストで検出した誤検知。単数形の`token`だけが後方一致し、複数形の
+         * `...Tokens`は一致しない）。
+         *
+         * 複数形が実際に使われうる語（`credentials`等）は明示的に列挙する。
          */
-        val SENSITIVE_NAME_FRAGMENTS =
+        val SENSITIVE_NAME_SUFFIXES =
             listOf(
                 "secret",
+                "secrets",
                 "password",
                 "passwd",
                 "token",
@@ -78,6 +87,7 @@ class SecretMaskingJsonSanitizer(
                 "accesskey",
                 "privatekey",
                 "credential",
+                "credentials",
                 "authorization",
             )
     }
