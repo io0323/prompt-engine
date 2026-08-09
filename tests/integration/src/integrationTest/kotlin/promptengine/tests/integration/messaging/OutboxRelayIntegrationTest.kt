@@ -208,10 +208,10 @@ class OutboxRelayIntegrationTest {
             """
             INSERT INTO event_bus_outbox
                 (outbox_id, event_id, event_type, aggregate_type, aggregate_id, actor, trace_id,
-                 payload, occurred_at, created_at, claimed_at, attempts)
+                 payload, occurred_at, created_at, claimed_at, attempts, next_attempt_at)
             VALUES
                 (:outboxId, :eventId, :eventType, 'Prompt', :aggregateId, 'system', 'trace-1',
-                 :payload::json, :now, :now, :claimedAt, :attempts)
+                 :payload::json, :now, :now, :claimedAt, :attempts, :claimableSince)
             """.trimIndent(),
             MapSqlParameterSource()
                 .addValue("outboxId", UUID.randomUUID())
@@ -220,6 +220,7 @@ class OutboxRelayIntegrationTest {
                 .addValue("aggregateId", aggregateId)
                 .addValue("payload", """{"eventId":"$eventId"}""")
                 .addValue("now", Timestamp.from(Instant.now()))
+                .addValue("claimableSince", Timestamp.from(CLAIMABLE_SINCE.invoke()))
                 .addValue("claimedAt", claimedAt?.let { Timestamp.from(it) })
                 .addValue("attempts", attempts),
         )
@@ -245,11 +246,15 @@ class OutboxRelayIntegrationTest {
                 .addValue("now", Timestamp.from(Instant.now())),
         )
         jdbcTemplate.update(
-            "INSERT INTO outbox (outbox_id, event_id, created_at) VALUES (:outboxId, :eventId, :now)",
+            """
+            INSERT INTO outbox (outbox_id, event_id, created_at, next_attempt_at)
+            VALUES (:outboxId, :eventId, :now, :claimableSince)
+            """.trimIndent(),
             MapSqlParameterSource()
                 .addValue("outboxId", UUID.randomUUID())
                 .addValue("eventId", eventId)
-                .addValue("now", Timestamp.from(Instant.now())),
+                .addValue("now", Timestamp.from(Instant.now()))
+                .addValue("claimableSince", Timestamp.from(CLAIMABLE_SINCE.invoke())),
         )
         return eventId
     }
@@ -528,6 +533,22 @@ class OutboxRelayIntegrationTest {
     }
 
     private companion object {
+        /**
+         * クレーム対象行の`next_attempt_at`に入れる「確実に過去」の時刻。
+         *
+         * 従来これらのフィクスチャは`next_attempt_at`を指定せずDDLの`DEFAULT now()`
+         * （**DBサーバのクロック**）に任せていた。一方`OutboxSource.claimBatch`の
+         * `next_attempt_at <= :now`の`:now`は**JVMのクロック**である。両者がわずかでも
+         * ずれている（Docker上のPostgresとホストJVMでは実際に起こりうる）と、挿入直後の行が
+         * 「まだ再試行時刻に達していない」と判定されてクレームされず、`attempts`が加算されない。
+         *
+         * 実際にP10bで統合テストと単体テストを同一実行に含めた際、負荷増加とともに
+         * `既存outboxのBroker送信失敗も...`が`attempts: expected 1 but was 0`で
+         * 断続的に落ちた（クレーム0件が原因）。テスト側で明示的に過去時刻を入れ、
+         * クロック一致への依存を断つ。
+         */
+        val CLAIMABLE_SINCE: () -> Instant = { Instant.now().minusSeconds(60) }
+
         @Container
         @JvmStatic
         val postgres: PostgreSQLContainer<*> = PostgreSQLContainer("postgres:16")

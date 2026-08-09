@@ -87,6 +87,12 @@ jobs:
           tasks="test :tests:integration:verifyIntegrationTestExecuted"
           [ "${{ steps.tasks.outputs.integration_test }}" = "true" ] && tasks="$tasks integrationTest"
           [ "${{ steps.tasks.outputs.jacoco_verify }}" = "true" ] && tasks="$tasks jacocoTestCoverageVerification"
+          # 集約カバレッジゲート（P10b、ADR-0026決定8）。prompt-engine-infrastructureの
+          # 主要部分はtests/integrationで検証しており、既定のjacocoTestCoverageVerification
+          # （自プロジェクトのtestのexecのみ）には現れない。統合テストのexecを合算した
+          # 集約レポートに対する下限検証はここでのみ実行する（`./gradlew build`だけで
+          # Dockerが必要になるのを避けるため、checkには配線していない）。
+          tasks="$tasks :modules:prompt-engine-infrastructure:jacocoAggregatedCoverageVerification"
           ./gradlew $tasks --no-daemon
       - name: Skip (Gradle not yet initialized — P0 pending)
         if: steps.gradlew.outputs.exists == 'false'
