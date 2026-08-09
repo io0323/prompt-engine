@@ -5,12 +5,24 @@ updates:
     schedule:
       interval: "weekly"
     ignore:
-      # Spring Boot 4.x（Spring Framework 7ベース）はKotlinコンパイラが2.0.21に固定されている
-      # 現状（detekt-gradle-plugin 1.23.8がKotlin 2.0.21を要求、安定版でKotlin 2.1+をサポートする
-      # リリースは未提供）では、FirIncompatibleClassExpressionCheckerのコンパイラ内部クラッシュで
-      # ビルド不能（PR #58で確認・クローズ）。detektが安定版でKotlin 2.1+をサポートするまで
-      # メジャーバージョン更新を保留する。マイナー/パッチ更新は通常通り提案してよい。
-      - dependency-name: "org.springframework.boot"
+      # Spring Boot 4.x（Spring Framework 7ベース）は、実際に適用されるKotlinコンパイラの
+      # バージョンではビルド不能（PR #58で確認・クローズ）。
+      #
+      # 実際に適用されるKotlinコンパイラのバージョンは、buildSrc/build.gradle.ktsが手動固定する
+      # kotlin-gradle-plugin/kotlin-allopen（2.0.21、detekt-gradle-plugin 1.23.8が要求する値、
+      # 安定版でKotlin 2.1+をサポートするdetektリリースは未提供）である。gradle/libs.versions.toml
+      # の`kotlin = "2.4.10"`は[plugins]ブロックの参照用の値にすぎず（同ファイルのコメント参照）、
+      # 実際のプラグイン適用には使われない。Spring Boot 4.1.0のBOMが引き込む依存の中に、この
+      # 2.0.21コンパイラが解釈できないメタデータでビルドされたものが含まれており、
+      # FirIncompatibleClassExpressionCheckerのコンパイラ内部クラッシュ（source must not be null）
+      # を引き起こす。detektが安定版でKotlin 2.1+をサポートするまでメジャーバージョン更新を保留する。
+      # マイナー/パッチ更新は通常通り提案してよい。
+      #
+      # dependency-nameはワイルドカードにする: ルートcatalogの[plugins]プラグインマーカー
+      # （org.springframework.boot）と、buildSrc/build.gradle.ktsが個別に固定する
+      # spring-boot-gradle-plugin（groupId:artifactId座標）の両方をカバーするため
+      # （Dependabotが検出名称をどちらの形式で報告してもマッチさせる、CodeRabbitレビュー指摘）。
+      - dependency-name: "org.springframework.boot*"
         update-types: ["version-update:semver-major"]
 
   - package-ecosystem: "github-actions"
