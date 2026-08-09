@@ -29,8 +29,19 @@ promptengine:
       poll-interval-ms: ${PE_EVENTBUS_RELAY_POLL_INTERVAL_MS:750}
       batch-size: ${PE_EVENTBUS_RELAY_BATCH_SIZE:50}
       claim-timeout-seconds: ${PE_EVENTBUS_RELAY_CLAIM_TIMEOUT_SECONDS:30}
+    # Broker購読側のポーリング設定（productionプロファイルのみ有効、ADR-0026決定1）。
+    subscriber:
+      poll-interval-ms: ${PE_EVENTBUS_SUBSCRIBER_POLL_INTERVAL_MS:500}
+      poll-timeout-ms: ${PE_EVENTBUS_SUBSCRIBER_POLL_TIMEOUT_MS:500}
+      max-poll-records: ${PE_EVENTBUS_SUBSCRIBER_MAX_POLL_RECORDS:100}
     kafka:
       bootstrap-servers: ${PE_EVENTBUS_KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+  # archiveガード（Issue #48、ADR-0026決定5）。
+  # execution-logs-cutover-at 以前に作られたPromptVersionは、実行記録の不在から参照ゼロを
+  # 結論できないため判断不能として扱い、従来通り force=true を必須にする。
+  archive:
+    execution-logs-cutover-at: ${PE_ARCHIVE_EXECUTION_LOGS_CUTOVER_AT:2026-08-09T00:00:00Z}
+    inactivity-threshold-days: ${PE_ARCHIVE_INACTIVITY_THRESHOLD_DAYS:90}
 
 springdoc:
   api-docs:
