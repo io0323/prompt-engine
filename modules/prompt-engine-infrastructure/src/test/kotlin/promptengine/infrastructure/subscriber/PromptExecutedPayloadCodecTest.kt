@@ -110,6 +110,36 @@ class PromptExecutedPayloadCodecTest {
     }
 
     @Test
+    fun `数値フィールドが文字列なら失敗する`() {
+        val numericFields = listOf("inputTokens", "outputTokens", "retryCount", "latencyMs", "costPerToken")
+
+        numericFields.forEach { field ->
+            val broken =
+                testObjectMapper.readTree(
+                    promptExecutedPayload(),
+                ) as com.fasterxml.jackson.databind.node.ObjectNode
+            broken.put(field, "not-a-number")
+
+            withClue("non-numeric field=$field") {
+                shouldThrow<MalformedPromptExecutedPayloadException> {
+                    codec.decode(envelope(payload = testObjectMapper.writeValueAsString(broken)))
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `semVerの構成要素が数値でなければ失敗する`() {
+        val broken =
+            """
+            {"promptKey":"support/faq","semVer":{"major":"x","minor":0,"patch":0},"inputTokens":1,
+             "outputTokens":1,"retryCount":0,"latencyMs":1,"costPerToken":0,"status":"SUCCESS"}
+            """.trimIndent()
+
+        shouldThrow<MalformedPromptExecutedPayloadException> { codec.decode(envelope(payload = broken)) }
+    }
+
+    @Test
     fun `FAILEDステータスも復元できる`() {
         codec.decode(envelope(payload = promptExecutedPayload(status = "FAILED"))).status shouldBe
             ExecutionStatus.FAILED

@@ -2,6 +2,7 @@ package promptengine.application.pipeline
 
 import promptengine.domain.evaluation.ExecutionStatus
 import promptengine.domain.event.EventBusAdapter
+import promptengine.domain.execution.ExecutionOutcome
 import promptengine.domain.pipeline.PipelineContext
 import promptengine.domain.pipeline.PipelineStage
 import promptengine.domain.pipeline.PromptExecutedEvent
@@ -50,7 +51,7 @@ class EvaluationStage(
                             inputTokens = usage.inputTokens.value,
                             outputTokens = usage.outputTokens.value,
                             retryCount = outcome.attempts.sumOf { it.retryCount },
-                            latencyMs = executionLatencyMs(context),
+                            latencyMs = executionLatencyMs(context, outcome),
                             costPerToken = context.request.modelProfile.costPerToken.value,
                             // このStageはStage 9（Execution）が成功しStage 11まで到達した場合にしか
                             // 実行されないため、常にSUCCESS。実行失敗は設計書§14の別イベント
@@ -70,11 +71,15 @@ class EvaluationStage(
      * 各試行の[promptengine.domain.execution.RawResponse.latency]の合算へフォールバックする
      * （Adapter実測の合計であり、Stage全体のdurationよりわずかに小さいが、0で埋めるよりは
      * 実態に近い。ADR-0026決定3）。
+     *
+     * [outcome]は呼出元が`checkNotNull`済みのものを受け取る。`context.executionOutcome`を
+     * ここで読み直すと、到達不能なnull分岐（と、その先の`?: 0L`）が生まれるため
+     * （P10bの分岐カバレッジ監査で「到達不能」として検出し、引数で受け取る形へ変更した）。
      */
-    private fun executionLatencyMs(context: PipelineContext): Long =
-        context.stageDurationsMs[EXECUTION_STAGE_NAME]
-            ?: context.executionOutcome?.attempts?.sumOf { it.latency.value }
-            ?: 0L
+    private fun executionLatencyMs(
+        context: PipelineContext,
+        outcome: ExecutionOutcome,
+    ): Long = context.stageDurationsMs[EXECUTION_STAGE_NAME] ?: outcome.attempts.sumOf { it.latency.value }
 
     companion object {
         private const val DEFAULT_ACTOR = "system"

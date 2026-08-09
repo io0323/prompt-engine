@@ -233,7 +233,11 @@ Promptがアプリケーションコード内に散在すると、(a) 変更に�
 
 ルール: Published Versionの内容はImmutable。修正は必ず新Versionとして作成。1 Promptにつき「Published」は同時に1 Version（Experiment中はVariantとして複数配信可）。
 
-`archive`の「参照クライアントゼロ確認」について: 真の参照クライアント（AACP等の外部呼出元）を評価する`execution_logs`（本節下部・§12）への書き込み経路がM1時点で未実装のため、M1では自動確認を行わず`force=true`のみでarchiveを受け付ける（P9b）。`execution_logs`書き込み経路の実装後に自動確認を復活させる計画は[Issue #48](https://github.com/io0323/prompt-engine/issues/48)で追跡する。
+`archive`の「参照クライアントゼロ確認」について: P10bで`execution_logs`（本節下部・§12）への書き込み経路（`PromptExecuted`を購読する`ExecutionLogSubscriber`）が入り、「直近N日間に実行が無いこと」を自動確認できるようになった（[Issue #48](https://github.com/io0323/prompt-engine/issues/48)をクローズ、ADR-0026決定5）。判定は`prompt_versions.created_at`とカットオーバー時刻（`promptengine.archive.execution-logs-cutover-at`）の比較を伴う。
+
+- カットオーバー**以降**に作られたVersion: 判定窓（`promptengine.archive.inactivity-threshold-days`、既定90日）に実行記録が無ければ`force`無しでarchiveできる。実行記録があれば拒否する。
+- カットオーバー**以前**に作られたVersion: `execution_logs`はP10b以降にしか行が入らないため、「実行記録が無い」ことから参照ゼロを結論できない（「一度も実行されていない」と「記録が残っていないだけ」を区別できない）。判断不能として扱い、従来通り`force=true`を必須とする。**これらのVersionは恒久的にforce専用のまま残る**（意図的に受け入れた限界。判断不能を許可側へ倒すとガードの目的を果たさないため）。
+- `force=true`は判定によらず常に受け付ける。
 
 ## 2.6 Prompt Pipeline仕様
 
@@ -1363,6 +1367,7 @@ entity evaluation_records {
   * method : VARCHAR
   sample_ref : VARCHAR
   * evaluated_at
+  * event_id : UUID  ' 算出元PromptExecutedのevent_id。UNIQUE(event_id, metric_type)（P10b/V13、ADR-0026決定7）
 }
 entity execution_logs {
   * execution_id : UUID <<PK>>
@@ -1375,6 +1380,7 @@ entity execution_logs {
   * cost : DECIMAL
   * status : VARCHAR
   * executed_at
+  * event_id : UUID <<UNIQUE>>  ' 購読側冪等キー（P10b/V13、ADR-0025決定8）
 }
 entity audit_logs {
   * audit_id : UUID <<PK>>
@@ -1386,6 +1392,21 @@ entity audit_logs {
   * payload : JSON  ' Secretマスク済
   * trace_id : VARCHAR
   * occurred_at
+  event_id : UUID <<UNIQUE>>  ' 購読側冪等キー。CRUD/Pipeline経路はイベントを持たずNULL（P10b/V13、ADR-0026決定7）
+}
+
+entity dead_letter_queue {
+  * dlq_id : UUID <<PK>>
+  --
+  event_id : UUID  ' Broker由来のみ。Pipeline Stage 12の退避はNULL
+  * event_type : VARCHAR
+  * subscriber_name : VARCHAR
+  * payload : JSON  ' Secretマスク済
+  * failure_reason : VARCHAR  ' 例外クラス名のみ（メッセージ本文は入れない）
+  * first_failed_at / last_failed_at
+  * retry_count : INT
+  * status : VARCHAR  ' PENDING/...。再処理は手動（P10b、ADR-0026決定2）
+  ' UNIQUE (event_id, subscriber_name)
 }
 entity idempotency_keys {
   * idempotency_key : VARCHAR <<PK>>  ' クライアントが送るIdempotency-Keyヘッダの値
@@ -1562,6 +1583,12 @@ outbox }o--|| domain_events : event_id
 # 14. イベント一覧
 
 イベント封筒: `{eventId, eventType, occurredAt, aggregateType, aggregateId, actor, traceId, payload}`。Busトピック: `pe.prompt` / `pe.execution` / `pe.evaluation` / `pe.experiment` / `pe.governance` / `pe.plugin`。
+
+Brokerメッセージの本文はこの封筒8項目をそのままJSON化したもの（`payload`は入れ子のJSONオブジェクト）。購読側は`eventType`/`actor`/`traceId`/`occurredAt`を必要とするため、`payload`単体ではなく封筒全体を載せる（P10b、ADR-0026決定1a。P10a時点は`payload`単体だった）。メッセージキーは`aggregateId`、`event-id`ヘッダに`eventId`を載せる（ADR-0025決定7）。
+
+購読側の冪等性: 配信はat-least-onceであり、各購読側が自身の書き込み先テーブルの`event_id`一意制約と`INSERT ... ON CONFLICT DO NOTHING`で重複を吸収する（共有の重複排除テーブルは持たない。ADR-0025決定8）。処理に失敗したイベントは`dead_letter_queue`（§12）へ退避し、オフセットはコミットする（退避済みを再消費し続けると後続が永久に止まるため。ADR-0026決定2）。
+
+P10b時点で実装済みの購読側は5つ: `AuditEngine`（6トピック全て→`audit_logs`）／`ExecutionLogSubscriber`（`pe.execution`→`execution_logs`）／`EvaluationSubscriber`（`pe.execution`→`evaluation_records`、`PromptEvaluationCompleted`発行）／`CacheInvalidationSubscriber`・`SearchIndexSubscriber`（`pe.prompt`）。それぞれ独立したconsumer groupを持つ。
 
 | イベント名 | 発火元 | 主な購読先 | 用途 |
 |---|---|---|---|
