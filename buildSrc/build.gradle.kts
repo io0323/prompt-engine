@@ -18,6 +18,6 @@ dependencies {
     implementation("org.jetbrains.kotlin:kotlin-allopen:2.4.10")
     implementation("org.jlleitschuh.gradle:ktlint-gradle:12.1.2")
     implementation("io.gitlab.arturbosch.detekt:detekt-gradle-plugin:1.23.8")
-    implementation("org.springframework.boot:spring-boot-gradle-plugin:3.4.1")
+    implementation("org.springframework.boot:spring-boot-gradle-plugin:3.5.16")
     implementation("io.spring.gradle:dependency-management-plugin:1.1.7")
 }
