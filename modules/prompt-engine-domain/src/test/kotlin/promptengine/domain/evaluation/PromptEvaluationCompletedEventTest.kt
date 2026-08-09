@@ -4,6 +4,7 @@ import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
 import promptengine.domain.event.EventTopic
 import promptengine.domain.event.EventTopicResolver
+import promptengine.domain.shared.SemVer
 import java.math.BigDecimal
 import java.time.Instant
 import java.util.UUID
@@ -19,7 +20,7 @@ class PromptEvaluationCompletedEventTest {
             payload =
                 PromptEvaluationCompletedEvent.Payload(
                     promptKey = "support/faq",
-                    semVer = "1.0.0",
+                    semVer = SemVer(1, 0, 0),
                     sourceEventId = sourceEventId,
                     metrics =
                         listOf(

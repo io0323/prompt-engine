@@ -1,5 +1,6 @@
 package promptengine.application.pipeline
 
+import promptengine.domain.evaluation.ExecutionStatus
 import promptengine.domain.event.EventBusAdapter
 import promptengine.domain.pipeline.PipelineContext
 import promptengine.domain.pipeline.PipelineStage
@@ -30,6 +31,10 @@ class EvaluationStage(
                 checkNotNull(context.executionOutcome) {
                     "EvaluationStage requires executionOutcome (Stage 9 Execution must run first)"
                 }
+            val promptVersion =
+                checkNotNull(context.promptVersion) {
+                    "EvaluationStage requires promptVersion (Stage 2 Load must run first)"
+                }
             val usage = outcome.attempts.last().usage
             val event =
                 PromptExecutedEvent(
@@ -41,9 +46,16 @@ class EvaluationStage(
                     payload =
                         PromptExecutedEvent.Payload(
                             promptKey = context.request.promptKey.value,
+                            semVer = promptVersion.semVer,
                             inputTokens = usage.inputTokens.value,
                             outputTokens = usage.outputTokens.value,
                             retryCount = outcome.attempts.sumOf { it.retryCount },
+                            latencyMs = executionLatencyMs(context),
+                            costPerToken = context.request.modelProfile.costPerToken.value,
+                            // このStageはStage 9（Execution）が成功しStage 11まで到達した場合にしか
+                            // 実行されないため、常にSUCCESS。実行失敗は設計書§14の別イベント
+                            // PromptExecutionFailedの担当だが、その発火元はM1時点で存在しない。
+                            status = ExecutionStatus.SUCCESS,
                         ),
                 )
             eventBusAdapter.publish(event)
@@ -51,7 +63,21 @@ class EvaluationStage(
         return context
     }
 
+    /**
+     * Latencyは設計書§2.12「Execution Stage実測」に従い`PipelineOrchestrator`が計測した
+     * Stage 9のdurationを使う。`PipelineOrchestrator`以外の経路（テストが直接Stageを
+     * 実行する場合や、将来Stage列の構成が変わった場合）で"Execution"キーが未設定なら、
+     * 各試行の[promptengine.domain.execution.RawResponse.latency]の合算へフォールバックする
+     * （Adapter実測の合計であり、Stage全体のdurationよりわずかに小さいが、0で埋めるよりは
+     * 実態に近い。ADR-0026決定3）。
+     */
+    private fun executionLatencyMs(context: PipelineContext): Long =
+        context.stageDurationsMs[EXECUTION_STAGE_NAME]
+            ?: context.executionOutcome?.attempts?.sumOf { it.latency.value }
+            ?: 0L
+
     companion object {
         private const val DEFAULT_ACTOR = "system"
+        private const val EXECUTION_STAGE_NAME = "Execution"
     }
 }

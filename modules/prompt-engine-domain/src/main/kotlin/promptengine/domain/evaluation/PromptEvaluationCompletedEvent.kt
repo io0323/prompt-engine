@@ -1,6 +1,7 @@
 package promptengine.domain.evaluation
 
 import promptengine.domain.event.DomainEvent
+import promptengine.domain.shared.SemVer
 import java.math.BigDecimal
 import java.time.Instant
 import java.util.UUID
@@ -33,7 +34,7 @@ data class PromptEvaluationCompletedEvent(
      */
     data class Payload(
         val promptKey: String,
-        val semVer: String,
+        val semVer: SemVer,
         val sourceEventId: UUID,
         val metrics: List<Metric>,
     )
