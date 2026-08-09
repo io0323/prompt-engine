@@ -32,4 +32,41 @@ class AuditLogEntryTest {
         entry.traceId shouldBe "trace-1"
         entry.occurredAt shouldBe occurredAt
     }
+
+    @Test
+    fun `eventIdは既定でnull（CRUD経路はキーにできるイベントを持たない）`() {
+        val entry =
+            AuditLogEntry(
+                auditId = UUID.randomUUID(),
+                aggregateType = "Prompt",
+                aggregateId = "support/faq",
+                action = "Published",
+                actor = "user:test",
+                payload = "{}",
+                traceId = "trace-1",
+                occurredAt = Instant.EPOCH,
+            )
+
+        entry.eventId shouldBe null
+    }
+
+    @Test
+    fun `イベント起点の追記ではeventIdを冪等キーとして保持する`() {
+        val eventId = UUID.randomUUID()
+
+        val entry =
+            AuditLogEntry(
+                auditId = UUID.randomUUID(),
+                aggregateType = "Prompt",
+                aggregateId = "support/faq",
+                action = "PromptPublished",
+                actor = "user:test",
+                payload = "{}",
+                traceId = "trace-1",
+                occurredAt = Instant.EPOCH,
+                eventId = eventId,
+            )
+
+        entry.eventId shouldBe eventId
+    }
 }
