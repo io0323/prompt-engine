@@ -14,8 +14,8 @@ dependencies {
     // 各モジュールの build.gradle.kts 側では、これらのプラグインを明示versionで
     // 再解決しないこと（buildSrc がこの version で既にクラスパス上に提供しているため、
     // 別versionを明示指定すると衝突する）。
-    implementation("org.jetbrains.kotlin:kotlin-gradle-plugin:2.0.21")
-    implementation("org.jetbrains.kotlin:kotlin-allopen:2.0.21")
+    implementation("org.jetbrains.kotlin:kotlin-gradle-plugin:2.4.10")
+    implementation("org.jetbrains.kotlin:kotlin-allopen:2.4.10")
     implementation("org.jlleitschuh.gradle:ktlint-gradle:12.1.2")
     implementation("io.gitlab.arturbosch.detekt:detekt-gradle-plugin:1.23.8")
     implementation("org.springframework.boot:spring-boot-gradle-plugin:3.4.1")
