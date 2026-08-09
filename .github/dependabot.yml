@@ -25,6 +25,15 @@ updates:
       - dependency-name: "org.springframework.boot*"
         update-types: ["version-update:semver-major"]
 
+      # kotlin-gradle-plugin/kotlin-allopenは、上記と同じdetekt-gradle-plugin 1.23.8の制約で
+      # buildSrc/build.gradle.ktsが2.0.21に手動固定している（本ファイル上部のコメント参照）。
+      # 2.0.21から2.4.10へのマイナー更新でも detekt was compiled with Kotlin 2.0.21 but is
+      # currently running with 2.4.10 で即座に失敗することをローカルで確認済み（PR #64で確認・
+      # クローズ）。semver-major/minor/patchのどのレベルの更新でも同様に壊れるため、
+      # update-typesで絞らずこの2依存の更新自体を丸ごと保留する。
+      - dependency-name: "org.jetbrains.kotlin:kotlin-gradle-plugin"
+      - dependency-name: "org.jetbrains.kotlin:kotlin-allopen"
+
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
