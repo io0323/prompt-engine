@@ -24,6 +24,7 @@ import java.time.Instant
 class OutboxRelayer(
     private val source: OutboxSource,
     private val producer: EventProducer,
+    private val envelopeCodec: EventEnvelopeCodec,
     private val instanceId: String,
     private val claimTimeout: Duration = DEFAULT_CLAIM_TIMEOUT,
     private val batchSize: Int = DEFAULT_BATCH_SIZE,
@@ -35,7 +36,10 @@ class OutboxRelayer(
         claimed.forEach { envelope ->
             val topic = EventTopicResolver.resolve(envelope.eventType)
             val key = envelope.aggregateId.ifBlank { envelope.eventId.toString() }
-            val sendResult = runCatching { producer.send(topic.topicName, key, envelope.payload, envelope.eventId) }
+            // メッセージ本文は payload 単体ではなく封筒全体のJSON（ADR-0026決定1）。
+            // 購読側は eventType / actor / traceId / occurredAt を必要とするため。
+            val sendResult =
+                runCatching { producer.send(topic.topicName, key, envelopeCodec.encode(envelope), envelope.eventId) }
             if (sendResult.isSuccess) {
                 dispatchedCount++
                 val owned = source.markDispatched(envelope.outboxId, instanceId)

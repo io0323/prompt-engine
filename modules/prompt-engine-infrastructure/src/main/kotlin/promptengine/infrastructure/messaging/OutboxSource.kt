@@ -50,7 +50,8 @@ interface OutboxSource {
 /**
  * Broker配信に必要な封筒フィールド一式（[promptengine.domain.event.DomainEvent]と同じ8項目に、
  * 中継制御用の[outboxId]・[attempts]を加えたもの）。[payload]はDB上のJSON文字列をそのまま
- * 保持する（Broker送信時は逆シリアライズせずそのまま値として使う、ADR-0025決定6）。
+ * 保持する（[EventEnvelopeCodec]が封筒JSONへ埋め込む際に入れ子のオブジェクトとして展開する。
+ * Broker本文は`payload`単体ではなく設計書§14の封筒8フィールド全体、ADR-0025訂正E1・ADR-0026決定1a）。
  */
 data class OutboxEnvelope(
     val outboxId: UUID,

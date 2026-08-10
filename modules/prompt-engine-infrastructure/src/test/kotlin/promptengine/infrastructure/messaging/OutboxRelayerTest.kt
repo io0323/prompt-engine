@@ -3,6 +3,7 @@ package promptengine.infrastructure.messaging
 import ch.qos.logback.classic.Logger
 import ch.qos.logback.classic.spi.ILoggingEvent
 import ch.qos.logback.core.read.ListAppender
+import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.kotest.matchers.collections.shouldNotBeEmpty
 import io.kotest.matchers.shouldBe
 import io.mockk.every
@@ -21,6 +22,8 @@ import java.util.UUID
 class OutboxRelayerTest {
     private lateinit var logAppender: ListAppender<ILoggingEvent>
     private lateinit var logger: Logger
+
+    private val envelopeCodec = EventEnvelopeCodec(jacksonObjectMapper())
 
     @BeforeEach
     fun setUp() {
@@ -60,11 +63,12 @@ class OutboxRelayerTest {
         every { source.claimBatch(any(), any(), any()) } returns listOf(env)
         every { source.markDispatched(env.outboxId, "worker-1") } returns true
 
-        val relayer = OutboxRelayer(source, producer, instanceId = "worker-1")
+        val relayer = OutboxRelayer(source, producer, envelopeCodec, instanceId = "worker-1")
         val dispatched = relayer.relayOnce()
 
         dispatched shouldBe 1
-        verify { producer.send("pe.execution", "prompt/example", """{"k":"v"}""", env.eventId) }
+        // 本文は payload 単体ではなく封筒全体のJSON（ADR-0026決定1でP10aのワイヤ形式を変更）。
+        verify { producer.send("pe.execution", "prompt/example", envelopeCodec.encode(env), env.eventId) }
         verify { source.markDispatched(env.outboxId, "worker-1") }
         verify(exactly = 0) { source.markFailed(any(), any(), any()) }
         logAppender.list shouldBe emptyList()
@@ -77,7 +81,7 @@ class OutboxRelayerTest {
         val env = envelope(aggregateId = "")
         every { source.claimBatch(any(), any(), any()) } returns listOf(env)
 
-        OutboxRelayer(source, producer, instanceId = "worker-1").relayOnce()
+        OutboxRelayer(source, producer, envelopeCodec, instanceId = "worker-1").relayOnce()
 
         verify { producer.send("pe.execution", env.eventId.toString(), any(), env.eventId) }
     }
@@ -91,7 +95,7 @@ class OutboxRelayerTest {
         every { producer.send(any(), any(), any(), any()) } throws RuntimeException("broker unavailable")
         every { source.markFailed(env.outboxId, "worker-1", any()) } returns true
 
-        val relayer = OutboxRelayer(source, producer, instanceId = "worker-1")
+        val relayer = OutboxRelayer(source, producer, envelopeCodec, instanceId = "worker-1")
         val dispatched = relayer.relayOnce()
 
         dispatched shouldBe 0
@@ -106,7 +110,7 @@ class OutboxRelayerTest {
         val producer = mockk<EventProducer>()
         every { source.claimBatch(any(), any(), any()) } returns emptyList()
 
-        val dispatched = OutboxRelayer(source, producer, instanceId = "worker-1").relayOnce()
+        val dispatched = OutboxRelayer(source, producer, envelopeCodec, instanceId = "worker-1").relayOnce()
 
         dispatched shouldBe 0
         verify(exactly = 0) { producer.send(any(), any(), any(), any()) }
@@ -124,7 +128,7 @@ class OutboxRelayerTest {
         every { source.claimBatch(any(), any(), any()) } returns listOf(env)
 
         try {
-            OutboxRelayer(source, producer, instanceId = "worker-1").relayOnce()
+            OutboxRelayer(source, producer, envelopeCodec, instanceId = "worker-1").relayOnce()
             error("expected IllegalArgumentException")
         } catch (e: IllegalArgumentException) {
             e.message?.contains("NotInDesignDoc") shouldBe true
@@ -141,7 +145,7 @@ class OutboxRelayerTest {
         val envelopes = listOf(envelope(), envelope(), envelope())
         every { source.claimBatch(any(), any(), any()) } returns envelopes
 
-        val dispatched = OutboxRelayer(source, producer, instanceId = "worker-1").relayOnce()
+        val dispatched = OutboxRelayer(source, producer, envelopeCodec, instanceId = "worker-1").relayOnce()
 
         dispatched shouldBe 3
         verifyOrder {
@@ -162,7 +166,7 @@ class OutboxRelayerTest {
         every { source.claimBatch(any(), any(), any()) } returns listOf(env)
         every { source.markDispatched(env.outboxId, "worker-1") } returns false
 
-        val dispatched = OutboxRelayer(source, producer, instanceId = "worker-1").relayOnce()
+        val dispatched = OutboxRelayer(source, producer, envelopeCodec, instanceId = "worker-1").relayOnce()
 
         dispatched shouldBe 1
         logAppender.list.shouldNotBeEmpty()
@@ -181,7 +185,7 @@ class OutboxRelayerTest {
         every { producer.send(any(), any(), any(), any()) } throws RuntimeException("broker unavailable")
         every { source.markFailed(env.outboxId, "worker-1", any()) } returns false
 
-        val dispatched = OutboxRelayer(source, producer, instanceId = "worker-1").relayOnce()
+        val dispatched = OutboxRelayer(source, producer, envelopeCodec, instanceId = "worker-1").relayOnce()
 
         dispatched shouldBe 0
         logAppender.list.shouldNotBeEmpty()

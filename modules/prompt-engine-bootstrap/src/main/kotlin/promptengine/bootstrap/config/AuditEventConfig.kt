@@ -9,10 +9,12 @@ import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
 import org.springframework.transaction.support.TransactionTemplate
 import promptengine.domain.audit.AuditFailureHandler
 import promptengine.domain.audit.AuditRepository
+import promptengine.domain.dlq.DeadLetterQueueRepository
 import promptengine.domain.event.EventBusAdapter
 import promptengine.domain.shared.IdempotentCommandExecutor
 import promptengine.domain.template.ExtendsFieldResolver
 import promptengine.engine.compiler.ExtendsFieldResolverImpl
+import promptengine.infrastructure.audit.DeadLetterQueueAuditFailureHandler
 import promptengine.infrastructure.audit.InMemoryAuditRepository
 import promptengine.infrastructure.audit.Slf4jAuditFailureHandler
 import promptengine.infrastructure.messaging.InMemoryEventBusAdapter
@@ -44,8 +46,25 @@ class AuditEventConfig {
     @Bean
     fun extendsFieldResolver(): ExtendsFieldResolver = ExtendsFieldResolverImpl()
 
+    /**
+     * Pipeline Stage 12（Audit）の書き込み失敗を`dead_letter_queue`へ退避する
+     * （設計書§2.6ステージ12「失敗時はDLQ退避（本流は止めない）」、Issue #37クローズ、
+     * ADR-0026決定2）。P10b以前はログ出力のみの[Slf4jAuditFailureHandler]が暫定実装だった。
+     *
+     * [Slf4jAuditFailureHandler]はdelegateとして残す。DLQ側のログ（`dead_letter_enqueued`）は
+     * `event_id`/`subscriber_name`中心で、Pipeline文脈（traceId / promptKey / mode）を
+     * 持たないため、両方を出した方が運用時の追跡が容易になる。
+     */
     @Bean
-    fun auditFailureHandler(): AuditFailureHandler = Slf4jAuditFailureHandler()
+    fun auditFailureHandler(
+        deadLetterQueueRepository: DeadLetterQueueRepository,
+        objectMapper: ObjectMapper,
+    ): AuditFailureHandler =
+        DeadLetterQueueAuditFailureHandler(
+            deadLetterQueueRepository = deadLetterQueueRepository,
+            objectMapper = objectMapper,
+            delegate = Slf4jAuditFailureHandler(),
+        )
 
     /** 監査記録の本来の永続化先（`production`プロファイルではこちらを使う、ADR-0017）。 */
     @Bean

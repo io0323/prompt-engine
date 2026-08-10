@@ -269,9 +269,12 @@ Kafkaメッセージキーは`aggregateId`を使う（同一Aggregate/ビジネ�
 最終的な`List<OutboxEnvelope>`はそのクレーム順に組み立てる（DB側のソートに依存しない）。
 購読側がイベント順序を前提にする可能性があるため、この順序保証は重要。
 
-`KafkaEventProducer`は`eventId`をペイロードに加え、Kafkaメッセージヘッダ（`event-id`、
-UTF-8文字列）にも同じ値を載せる（CodeRabbitレビュー指摘）。購読側が決定8のUNIQUE制約
-チェックをペイロードの逆シリアライズ無しに行えるようにするため。
+`KafkaEventProducer`はKafkaメッセージヘッダ（`event-id`、UTF-8文字列）に`eventId`を
+載せる（CodeRabbitレビュー指摘）。購読側が決定8のUNIQUE制約チェックを本文の
+逆シリアライズ無しに行えるようにするため。
+
+（訂正: 初版は「`eventId`をペイロードに加え」と書いていたが、これはメッセージ本文の
+構成について誤解を招く表現だった。本文の構成については後述の**訂正（Errata）**節を参照。）
 
 ### 8. 冪等性: 購読側それぞれが`event_id UNIQUE` + `ON CONFLICT DO NOTHING`を持つ（方針のみ）
 
@@ -328,6 +331,39 @@ PostgreSQLの`CONCURRENTLY`はトランザクションブロック内で実行�
 通常の`CREATE INDEX`が取得する短時間のロックが実運用上の問題になるケースは想定しない。
 将来、稼働中の大きな`outbox`に対してインデックスを追加し直す必要が生じた場合は、
 その時点で改めて非トランザクション実行の手段を検討する。
+
+## 訂正（Errata）
+
+### E1. Brokerメッセージ本文は設計書§14の封筒8フィールド全体である（P10bで是正）
+
+本ADRの初版に基づく実装（`OutboxRelayer`）は、Brokerメッセージの**本文に`payload`列の
+JSONだけ**を載せていた（封筒の他の7フィールド——`eventId`/`eventType`/`occurredAt`/
+`aggregateType`/`aggregateId`/`actor`/`traceId`——は本文に含まれず、`eventId`のみが
+`event-id`ヘッダ、`aggregateId`のみがメッセージキーとして間接的に運ばれていた）。
+
+**これは設計書§14に反していた。** §14は冒頭で
+
+> イベント封筒: `{eventId, eventType, occurredAt, aggregateType, aggregateId, actor, traceId, payload}`
+
+と定義しており、Busトピックを流れるイベントとは8フィールドの封筒そのものを指す。
+`payload`は封筒の1フィールドに過ぎず、それ単体はイベントではない。
+
+P10a時点でこの不整合が表面化しなかったのは、購読側がテスト専用fixture
+（`EventBusOutboxIdempotentConsumerIntegrationTest`）1つだけで、`event_id`さえヘッダから
+読めれば冪等性パターンを実証できたためである。P10bで実購読側（`AuditEngine`が
+`audit_logs`へ`aggregate_type`/`action`/`actor`/`trace_id`/`occurred_at`を書く必要があり、
+`ExecutionLogSubscriber`も`trace_id`を要する）を実装した時点で、封筒の欠落が
+機能上の障害として顕在化した。
+
+したがってP10b（ADR-0026決定1a）で本文を封筒全体のJSONへ変更したのは、
+**新規の設計判断ではなく設計書§14への準拠（本来そうあるべきだったものの是正）である。**
+`payload`は入れ子のJSONオブジェクトとして埋め込む（文字列としてエスケープしない）。
+`event-id`ヘッダとメッセージキー（`aggregateId`）は従来通り併せて載せる
+（本文を逆シリアライズせずに重複排除・パーティショニングができる利点は維持する）。
+
+実装が§14の8フィールドを実際に送信していることは、
+`EventEnvelopeCodecTest`（往復）と`OutboxRelayIntegrationTest`（実Redpandaへ中継し、
+受信側で8フィールド全てを検証）で固定する。
 
 ## 影響範囲
 
