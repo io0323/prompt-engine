@@ -2,7 +2,7 @@
 kotlin = "2.4.10"
 spring-boot = "3.4.1"
 spring-dependency-management = "1.1.7"
-ktlint-gradle = "12.1.2"
+ktlint-gradle = "14.2.0"
 detekt = "1.23.8"
 archunit = "1.5.0"
 junit = "6.1.2"
