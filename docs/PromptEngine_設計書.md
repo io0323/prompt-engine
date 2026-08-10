@@ -436,6 +436,15 @@ Model Profile（APAPのモデルメタデータを参照して構成）: `{ maxC
 | Logging | 構造化ログ（JSON）、Secretマスク、相関ID（traceId/promptKey/version） |
 | Alert | SLO違反（NFR-002/003）、検証失敗率急増、コスト予算超過 |
 
+P10cでの実装（ADR-0027）: メトリクスは`promptKey`/`version`/`traceId`をラベルに使わず
+（高カーディナリティ回避、Prompt単位のコスト・トークン分析は`execution_logs`のクエリで
+行う）、`cache_hit_ratio`/`experiment_variant_count`はPromptCache本体・Experiment Engineが
+未実装のため計装対象が無い。TracingはOTLPエクスポータ未設定時に安全なno-op相当となる。
+LoggingはSecretマスクをログEncoder層に集約し呼出側が経由せずに済む構造にした。
+ログの相関IDは`traceId`のみ実装し、`promptKey`/`version`はモジュール依存規約
+（`prompt-engine-application`のSLF4J禁止）とtraceId経由での相関で足りるとの判断から
+本フェーズでは見送った。詳細はADR-0027を参照。
+
 ---
 
 # 3. 基本設計

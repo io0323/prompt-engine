@@ -51,6 +51,12 @@ dependencies {
     // OutboxRelayConfigがKafka Producerを構築するために必要（ADR-0025決定9）。
     implementation(libs.kafka.clients)
 
+    // P10c: OtelTracerConfigがSdkTracerProvider/OtlpGrpcSpanExporterを構築するために必要（ADR-0027）。
+    implementation(libs.opentelemetry.api)
+    implementation(libs.opentelemetry.sdk)
+    implementation(libs.opentelemetry.exporter.otlp)
+    implementation(libs.micrometer.registry.prometheus)
+
     testImplementation(libs.spring.boot.starter.test)
     testImplementation(libs.spring.security.test)
     testImplementation(libs.archunit.junit5)

@@ -56,6 +56,22 @@ kafka-clients = { module = "org.apache.kafka:kafka-clients", version.ref = "kafk
 flyway-core = { module = "org.flywaydb:flyway-core", version.ref = "flyway" }
 flyway-postgresql = { module = "org.flywaydb:flyway-database-postgresql", version.ref = "flyway" }
 
+# P10c: メトリクス(Micrometer)・分散トレーシング(OpenTelemetry)。バージョンは
+# postgresql/jackson-module-kotlinと同じくspring-boot-dependencies BOM管理下で未指定
+# （spring-boot-starter-actuatorが既にmicrometer-coreを要求するため、Spring BootのBOMは
+# 両者のバージョンを一貫して管理する）。
+micrometer-core = { module = "io.micrometer:micrometer-core" }
+micrometer-registry-prometheus = { module = "io.micrometer:micrometer-registry-prometheus" }
+opentelemetry-api = { module = "io.opentelemetry:opentelemetry-api" }
+opentelemetry-sdk = { module = "io.opentelemetry:opentelemetry-sdk" }
+opentelemetry-exporter-otlp = { module = "io.opentelemetry:opentelemetry-exporter-otlp" }
+opentelemetry-sdk-testing = { module = "io.opentelemetry:opentelemetry-sdk-testing" }
+
+# P10c: 構造化ログ（JSON）のEncoder実装用。spring-boot-starter-logging（既定ロギング実装）が
+# 既に推移的にlogback-classicを提供するが、SanitizingJsonEncoderがLogbackのAPIへ
+# コンパイル時に直接依存するため明示的に宣言する。
+logback-classic = { module = "ch.qos.logback:logback-classic" }
+
 # postgresql / jackson-module-kotlin はバージョン未指定。infrastructure配下で
 # Gradleネイティブの platform("org.springframework.boot:spring-boot-dependencies:...")
 # によりspring-boot-dependencies BOMをimportし、そのBOM管理下のバージョンで解決する

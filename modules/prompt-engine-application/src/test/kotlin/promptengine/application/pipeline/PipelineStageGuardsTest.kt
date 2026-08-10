@@ -40,7 +40,10 @@ import promptengine.domain.shared.PromptRequest
 import promptengine.domain.shared.SemVer
 import promptengine.domain.shared.TokenCount
 import promptengine.domain.template.ast.TextNode
+import promptengine.domain.validation.Finding
+import promptengine.domain.validation.Severity
 import promptengine.domain.validation.ValidationEngine
+import promptengine.domain.validation.ValidationFailedException
 import promptengine.domain.validation.ValidationReport
 import promptengine.domain.variable.BindingSet
 import promptengine.domain.variable.VariableDefinition
@@ -176,7 +179,38 @@ class PipelineStageGuardsTest {
 
     @Test
     fun `ValidationStage は Merge未実行時 compiled欠如 でIllegalStateException`() {
-        shouldThrow<IllegalStateException> { ValidationStage(UnreachableValidationEngine).execute(context()) }
+        shouldThrow<IllegalStateException> {
+            ValidationStage(UnreachableValidationEngine, RecordingMetricsRecorder()).execute(context())
+        }
+    }
+
+    @Test
+    fun `ValidationStage はFinding1件ごとにruleIdとseverityをMetricsRecorderへ記録する`() {
+        val report =
+            ValidationReport(
+                listOf(
+                    Finding(ruleId = "policy.forbidden-word", path = "$.a", severity = Severity.ERROR, message = "x"),
+                    Finding(ruleId = "policy.pii", path = "$.b", severity = Severity.WARNING, message = "y"),
+                ),
+            )
+        val engine =
+            object : ValidationEngine {
+                override fun validate(
+                    compiled: CompiledPrompt,
+                    variableBindings: BindingSet,
+                    contextBindings: ContextBindingSet,
+                ): ValidationReport = report
+            }
+        val metricsRecorder = RecordingMetricsRecorder()
+        val ctx = context().copy(compiled = compiledPrompt())
+
+        shouldThrow<ValidationFailedException> { ValidationStage(engine, metricsRecorder).execute(ctx) }
+
+        metricsRecorder.validationIssues shouldBe
+            listOf(
+                RecordingMetricsRecorder.ValidationIssueCall("policy.forbidden-word", Severity.ERROR),
+                RecordingMetricsRecorder.ValidationIssueCall("policy.pii", Severity.WARNING),
+            )
     }
 
     @Test
@@ -508,7 +542,9 @@ class PipelineStageGuardsTest {
                 "Merge" to { MergeStage(UnreachableCompositionService).execute(bare) },
                 "ResolveVariables" to { ResolveVariablesStage(UnreachableVariableResolverChain).execute(bare) },
                 "ResolveContext" to { ResolveContextStage(UnreachableContextResolverChain).execute(bare) },
-                "Validation" to { ValidationStage(UnreachableValidationEngine).execute(bare) },
+                "Validation" to {
+                    ValidationStage(UnreachableValidationEngine, RecordingMetricsRecorder()).execute(bare)
+                },
                 "Optimization(compiled)" to { OptimizationStage(UnreachableOptimizationEngine).execute(bare) },
                 "Optimization(variableBindings)" to {
                     OptimizationStage(UnreachableOptimizationEngine).execute(compiledOnly)

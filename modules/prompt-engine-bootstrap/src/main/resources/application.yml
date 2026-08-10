@@ -12,7 +12,9 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        # prometheus: §2.15 Metrics（ADR-0027決定2）。Push型エクスポータ設定不要で
+        # /actuator/prometheus をPrometheus側がスクレイプする。
+        include: health,info,prometheus
 
 pe:
   # CIAP（設計書§1）が発行するJWTのJWKSエンドポイント。未設定時はローカル開発用に
@@ -42,6 +44,14 @@ promptengine:
   archive:
     execution-logs-cutover-at: ${PE_ARCHIVE_EXECUTION_LOGS_CUTOVER_AT:2026-08-09T00:00:00Z}
     inactivity-threshold-days: ${PE_ARCHIVE_INACTIVITY_THRESHOLD_DAYS:90}
+  # executeLongRunning予約のクレームタイムアウト（Issue #50、ADR-0027）。
+  idempotency:
+    claim-timeout-seconds: ${PE_IDEMPOTENCY_CLAIM_TIMEOUT_SECONDS:120}
+  # OTLPエクスポータの送信先（Issue #38、ADR-0027決定2）。未設定ならSpanは生成されるが
+  # エクスポートされない（ローカル・CIでの安全な既定挙動、OtelTracerConfig参照）。
+  observability:
+    otel:
+      exporter-endpoint: ${PE_OTEL_EXPORTER_ENDPOINT:}
 
 springdoc:
   api-docs:

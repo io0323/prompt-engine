@@ -1,5 +1,9 @@
 package promptengine.application.pipeline
 
+import promptengine.domain.execution.ExecutionFailedException
+import promptengine.domain.observability.MetricsRecorder
+import promptengine.domain.observability.Outcome
+import promptengine.domain.observability.TokenDirection
 import promptengine.domain.pipeline.InvalidPipelineRequestException
 import promptengine.domain.pipeline.PipelineContext
 import promptengine.domain.pipeline.PipelineMode
@@ -37,6 +41,7 @@ class PipelineOrchestrator(
     private val pipelineFactory: PipelineFactory,
     private val auditStage: AuditStage,
     private val pipelineTracer: PipelineTracer,
+    private val metricsRecorder: MetricsRecorder,
 ) {
     @Suppress("TooGenericExceptionCaught")
     fun run(
@@ -53,21 +58,79 @@ class PipelineOrchestrator(
                 val startedAt = System.nanoTime()
                 try {
                     val result = pipelineTracer.withSpan(stage.name, context.traceId) { stage.execute(context) }
-                    val durations = result.stageDurationsMs + (stage.name to elapsedMs(startedAt))
+                    val durationMs = elapsedMs(startedAt)
+                    metricsRecorder.recordStageDuration(stage.name, mode, durationMs)
+                    val durations = result.stageDurationsMs + (stage.name to durationMs)
                     context = result.copy(stageDurationsMs = durations)
                 } catch (e: Exception) {
-                    val durations = context.stageDurationsMs + (stage.name to elapsedMs(startedAt))
+                    val durationMs = elapsedMs(startedAt)
+                    metricsRecorder.recordStageDuration(stage.name, mode, durationMs)
+                    val durations = context.stageDurationsMs + (stage.name to durationMs)
                     context = context.copy(stageDurationsMs = durations)
                     throw e
                 }
             }
+        } catch (e: ExecutionFailedException) {
+            metricsRecorder.incrementExecutionAttempt(Outcome.FAILURE, e.errorType)
+            recordFailureAndRethrow(context, mode, e)
         } catch (e: Exception) {
-            if (AuditStage.isAuditable(mode)) {
-                auditStage.recordFailure(context, StageErrorMapper.errorCodeFor(e))
-            }
-            throw e
+            recordFailureAndRethrow(context, mode, e)
         }
+        recordRenderMetrics(context, mode)
+        recordExecutionMetrics(context)
         return context
+    }
+
+    /**
+     * detektの`InstanceOfCheckForException`回避のため、[ExecutionFailedException]専用の
+     * `catch`を分離した（`run`参照）。この共通後処理（Render系メトリクス記録・Audit記録・
+     * 再送出）は例外の型に関わらず同一のため、ここへ集約する。
+     */
+    private fun recordFailureAndRethrow(
+        context: PipelineContext,
+        mode: PipelineMode,
+        e: Exception,
+    ): Nothing {
+        recordRenderMetrics(context, mode)
+        if (AuditStage.isAuditable(mode)) {
+            auditStage.recordFailure(context, StageErrorMapper.errorCodeFor(e))
+        }
+        throw e
+    }
+
+    /**
+     * NFR-003（Render、Validation含む、実行除く、p99≤200ms）の監視に使う`pipeline_render_duration`/
+     * `render_count`を記録する。`COMPILE_ONLY`はStage 1〜8の範囲外（Stage 8 Renderingを
+     * 含まない）のためスキップする。1件もStageが実行されていない場合（`validateRequest`が
+     * Stage実行前に拒否した等）は「Renderを試みてすらいない」ため、これも記録対象外とする
+     * （どちらもADR-0027決定1）。
+     */
+    private fun recordRenderMetrics(
+        context: PipelineContext,
+        mode: PipelineMode,
+    ) {
+        if (mode == PipelineMode.COMPILE_ONLY || context.stageDurationsMs.isEmpty()) return
+        val outcome = if (context.rendered != null) Outcome.SUCCESS else Outcome.FAILURE
+        val renderDurationMs = context.stageDurationsMs.filterKeys { it in RENDER_STAGE_NAMES }.values.sum()
+        metricsRecorder.recordRenderDuration(mode, outcome, renderDurationMs)
+        metricsRecorder.incrementRenderCount(outcome)
+    }
+
+    /**
+     * `token_usage_total`/`cost_total`/`execution_attempts_total`（成功側）を記録する。
+     * `executionOutcome`はFULL_EXECUTIONのStage 9成功時のみ埋まる（[PipelineContext]のKDoc）ため、
+     * これを実行有無の判定に使う。Prompt単位のトークン・コスト分析はこのメトリクスではなく
+     * `execution_logs`のクエリで行う契約（ADR-0027決定1）のため、ここではpromptKey等のラベルを
+     * 一切使わない。
+     */
+    private fun recordExecutionMetrics(context: PipelineContext) {
+        val outcome = context.executionOutcome ?: return
+        val usage = outcome.attempts.last().usage
+        metricsRecorder.recordTokenUsage(TokenDirection.INPUT, usage.inputTokens.value.toLong())
+        metricsRecorder.recordTokenUsage(TokenDirection.OUTPUT, usage.outputTokens.value.toLong())
+        val totalTokens = usage.inputTokens.value.toLong() + usage.outputTokens.value.toLong()
+        metricsRecorder.recordCost(context.request.modelProfile.costPerToken.value.multiply(totalTokens.toBigDecimal()))
+        metricsRecorder.incrementExecutionAttempt(Outcome.SUCCESS, errorType = null)
     }
 
     private fun validateRequest(
@@ -85,5 +148,18 @@ class PipelineOrchestrator(
 
     companion object {
         private const val NANOS_PER_MILLI = 1_000_000L
+
+        /** Stage 1〜8（設計書§2.6、NFR-003の「Render（Validation含む、実行除く）」の範囲）。 */
+        private val RENDER_STAGE_NAMES =
+            setOf(
+                "Load",
+                "Merge",
+                "Import",
+                "ResolveVariables",
+                "ResolveContext",
+                "Validation",
+                "Optimization",
+                "Rendering",
+            )
     }
 }

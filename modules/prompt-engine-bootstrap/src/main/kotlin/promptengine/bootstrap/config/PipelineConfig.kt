@@ -25,6 +25,7 @@ import promptengine.domain.composition.CompositionService
 import promptengine.domain.context.ContextResolverChain
 import promptengine.domain.event.EventBusAdapter
 import promptengine.domain.execution.ExecutionEngine
+import promptengine.domain.observability.MetricsRecorder
 import promptengine.domain.optimization.OptimizationEngine
 import promptengine.domain.pipeline.PipelineStage
 import promptengine.domain.pipeline.PipelineTracer
@@ -66,6 +67,7 @@ class PipelineConfig {
         eventBusAdapter: EventBusAdapter,
         auditRepository: AuditRepository,
         auditFailureHandler: AuditFailureHandler,
+        metricsRecorder: MetricsRecorder,
     ): List<PipelineStage> =
         listOf(
             LoadStage(promptRepository, promptAliasRepository),
@@ -73,7 +75,7 @@ class PipelineConfig {
             ImportStage(),
             ResolveVariablesStage(variableResolverChain),
             ResolveContextStage(contextResolverChain),
-            ValidationStage(validationEngine),
+            ValidationStage(validationEngine, metricsRecorder),
             OptimizationStage(optimizationEngine),
             RenderingStage(renderEngine),
             ExecutionStage(executionEngine),
@@ -96,7 +98,8 @@ class PipelineConfig {
         pipelineFactory: PipelineFactory,
         auditStage: AuditStage,
         pipelineTracer: PipelineTracer,
-    ): PipelineOrchestrator = PipelineOrchestrator(pipelineFactory, auditStage, pipelineTracer)
+        metricsRecorder: MetricsRecorder,
+    ): PipelineOrchestrator = PipelineOrchestrator(pipelineFactory, auditStage, pipelineTracer, metricsRecorder)
 
     @Bean
     fun compileUseCase(
