@@ -99,4 +99,8 @@ jobs:
         run: echo "::notice::./gradlew not found. Skipping until P0 (repository init) is complete."
       - uses: actions/upload-artifact@v7
         if: always() && steps.gradlew.outputs.exists == 'true'
-        with: { name: test-reports, path: '**/build/reports/**' }
+        with:
+          name: test-reports
+          path: |
+            **/build/reports/**
+            **/build/test-results/**
