@@ -15,6 +15,7 @@ import org.springframework.core.env.Environment
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
 import org.springframework.transaction.support.TransactionTemplate
 import promptengine.bootstrap.config.AuditEventConfig
+import promptengine.domain.dlq.DeadLetterQueueRepository
 import promptengine.domain.event.EventBusAdapter
 import promptengine.infrastructure.messaging.InMemoryEventBusAdapter
 import promptengine.infrastructure.messaging.OutboxEventBusAdapter
@@ -88,6 +89,14 @@ class EventBusAdapterProductionProfileGuardTest {
 
         @Bean
         fun objectMapper(): ObjectMapper = ObjectMapper()
+
+        /**
+         * P10bで`AuditEventConfig.auditFailureHandler`が実DLQ実装
+         * （`DeadLetterQueueAuditFailureHandler`、Issue #37）へ変わり、この協力者を要求する
+         * ようになった。本テストはAdapterの選択のみを検証するためモックで足りる。
+         */
+        @Bean
+        fun deadLetterQueueRepository(): DeadLetterQueueRepository = mockk(relaxed = true)
     }
 
     /** 「`production`で`InMemoryEventBusAdapter`が選ばれる」という回帰そのものの最小再現。 */

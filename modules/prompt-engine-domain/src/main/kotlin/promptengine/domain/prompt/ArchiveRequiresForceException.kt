@@ -3,15 +3,20 @@ package promptengine.domain.prompt
 import promptengine.domain.shared.SemVer
 
 /**
- * `archive`（設計書§2.5、Deprecated→Archived）の呼び出し元が`force=false`だったときに
- * application層のコマンドハンドラが投げる（P9bレビュー指摘、Issue #48）。
+ * `archive`（設計書§2.5、Deprecated→Archived）のガードを`force=false`で通過できなかったときに
+ * application層のコマンドハンドラが投げる（Issue #48、ADR-0026決定5）。
  *
- * `execution_logs`（設計書§12）への書き込み経路がM1では未実装で、真の参照クライアント数を
- * 評価する手段が無いため、`Prompt.archive`の`referencingClientCount`ガードに近似値
- * （構造的な依存件数など）を渡すことはせず、`force=true`を明示的に要求する。
+ * P10bで`execution_logs`への書き込み経路が入り、
+ * [ArchiveEligibility.Inactive]（カットオーバー以降に作られ、判定窓の中に実行記録が無い）と
+ * 判定できたVersionは`force`無しでarchiveできるようになった。本例外が投げられるのは
+ * 残る2ケース:
+ * - [ArchiveEligibility.RecentlyExecuted]: 判定窓の中に実行記録がある（＝参照されている）
+ * - [ArchiveEligibility.PreCutover]: カットオーバー以前に作られたVersionで、実行記録の不在から
+ *   参照ゼロを結論できない（判断不能。恒久的にforce専用のまま。ADR-0026決定5の既知の限界）
  */
 class ArchiveRequiresForceException(val promptKey: PromptKey, val semVer: SemVer) :
     IllegalStateException(
-        "cannot verify referencing client count for prompt '${promptKey.value}' version '$semVer'; " +
-            "archive requires force=true until execution_logs-based verification is implemented (Issue #48)",
+        "cannot archive prompt '${promptKey.value}' version '$semVer' without force=true: " +
+            "it has a recent execution, or it predates the execution_logs cutover " +
+            "and therefore cannot be verified as unreferenced (Issue #48)",
     )

@@ -60,6 +60,7 @@ class JdbcAuditRepository(
                 payload = entry.payload,
                 traceId = entry.traceId,
                 occurredAt = entry.occurredAt,
+                eventId = entry.eventId,
             ),
         )
     }
@@ -101,7 +102,7 @@ class JdbcAuditRepository(
             jdbcTemplate.query(
                 """
                 SELECT al.audit_id, al.aggregate_type, p.prompt_key AS aggregate_id, al.action, al.actor,
-                       al.payload::text AS payload, al.trace_id, al.occurred_at
+                       al.payload::text AS payload, al.trace_id, al.occurred_at, al.event_id
                 FROM audit_logs al
                 LEFT JOIN prompts p ON p.prompt_id = al.aggregate_id
                 $whereClause
@@ -119,6 +120,7 @@ class JdbcAuditRepository(
                     payload = rs.getString("payload"),
                     traceId = rs.getString("trace_id"),
                     occurredAt = rs.getTimestamp("occurred_at").toInstant(),
+                    eventId = rs.getObject("event_id", UUID::class.java),
                 )
             }
         return Page(items, query.page, query.size, total)
@@ -132,13 +134,24 @@ class JdbcAuditRepository(
         val payload: String,
         val traceId: String,
         val occurredAt: Instant,
+        val eventId: UUID? = null,
     )
 
+    /**
+     * `ON CONFLICT (event_id) DO NOTHING`（V13の一意制約）で書き、Broker由来の同一イベントが
+     * 再配信されても監査行が二重にならないようにする（ADR-0025決定8）。
+     * `event_id`が`null`（Pipeline Stage 12・CRUD経路。キーにできるイベントを持たない）の行は、
+     * PostgreSQLがUNIQUE制約上NULLを互いに異なる値として扱うため、この`ON CONFLICT`句に
+     * 掛からず常に挿入される。
+     */
     private fun insert(row: AuditLogRow) {
         jdbcTemplate.update(
             """
-            INSERT INTO audit_logs (audit_id, aggregate_type, aggregate_id, action, actor, payload, trace_id, occurred_at)
-            VALUES (:auditId, :aggregateType, :aggregateId, :action, :actor, :payload::json, :traceId, :occurredAt)
+            INSERT INTO audit_logs
+                (audit_id, aggregate_type, aggregate_id, action, actor, payload, trace_id, occurred_at, event_id)
+            VALUES
+                (:auditId, :aggregateType, :aggregateId, :action, :actor, :payload::json, :traceId, :occurredAt, :eventId)
+            ON CONFLICT (event_id) DO NOTHING
             """.trimIndent(),
             MapSqlParameterSource()
                 .addValue("auditId", UUID.randomUUID())
@@ -148,7 +161,8 @@ class JdbcAuditRepository(
                 .addValue("actor", row.actor)
                 .addValue("payload", row.payload)
                 .addValue("traceId", row.traceId)
-                .addValue("occurredAt", Timestamp.from(row.occurredAt)),
+                .addValue("occurredAt", Timestamp.from(row.occurredAt))
+                .addValue("eventId", row.eventId),
         )
     }
 
