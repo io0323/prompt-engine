@@ -228,12 +228,32 @@ Promptがアプリケーションコード内に散在すると、(a) 変更に�
 | Approved→Published | publish | prompt:publish | 依存先が全てPublished（他Versionが現在Publishedの場合、そのVersionを自動的にDeprecatedへ遷移させるアトミック操作。ADR-0005） |
 | Published→Published | rollback(過去Versionを再Publish) | prompt:publish | 対象Versionが存在 |
 | Published→Deprecated | deprecate | prompt:publish | 代替Version推奨設定 |
-| Deprecated→Archived | archive | prompt:admin | 参照クライアントゼロ確認 or 強制フラグ |
+| Deprecated→Archived | archive | prompt:admin | 参照クライアントゼロ確認（`execution_logs`のN日間ウィンドウ判定。cutoff前作成のVersionは判定不能のため`force=true`必須）or 強制フラグ |
 | Draft→Archived | discard | prompt:write | - |
 
 ルール: Published Versionの内容はImmutable。修正は必ず新Versionとして作成。1 Promptにつき「Published」は同時に1 Version（Experiment中はVariantとして複数配信可）。
 
-`archive`の「参照クライアントゼロ確認」について: 真の参照クライアント（AACP等の外部呼出元）を評価する`execution_logs`（本節下部・§12）への書き込み経路がM1時点で未実装のため、M1では自動確認を行わず`force=true`のみでarchiveを受け付ける（P9b）。`execution_logs`書き込み経路の実装後に自動確認を復活させる計画は[Issue #48](https://github.com/io0323/prompt-engine/issues/48)で追跡する。
+`archive`の「参照クライアントゼロ確認」について: P10bで`execution_logs`（本節下部・§12）への書き込み経路（`PromptExecuted`を購読する`ExecutionLogSubscriber`）が入り、「直近N日間に実行が無いこと」を自動確認できるようになった（[Issue #48](https://github.com/io0323/prompt-engine/issues/48)をクローズ、ADR-0026決定5）。判定は`prompt_versions.created_at`とカットオーバー時刻（`promptengine.archive.execution-logs-cutover-at`）の比較を伴う。
+
+- カットオーバー**以降**に作られたVersion: 判定窓（`promptengine.archive.inactivity-threshold-days`、既定90日）に実行記録が無ければ`force`無しでarchiveできる。実行記録があれば拒否する。
+- カットオーバー**以前**に作られたVersion: 判定不能として扱い、`force=false`のarchiveを**常に拒否する**（`ArchiveRequiresForceException`）。`force=true`が必須。**これらのVersionは恒久的にforce専用のまま残る。**
+- `force=true`は判定によらず常に受け付ける（ガード自体を評価しない）。
+
+判定結果と挙動の対応（`ArchiveEligibility`、ADR-0026決定5）:
+
+| 判定 | 条件 | `force=false`での挙動 |
+|---|---|---|
+| `VersionNotFound` | 対象Versionが存在しない | `PromptVersionNotFoundException` |
+| `PreCutover` | `prompt_versions.created_at` < cutoff | **拒否**（`ArchiveRequiresForceException`） |
+| `RecentlyExecuted` | 判定窓に`execution_logs`の行がある | 拒否（`ArchiveRequiresForceException`） |
+| `Inactive` | 判定窓に`execution_logs`の行が無い | **許可** |
+
+**「実行記録が無い」と「一度も実行されていない」は区別できていない。** `execution_logs`への書き込みはcutoff以降にしか存在しないため、cutoff前に作成されたVersionについてこの2つは同じ「行が無い」状態として現れる。具体的には、現在の実装は以下の2つを**どちらも`PreCutover`として同じ扱い**（force必須）にする。
+
+1. cutoff前に作成され、その後一度も実行されていない古いPrompt（＝本当に参照ゼロ。本来はforce無しでarchiveできてよい）
+2. cutoff前に作成され、cutoff前は活発に実行されていたが記録が残っていないだけのPrompt（＝実際には参照されている可能性がある）
+
+この2つを取り違えた場合の損害は非対称である。1を誤って拒否しても運用者が`force=true`を付け直すだけで済むが、2を誤って許可すると**現に参照されているPromptを警告なく落とす**。したがって判断不能は拒否側へfail closedさせる。cutoff以降に作成されたVersionについてはこの曖昧さは存在せず、「行が無い＝実行されていない」と結論できる。
 
 ## 2.6 Prompt Pipeline仕様
 
@@ -355,6 +375,29 @@ Model Profile（APAPのモデルメタデータを参照して構成）: `{ maxC
 | Token Usage / Cost | APAP応答のusage × Model Profile単価 | 実行毎 |
 
 評価結果は PromptVersion に紐付くEvaluationRecordとして永続化し、Version間比較・Experiment判定に使用。
+
+### M1実装（P10b、ADR-0026決定3）
+
+実装済みの評価器は実行系の3種（Latency / Token Usage / Cost）。Quality系は`EvaluationRule`を実装したPluginとして後から追加できる（Engine側の変更を要さない）。評価は`PromptExecuted`を購読する非同期処理であり、Pipeline本流をブロックしない。
+
+`evaluation_records`へ実際に記録される値は以下の通り。
+
+| `metric_type` | `score` | `method` | 備考 |
+|---|---|---|---|
+| `Latency` | Stage 9（Execution）の実測ミリ秒 | `execution-stage-measured` | 本表の`Latency`行が言うp50/p95/p99は複数行を跨いだ集計（Monitoring側の責務）であり、1実行あたりは実測値をそのまま記録する |
+| `TokenUsage` | `inputTokens + outputTokens` | `provider-usage` | 列値は空白なしの識別子。本節の表記「Token Usage」に対する実装上の正規化 |
+| `Cost` | `(inputTokens + outputTokens) × costPerToken` | `usage-x-model-profile-rate` | 下記の単価の扱いを参照 |
+
+- **単価は実行時点の値をイベントに載せて使う。** 購読側が評価時に`ModelProfile`を引き直すと、単価改定後に過去の実行を再評価した際に当時と異なるコストが算出されてしまうため。
+- `ModelProfile.costPerToken`は入力・出力を区別しない単一のブレンド単価であり、プロバイダの入出力別レートは表現できない（本節の記述「usage × Model Profile単価」自体が単価を単数で書いているため矛盾はしないが、実課金との差異は残る）。
+- **Latencyの取得元**は`PipelineContext.stageDurationsMs["Execution"]`。`PipelineOrchestrator`以外の経路で未計測の場合に限り、各試行の`RawResponse.latency`の合算へフォールバックする（Adapter実測の合計であり、Stage全体のdurationよりわずかに小さい）。
+- `variant_id`はM1では常に`NULL`（Experiment未実装のため、`PromptExecuted`がVariantを運ばない）。
+- 同一イベントの再配信では`(event_id, metric_type)`の一意制約により行が二重にならず、その場合は`PromptEvaluationCompleted`を**再発行しない**（下流へ完了イベントが増殖するのを避けるため）。
+
+`execution_logs`（§12）についてもM1固有の制約がある。
+
+- `status`は**常に`SUCCESS`**。`execution_logs`を書く`ExecutionLogSubscriber`が購読する`PromptExecuted`は、Stage 9が成功しStage 11まで到達した場合にしか発火しない。実行失敗を表す`PromptExecutionFailed`（§14）はイベント定義のみ存在し、M1に発火元が無い。したがって現時点の`execution_logs`は**失敗した実行を含まない**（成功実行のみの母集団である点は、この表を集計に使う際の前提となる）。
+- `caller_system`はイベントの`actor`を暫定的に写した値。呼出元クライアント識別情報をPipelineへ伝搬する経路がM1に存在しないため、真の呼出元システム名ではない。
 
 ## 2.13 Version管理仕様
 
@@ -1363,6 +1406,7 @@ entity evaluation_records {
   * method : VARCHAR
   sample_ref : VARCHAR
   * evaluated_at
+  * event_id : UUID  ' 算出元PromptExecutedのevent_id。UNIQUE(event_id, metric_type)（P10b/V13、ADR-0026決定7）
 }
 entity execution_logs {
   * execution_id : UUID <<PK>>
@@ -1375,6 +1419,7 @@ entity execution_logs {
   * cost : DECIMAL
   * status : VARCHAR
   * executed_at
+  * event_id : UUID <<UNIQUE>>  ' 購読側冪等キー（P10b/V13、ADR-0025決定8）
 }
 entity audit_logs {
   * audit_id : UUID <<PK>>
@@ -1386,6 +1431,21 @@ entity audit_logs {
   * payload : JSON  ' Secretマスク済
   * trace_id : VARCHAR
   * occurred_at
+  event_id : UUID <<UNIQUE>>  ' 購読側冪等キー。CRUD/Pipeline経路はイベントを持たずNULL（P10b/V13、ADR-0026決定7）
+}
+
+entity dead_letter_queue {
+  * dlq_id : UUID <<PK>>
+  --
+  event_id : UUID  ' Broker由来のみ。Pipeline Stage 12の退避はNULL
+  * event_type : VARCHAR
+  * subscriber_name : VARCHAR
+  * payload : JSON  ' Secretマスク済
+  * failure_reason : VARCHAR  ' 例外クラス名のみ（メッセージ本文は入れない）
+  * first_failed_at / last_failed_at
+  * retry_count : INT
+  * status : VARCHAR  ' PENDING/...。再処理は手動（P10b、ADR-0026決定2）
+  ' UNIQUE (event_id, subscriber_name)
 }
 entity idempotency_keys {
   * idempotency_key : VARCHAR <<PK>>  ' クライアントが送るIdempotency-Keyヘッダの値
@@ -1563,6 +1623,12 @@ outbox }o--|| domain_events : event_id
 
 イベント封筒: `{eventId, eventType, occurredAt, aggregateType, aggregateId, actor, traceId, payload}`。Busトピック: `pe.prompt` / `pe.execution` / `pe.evaluation` / `pe.experiment` / `pe.governance` / `pe.plugin`。
 
+Brokerメッセージの本文はこの封筒8項目をそのままJSON化したもの（`payload`は入れ子のJSONオブジェクト）。購読側は`eventType`/`actor`/`traceId`/`occurredAt`を必要とするため、`payload`単体ではなく封筒全体を載せる（P10b、ADR-0026決定1a。P10a時点は`payload`単体だった）。メッセージキーは`aggregateId`、`event-id`ヘッダに`eventId`を載せる（ADR-0025決定7）。
+
+購読側の冪等性: 配信はat-least-onceであり、各購読側が自身の書き込み先テーブルの`event_id`一意制約と`INSERT ... ON CONFLICT DO NOTHING`で重複を吸収する（共有の重複排除テーブルは持たない。ADR-0025決定8）。処理に失敗したイベントは`dead_letter_queue`（§12）へ退避し、オフセットはコミットする（退避済みを再消費し続けると後続が永久に止まるため。ADR-0026決定2）。
+
+P10b時点で実装済みの購読側は5つ: `AuditEngine`（6トピック全て→`audit_logs`）／`ExecutionLogSubscriber`（`pe.execution`→`execution_logs`）／`EvaluationSubscriber`（`pe.execution`→`evaluation_records`、`PromptEvaluationCompleted`発行）／`CacheInvalidationSubscriber`・`SearchIndexSubscriber`（`pe.prompt`）。それぞれ独立したconsumer groupを持つ。
+
 | イベント名 | 発火元 | 主な購読先 | 用途 |
 |---|---|---|---|
 | PromptCreated | Prompt Aggregate | Search Indexer, Audit | 新規登録の索引化・監査 |
@@ -1574,7 +1640,7 @@ outbox }o--|| domain_events : event_id
 | PromptPublished | Prompt Aggregate | Cache Invalidator, Search Indexer, Audit, 通知 | 配信切替・キャッシュ無効化 |
 | PromptRolledBack | Prompt Aggregate | Cache Invalidator, Audit, 通知 | 障害復旧記録 |
 | PromptDeprecated / PromptArchived | Prompt Aggregate | Search Indexer, Cache Invalidator, Audit | 廃止管理（PromptDeprecatedの`reason`が`SUPERSEDED`の場合はpublishによる自動遷移、`MANUAL`の場合は手動deprecate。ADR-0005） |
-| PromptDiscarded | Prompt Aggregate | Audit | Draft破棄の記録（ADR-0004） |
+| PromptDiscarded | Prompt Aggregate | Cache Invalidator, Search Indexer, Audit | Draft破棄の記録（ADR-0004）。P10bでCache Invalidator / Search Indexerを購読先に追加（ADR-0026決定6） |
 | PromptCompiled | Compiler | Prompt Cache | Compile結果キャッシュ |
 | PromptValidated / PromptValidationFailed | Validation Engine | Monitoring, Audit | 品質傾向監視 |
 | PromptOptimized | Optimization Engine | Audit | 最適化内容の追跡 |
@@ -1583,6 +1649,12 @@ outbox }o--|| domain_events : event_id
 | PromptExecutionFailed | Pipeline Orchestrator | Monitoring(Alert), Audit | 失敗率監視 |
 | ResponseParsed / ResponseParseFailed | Output Formatter | Monitoring, Audit | 構造化出力品質監視 |
 | PromptEvaluationCompleted | Evaluation Engine | Experiment Engine, Monitoring | Variant判定入力 |
+
+### P10bで確定した実装上の取り決め（ADR-0026）
+
+- **`PromptExecuted`のpayload**: `{promptKey, semVer, inputTokens, outputTokens, retryCount, latencyMs, costPerToken, status}`。`semVer`は文字列`"1.0.0"`ではなく**オブジェクト`{major, minor, patch}`**としてシリアライズする（`PromptPublished`等が`SemVer`型をそのまま載せるのと同じ扱い。購読側はこれと`promptKey`から`prompt_versions.version_id`を解決する）。`status`はM1では常に`SUCCESS`（§2.12参照）。
+- **キャッシュ無効化の発火条件**: `CacheInvalidationSubscriber`は`PromptPublished`に加え`PromptRolledBack`/`PromptArchived`/`PromptDiscarded`でも`invalidateByPrompt`を呼ぶ（いずれも配信されるPromptの内容が実質的に切り替わるため）。`pe.prompt`には`domain_events`由来のイベントも流れ、その`aggregateId`は`prompts.prompt_id`（UUID文字列）で`PromptKey`として解釈できない。この場合は対象を特定できないため何もしない（例外にせずDLQを汚さない）。
+- **Secretマスクは2層**（§12の`audit_logs.payload`「Secretマスク済」の担保手段）。第1層は型ベースで、`SensitiveValue`を常に`"***"`としてシリアライズするJacksonモジュールをアプリケーション全体の`ObjectMapper`へ登録する（Outboxへ書かれる入口でマスクされるため、下流の購読側は既にマスク済みのJSONを受け取る）。第2層は名前ベースで、保存直前にフィールド名の**後方一致**でredactする。後方一致にしているのは、部分一致だと`inputTokens`/`outputTokens`/`tokenizerId`のような正当なフィールドまでマスクされ監査記録が失われるため。
 | ExperimentStarted / ExperimentStopped | Experiment Aggregate | Audit, 通知 | 実験管理 |
 | ExperimentWinnerDeclared | Experiment Engine | PromotionService, 通知 | 勝者昇格トリガ |
 | ExperimentCompleted | Experiment Aggregate | Audit, Search Indexer | 実験履歴 |
