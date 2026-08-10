@@ -167,6 +167,26 @@ class SecretMaskingJsonSanitizerTest {
     }
 
     @Test
+    fun `二重引用符で囲まれた値もマスクされる`() {
+        // マッチ全体（引用符を含む）を"key=***"へ置換するため、引用符自体は残らない
+        // （値が完全に除去されていることが目的であり、引用符の保持は要求しない）。
+        val result = sanitizer.sanitizeFreeText("""token="$REAL_SECRET" and more text""")
+
+        result shouldNotContain REAL_SECRET
+        result shouldContain "token=***"
+        result shouldContain "and more text"
+    }
+
+    @Test
+    fun `単一引用符で囲まれた値もマスクされる`() {
+        val result = sanitizer.sanitizeFreeText("apiKey='$REAL_SECRET' and more text")
+
+        result shouldNotContain REAL_SECRET
+        result shouldContain "apiKey=***"
+        result shouldContain "and more text"
+    }
+
+    @Test
     fun `コロン区切りのkey_valueは意図的に非対応であり値は変更されない`() {
         // sanitizeFreeTextのKDoc「原理的な限界」参照。コロンは自由記述テキストの中では
         // key=valueの合図として曖昧すぎる（下の回帰テストが実例を示す）ため対象外とする。
