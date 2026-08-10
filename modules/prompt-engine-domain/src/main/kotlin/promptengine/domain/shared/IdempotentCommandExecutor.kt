@@ -38,6 +38,14 @@ package promptengine.domain.shared
  * 課すため、奪取済みの予約を元の所有者が誤って上書きすることは無い。
  *
  * 実装詳細は`JdbcIdempotentCommandExecutor`（`prompt-engine-infrastructure`、ADR-0027）を参照。
+ *
+ * **既知の限界（CodeRabbitレビュー指摘、ADR-0027）**: この奪取機構が保証するのは予約の
+ * 所有権の一貫性のみであり、奪取された側の[operation]が実際に停止することは保証しない。
+ * `claimTimeoutSeconds`はヒューリスティックであるため、元のプロセスが実際には生きていて
+ * （GCポーズ・一時的なネットワーク分断等）[operation]の実行を継続している場合、奪取後に
+ * 別リクエストが同じ[operation]を再実行すると外部副作用が二重に発生しうる。
+ * [executeLongRunning]の[operation]は再実行されても安全（冪等、または呼出先が独自の
+ * 冪等キーで重複排除する）であることを呼出側の契約とする。
  */
 interface IdempotentCommandExecutor {
     fun <T : Any> executeInTransaction(

@@ -387,8 +387,13 @@ class JdbcIdempotentCommandExecutorIntegrationTest {
         @JvmStatic
         val postgres: PostgreSQLContainer<*> = PostgreSQLContainer("postgres:16")
 
-        // operation実行に長時間かかる想定と、テストの実行時間を短く保ちたい要求とのバランスで、
-        // 本番既定値(120秒、IdempotencyClaimProperties)より大幅に短い値をこのテストクラス専用に使う。
-        private const val CLAIM_TIMEOUT_SECONDS = 2L
+        // 「期限切れ」を模すテストはclaimed_atをInstant.now().minusSeconds(999)へ直接設定するため、
+        // このタイムアウト値そのものの大小には依存しない。一方「期限内でブロックされる」ことを
+        // 確認するテスト（IN_PROGRESS中の再送・真の並行競合下での単一実行保証）は、予約から
+        // アサーションまでの実時間がこの値を上回らないことを前提にしている。値を小さくしすぎると
+        // 負荷のかかったCI環境でこの前提が崩れフレーキーになりうる（CodeRabbitレビュー指摘）ため、
+        // 実測ラウンドトリップより十分大きい値を使う（本番既定値120秒、IdempotencyClaimProperties、
+        // より小さいのはテスト実行時間を意図的に切り詰めるためだが、Flakyになる程には切り詰めない）。
+        private const val CLAIM_TIMEOUT_SECONDS = 30L
     }
 }

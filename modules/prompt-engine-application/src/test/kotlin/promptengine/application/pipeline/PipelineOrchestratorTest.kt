@@ -23,6 +23,7 @@ import promptengine.domain.execution.ExecutionAdapter
 import promptengine.domain.execution.ExecutionErrorType
 import promptengine.domain.execution.ExecutionFailedException
 import promptengine.domain.execution.ExecutionPolicy
+import promptengine.domain.execution.ParseRepairPolicy
 import promptengine.domain.execution.RawResponse
 import promptengine.domain.execution.Usage
 import promptengine.domain.fragment.Fragment
@@ -199,6 +200,34 @@ class PipelineOrchestratorTest {
         fixture.metricsRecorder.tokenUsages.map { it.direction }.toSet() shouldBe
             setOf(TokenDirection.INPUT, TokenDirection.OUTPUT)
         fixture.metricsRecorder.costs.size shouldBe 1
+    }
+
+    @Test
+    fun `解析修復が発生した場合token_usage_totalとcost_totalはattempts全件を合算する`() {
+        // CodeRabbitレビュー指摘: 従来attempts.last()のみを見ており、解析修復で複数回
+        // プロバイダを呼び出した場合にトークン・コストを過小集計していた。
+        // SuccessExecutionAdapterはUsage(3,3)を毎回返すため、2 attemptsならinput/output共に6。
+        val fixture =
+            Fixture(outputFormatters = mapOf(OutputFormat.TEXT to RepairThenSucceedFormatter()))
+        val orchestrator = fixture.orchestrator()
+        val request =
+            fixture.baseRequest(
+                executionPolicy =
+                    ExecutionPolicy(
+                        timeoutMs = 5_000,
+                        parseRepair = ParseRepairPolicy(enabled = true, maxAttempts = 2),
+                    ),
+            )
+
+        val result = orchestrator.run(request, PipelineMode.FULL_EXECUTION, "trace-repair")
+
+        result.executionOutcome!!.attempts.size shouldBe 2
+        val inputUsages = fixture.metricsRecorder.tokenUsages.filter { it.direction == TokenDirection.INPUT }
+        val outputUsages = fixture.metricsRecorder.tokenUsages.filter { it.direction == TokenDirection.OUTPUT }
+        inputUsages.sumOf { it.amount } shouldBe 6L
+        outputUsages.sumOf { it.amount } shouldBe 6L
+        fixture.metricsRecorder.executionAttempts shouldBe
+            listOf(RecordingMetricsRecorder.ExecutionAttemptCall(Outcome.SUCCESS, errorType = null))
     }
 
     @Test
@@ -558,6 +587,27 @@ class PipelineOrchestratorTest {
             raw: String,
             schema: OutputSchema?,
         ): ParsedOutput = throw ParseFailedException(OutputFormat.TEXT, "forced failure for test")
+    }
+
+    /**
+     * 初回`parse`は[ParseFailedException]を投げ、解析修復（[ParseRepairPolicy]）による
+     * 2回目の`parse`で成功する。`ExecutionOutcome.attempts`が2件になる（トークン集計テスト用）。
+     */
+    private class RepairThenSucceedFormatter : OutputFormatter {
+        private var callCount = 0
+
+        override fun format(): OutputFormat = OutputFormat.TEXT
+
+        override fun instruction(schema: OutputSchema?): String = ""
+
+        override fun parse(
+            raw: String,
+            schema: OutputSchema?,
+        ): ParsedOutput {
+            callCount++
+            if (callCount == 1) throw ParseFailedException(OutputFormat.TEXT, "forced failure for first attempt")
+            return ParsedOutput(OutputFormat.TEXT, raw = raw)
+        }
     }
 
     private class FailingExecutionAdapter(

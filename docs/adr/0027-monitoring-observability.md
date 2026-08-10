@@ -36,9 +36,9 @@ P8で`PipelineTracer`（Span生成の抽象）を導入したが実装は`NoopPi
 | `pipeline_render_duration_seconds` | `mode`, `outcome` | `PipelineOrchestrator`（Stage1〜8合計、NFR-003監視用） |
 | `render_count_total` | `outcome` | `PipelineOrchestrator` |
 | `validation_failure_count_total` | `ruleId`, `severity` | `ValidationStage`（`ValidationReport.findings`を直接持つ唯一の箇所） |
-| `token_usage_total` | `direction` | `PipelineOrchestrator`（`context.executionOutcome`） |
-| `cost_total` | なし | `PipelineOrchestrator` |
-| `execution_attempts_total` | `outcome`, `errorType` | `PipelineOrchestrator`（`execution_success_rate`の実体） |
+| `token_usage_total` | `direction` | `PipelineOrchestrator`（`executionOutcome.attempts`全件の合算、解析修復分を含む） |
+| `cost_total` | なし | `PipelineOrchestrator`（同上、合算トークン数×`costPerToken`） |
+| `execution_attempts_total` | `outcome`, `errorType` | `PipelineOrchestrator`（Stage 9呼出1回につき1件。`execution_success_rate`の実体） |
 | `cache_hit_ratio` | 未実装 | PromptCache本体が無い（設計書§2.14未実装）ため計装対象が無い |
 | `experiment_variant_count` | 未実装 | Experiment Engineが無いため計装対象が無い |
 
@@ -138,10 +138,26 @@ ADR-0025のOutbox中継が使う「クレーム所有トークン＋タイムア
   （`idempotency_fencing_lost`、Outboxの`outbox_relay_fencing_lost`と同じ命名規則）を
   出すのみとし、`operation()`が実際に成功していれば呼出元へは成功として返す
   （正準の完了記録は奪取した側が別途担う）。
-- `executeInTransaction`（CRUD系、単一コミットトランザクション）はこの問題の対象外。
-  予約INSERTから完了UPDATEまでが常に1つの未コミットトランザクション内で完結するため、
-  プロセスクラッシュ時はPostgres自体がロールバックし、`IN_PROGRESS`のまま残る行は
-  そもそも発生しない。
+- `executeInTransaction`（CRUD系、単一コミットトランザクション）は、自分自身が
+  クラッシュで`IN_PROGRESS`行を残すことは無い（予約INSERTから完了UPDATEまでが常に
+  1つの未コミットトランザクション内で完結するため、プロセスクラッシュ時はPostgres
+  自体がロールバックする）。ただし共有の`reserveOrResolve`を経由するため、
+  `executeLongRunning`が残した期限切れ行を奪取する側には回りうる。
+
+**既知の限界（CodeRabbitレビュー指摘）**: この3段階Claim方式が保証するのは
+「予約の所有権の一貫性」（`markCompleted`/`releaseReservation`が正しい行にのみ
+作用する）であり、「奪取された側の`operation`が実際に停止すること」ではない。
+`claimTimeoutSeconds`はあくまで「クラッシュしたとみなす」ヒューリスティックであり、
+元のプロセスが実際には生きていて（GCポーズ・一時的なネットワーク分断等）
+`operation`（典型的にはAPAP実行のような非冪等な外部副作用）の実行を継続している
+場合、奪取後に別リクエストが同じ`operation`を再実行すると、外部副作用が二重に
+発生しうる。Outboxの3段階Claim（ADR-0025）も構造的に同じ限界を持つが、Outbox側は
+配信そのものが少なくとも1回配信（at-least-once）を前提とし受信側の冪等性
+（`event_id`によるUPSERT/ON CONFLICT DO NOTHING）で吸収する設計のため実害が無い。
+`IdempotentCommandExecutor.executeLongRunning`を使う`operation`（将来のAPAP実行等）も、
+再実行されても安全（冪等、またはAPAP側が独自の冪等キーで重複排除する）であることを
+呼出側の契約とする。非冪等な`operation`をこの経路に載せる場合は、本ADRのこの限界を
+踏まえた別途の設計判断が必要である。
 
 ## 影響範囲
 
@@ -159,8 +175,10 @@ ADR-0025のOutbox中継が使う「クレーム所有トークン＋タイムア
   `logback-spring.xml`（新設）、`application.yml`更新
 - `prompt-engine-interface`: `TraceIdFilter`がMDCへ`traceId`を投入
 - マイグレーション: `V14__idempotency_keys_claim_columns.sql`
-- 設計書§2.15は既に項目列挙のみで実装と矛盾しないため大きな改訂は不要（本ADRへの
-  参照を追記）。
+- 設計書§2.15のLogging行「相関ID（traceId/promptKey/version）」は、P10c時点で
+  `traceId`のみ実装（`promptKey`/`version`は未実装のまま）である旨を明記する形で
+  更新した（CodeRabbitレビュー指摘: 当初「大きな改訂は不要」としていたが、
+  §2.15の記述と実装状況の間に食い違いがあり、読者が誤解しうる状態だった）。
 
 ## 参照
 

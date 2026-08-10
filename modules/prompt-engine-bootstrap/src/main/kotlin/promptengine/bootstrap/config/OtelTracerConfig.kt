@@ -37,6 +37,13 @@ private const val PRODUCTION_PROFILE = "production"
 @Configuration
 @EnableConfigurationProperties(OtelTracerProperties::class)
 class OtelTracerConfig {
+    /**
+     * OTel SDKの構築（Issue #38、ADR-0027決定2）。[Bean]の`destroyMethod = "close"`により
+     * Springコンテキスト終了時に自動で`close()`される（`SdkTracerProvider`・登録済みの
+     * `SpanProcessor`/`SpanExporter`を巻き込んで正しくシャットダウンする、Spring管理外で
+     * 直接構築する場合は呼出元が`close()`/`use{}`で寿命を管理する責務を負う）。
+     * エクスポータを繋ぐかどうかの分岐は本メソッドのKDoc（クラスKDoc）参照。
+     */
     @Bean(destroyMethod = "close")
     fun openTelemetrySdk(
         properties: OtelTracerProperties,
@@ -47,9 +54,7 @@ class OtelTracerConfig {
         if (endpoint.isNullOrBlank()) {
             if (PRODUCTION_PROFILE in environment.activeProfiles) {
                 logger.warn(
-                    "otel_exporter_endpoint_unset profile={} : " +
-                        "promptengine.observability.otel.exporter-endpoint is not set; " +
-                        "spans will be created but never exported (diagnostic-only, not a startup failure)",
+                    "event=otel_exporter_endpoint_unset profile={} exporter_configured=false",
                     PRODUCTION_PROFILE,
                 )
             }
@@ -60,9 +65,11 @@ class OtelTracerConfig {
         return OpenTelemetrySdk.builder().setTracerProvider(tracerProviderBuilder.build()).build()
     }
 
+    /** [openTelemetrySdk]から`"promptengine"`という計装名で[Tracer]を取得するだけの薄いBean。 */
     @Bean
     fun tracer(openTelemetrySdk: OpenTelemetrySdk): Tracer = openTelemetrySdk.getTracer("promptengine")
 
+    /** [PipelineTracer]の実実装（[OpenTelemetryPipelineTracer]）を束線する（Issue #38）。 */
     @Bean
     fun pipelineTracer(tracer: Tracer): PipelineTracer = OpenTelemetryPipelineTracer(tracer)
 

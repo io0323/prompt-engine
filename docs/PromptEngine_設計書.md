@@ -433,7 +433,7 @@ Model Profile（APAPのモデルメタデータを参照して構成）: `{ maxC
 |---|---|
 | Metrics | pipeline_stage_duration, render_count, cache_hit_ratio, validation_failure_count, token_usage_total, cost_total, execution_success_rate, experiment_variant_count |
 | Tracing | リクエスト単位のTrace、ステージ毎Span、APAP呼出へContext伝播（W3C Trace Context） |
-| Logging | 構造化ログ（JSON）、Secretマスク、相関ID（traceId/promptKey/version） |
+| Logging | 構造化ログ（JSON）、Secretマスク、相関ID（traceId/promptKey/version、P10c時点は`traceId`のみ実装。下記参照） |
 | Alert | SLO違反（NFR-002/003）、検証失敗率急増、コスト予算超過 |
 
 P10cでの実装（ADR-0027）: メトリクスは`promptKey`/`version`/`traceId`をラベルに使わず
@@ -441,9 +441,13 @@ P10cでの実装（ADR-0027）: メトリクスは`promptKey`/`version`/`traceId
 行う）、`cache_hit_ratio`/`experiment_variant_count`はPromptCache本体・Experiment Engineが
 未実装のため計装対象が無い。TracingはOTLPエクスポータ未設定時に安全なno-op相当となる。
 LoggingはSecretマスクをログEncoder層に集約し呼出側が経由せずに済む構造にした。
-ログの相関IDは`traceId`のみ実装し、`promptKey`/`version`はモジュール依存規約
-（`prompt-engine-application`のSLF4J禁止）とtraceId経由での相関で足りるとの判断から
-本フェーズでは見送った。詳細はADR-0027を参照。
+**ログの相関IDは`traceId`のみを実装し、`promptKey`/`version`は未実装のまま残る**
+（`prompt-engine-application`はCLAUDE.mdのArchUnit規約でSLF4J依存を禁止されており
+`PipelineOrchestrator`がMDCを直接操作できないこと、`PipelineTracer.withSpan`のシグネチャが
+`stageName`/`traceId`のみで`PipelineContext`全体を受け取らないことが理由）。
+promptKey単位の相関は`audit_logs`/`execution_logs`の`trace_id`列経由で得られるため、
+専用の新しい抽象を追加するコストには本フェーズでは見合わないと判断した。
+promptKey/versionをMDCへ乗せる対応は将来のフェーズに持ち越す。詳細はADR-0027を参照。
 
 ---
 

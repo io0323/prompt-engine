@@ -57,11 +57,18 @@ class JdbcIdempotentCommandExecutor(
     /**
      * キー予約・[command]実行・完了記録を[transactionTemplate]の1トランザクションで行う。
      *
-     * このパスはクレーム奪取・フェンシングの対象外（Issue #50はこのパスには該当しない）。
-     * 予約INSERTから完了UPDATEまでが常に単一の未コミットトランザクション内で完結するため、
-     * プロセスがクラッシュした場合はPostgres自体がトランザクション全体をロールバックし、
-     * `IN_PROGRESS`のまま残る行はそもそも発生しない（[executeLongRunning]と異なり、
+     * このパス**自身**はクラッシュで`IN_PROGRESS`行を残さない: 予約INSERTから完了UPDATEまでが
+     * 常に単一の未コミットトランザクション内で完結するため、プロセスがクラッシュした場合は
+     * Postgres自体がトランザクション全体をロールバックする（[executeLongRunning]と異なり、
      * [command]をトランザクション外で実行する必要が無いCRUD系コマンド専用のため）。
+     *
+     * ただし、このメソッドは[executeLongRunning]と同じ[reserveOrResolve]を経由するため、
+     * 同一`idempotencyKey`の行が[executeLongRunning]呼出やV14マイグレーションのバックフィルで
+     * 既に`IN_PROGRESS`かつ期限切れのまま残っている場合、このメソッドの呼出がその行を
+     * 奪取（[resolveInProgress]・[tryReclaim]）することがある（CodeRabbitレビュー指摘:
+     * 「このパスはクレーム奪取・フェンシングの対象外」という以前の記述は誤りだった。
+     * 対象外なのは「自身がIN_PROGRESS行を残すこと」のみで、「他所が残した行を奪取すること」
+     * には参加する）。
      */
     override fun <T : Any> executeInTransaction(
         idempotencyKey: String?,

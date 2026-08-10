@@ -122,13 +122,33 @@ class PipelineOrchestrator(
      * これを実行有無の判定に使う。Prompt単位のトークン・コスト分析はこのメトリクスではなく
      * `execution_logs`のクエリで行う契約（ADR-0027決定1）のため、ここではpromptKey等のラベルを
      * 一切使わない。
+     *
+     * [ExecutionOutcome.attempts]は初回実行＋解析修復のための再実行（あれば）の
+     * [RawResponse][promptengine.domain.execution.RawResponse]を全て保持する（`attempts[0]`が
+     * 初回実行、[ExecutionOutcome]のKDoc参照）。各要素は実際にプロバイダへ送信された別個の
+     * 呼出であり、それぞれがトークンを消費・課金対象になるため、`token_usage_total`/`cost_total`は
+     * `attempts`全体を合算する（CodeRabbitレビュー指摘: 従来`attempts.last()`のみを見ており、
+     * 解析修復が発生したケースでトークン・コストを過小集計していた）。
+     *
+     * `execution_attempts_total`はこのStage 9呼出**1回**につき1件加算する（`attempts`の
+     * 要素数ぶん加算しない）。他の全メトリクス（`pipeline_stage_duration`/`render_count`等）が
+     * 「Pipeline Stageの呼出単位」で数える設計と揃えるためであり、「プロバイダ呼出の総回数」は
+     * 別の関心事として扱う（現時点ではその粒度のメトリクスは無い。`RetryingExecutionAdapter`
+     * （`prompt-engine-core`）内部のプロバイダ呼出単位のリトライを計装する対応は、この
+     * Orchestratorの変更だけでは完結せずcore層に新たな計装ポイントを追加する必要があるため、
+     * 本フェーズのスコープ外とする）。
      */
     private fun recordExecutionMetrics(context: PipelineContext) {
         val outcome = context.executionOutcome ?: return
-        val usage = outcome.attempts.last().usage
-        metricsRecorder.recordTokenUsage(TokenDirection.INPUT, usage.inputTokens.value.toLong())
-        metricsRecorder.recordTokenUsage(TokenDirection.OUTPUT, usage.outputTokens.value.toLong())
-        val totalTokens = usage.inputTokens.value.toLong() + usage.outputTokens.value.toLong()
+        var totalInputTokens = 0L
+        var totalOutputTokens = 0L
+        outcome.attempts.forEach { attempt ->
+            totalInputTokens += attempt.usage.inputTokens.value.toLong()
+            totalOutputTokens += attempt.usage.outputTokens.value.toLong()
+        }
+        metricsRecorder.recordTokenUsage(TokenDirection.INPUT, totalInputTokens)
+        metricsRecorder.recordTokenUsage(TokenDirection.OUTPUT, totalOutputTokens)
+        val totalTokens = totalInputTokens + totalOutputTokens
         metricsRecorder.recordCost(context.request.modelProfile.costPerToken.value.multiply(totalTokens.toBigDecimal()))
         metricsRecorder.incrementExecutionAttempt(Outcome.SUCCESS, errorType = null)
     }

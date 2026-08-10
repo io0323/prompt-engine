@@ -32,6 +32,30 @@ class SecretMaskingJsonSanitizer(
         return objectMapper.writeValueAsString(redact(root))
     }
 
+    /**
+     * JSONツリー構造を持たない自由記述テキスト（ログの`message`/`exception`等）向けの
+     * サニタイズ（`SanitizingJsonEncoder`、ADR-0027決定3のCodeRabbitレビュー指摘）。
+     *
+     * [sanitize]はJSONオブジェクトのフィールド**名**でしか照合できないため、
+     * `logger.info("token={}", secret)`のような呼出しが生成する`message: "token=sk-..."`は
+     * 素通りしていた（フィールドではなく1つの自由記述文字列の中身であるため）。
+     * このメソッドは`key=value`/`key: value`形状を正規表現で検出し、[isSensitiveName]と
+     * 同じ判定でkey部分がSecretを示唆する場合のみvalueを[SensitiveValueMaskingModule.MASK]へ
+     * 置換する。
+     *
+     * 原理的な限界: `key`と`value`の対応が構文的に明示されない自由記述
+     * （例: `"the secret is sk-live-xyz"`）は検出できない。これはSecretマスクの第1層
+     * （[SensitiveValueMaskingModule]、[promptengine.domain.shared.SensitiveValue]型経由の
+     * 値は`toString()`が常に`"***"`を返す）でのみ完全に防げる。本メソッドは
+     * `key=value`/`key: value`という一般的な慣用形にのみ対応する第3層の追加防御であり、
+     * 万能の代替ではない。
+     */
+    fun sanitizeFreeText(text: String): String =
+        KEY_VALUE_PATTERN.replace(text) { match ->
+            val (key, separator, _) = match.destructured
+            if (isSensitiveName(key)) "$key$separator${SensitiveValueMaskingModule.MASK}" else match.value
+        }
+
     private fun redact(node: JsonNode): JsonNode =
         when (node) {
             is ObjectNode -> redactObject(node)
@@ -90,5 +114,12 @@ class SecretMaskingJsonSanitizer(
                 "credentials",
                 "authorization",
             )
+
+        /**
+         * `key=value`/`key: "value"`/`key: value`形状の自由記述テキストにマッチする。
+         * 値は引用符付き（内部の`\"`エスケープを許容）か、空白・カンマ・セミコロンまでの
+         * 非空白トークンのいずれか。
+         */
+        val KEY_VALUE_PATTERN = Regex("""([\w.-]+)([:=])\s*("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|[^\s,;]+)""")
     }
 }

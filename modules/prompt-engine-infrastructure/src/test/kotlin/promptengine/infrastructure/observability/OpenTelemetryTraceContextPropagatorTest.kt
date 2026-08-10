@@ -41,13 +41,18 @@ class OpenTelemetryTraceContextPropagatorTest {
             SdkTracerProvider.builder()
                 .addSpanProcessor(SimpleSpanProcessor.create(exporter))
                 .build()
-        val pipelineTracer = OpenTelemetryPipelineTracer(tracerProvider.get("test"))
-        val traceId = "trace-correlated"
+        // SdkTracerProviderはAutoCloseable（CodeRabbitレビュー指摘）。SimpleSpanProcessorは
+        // 同期エクスポートでバックグラウンドスレッドを持たないためリークの実害は無いが、
+        // 他のSDK構築テストと同じ後始末規約に揃える。
+        tracerProvider.use {
+            val pipelineTracer = OpenTelemetryPipelineTracer(it.get("test"))
+            val traceId = "trace-correlated"
 
-        pipelineTracer.withSpan("Load", traceId) { }
-        val header = propagator.traceparentFor(traceId)
-        val span = exporter.finishedSpanItems.single()
+            pipelineTracer.withSpan("Load", traceId) { }
+            val header = propagator.traceparentFor(traceId)
+            val span = exporter.finishedSpanItems.single()
 
-        header.split("-")[1] shouldBe span.traceId
+            header.split("-")[1] shouldBe span.traceId
+        }
     }
 }

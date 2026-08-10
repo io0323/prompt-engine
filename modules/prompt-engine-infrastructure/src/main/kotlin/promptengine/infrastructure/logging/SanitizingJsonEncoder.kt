@@ -19,10 +19,15 @@ import java.time.Instant
  * ADR-0027決定3）。
  *
  * [SensitiveValue][promptengine.domain.shared.SensitiveValue]型を経由する値は
- * `toString()`が既に`"***"`を返す（第1層防御）。本Encoderの[SecretMaskingJsonSanitizer]は
- * フィールド**名**ベースの第2層防御であり、型を経由せず生の文字列としてメッセージへ
- * 混入した秘密（例: `logger.info("token={}", secret)`のような誤用）もマスクする
- * （`AuditEngine`が`audit_logs`書き込み前に使う多層防御と同じ設計思想をログ出口全体へ広げる）。
+ * `toString()`が既に`"***"`を返す（第1層防御）。[SecretMaskingJsonSanitizer.sanitize]は
+ * MDCエントリ等JSONオブジェクトの構造化フィールド**名**ベースの第2層防御である。
+ * `message`/`exception`は自由記述の1文字列であり、フィールド名ベースの照合が及ばない
+ * （`logger.info("token={}", secret)`のような呼出しが生成する`message: "token=sk-..."`は
+ * [SecretMaskingJsonSanitizer.sanitize]だけでは素通りする、CodeRabbitレビュー指摘）ため、
+ * 第3層として[SecretMaskingJsonSanitizer.sanitizeFreeText]を`message`/`exception`へ個別に
+ * 適用してから残りのフィールドと合わせてJSON化・構造的サニタイズする。
+ * `key=value`という構文的な対応が無い自由記述（例:「秘密の値はsk-live-xyzです」）は
+ * この第3層でも検出できない、[SecretMaskingJsonSanitizer.sanitizeFreeText]のKDoc参照。
  *
  * MDC（`traceId`/`promptKey`/`version`、設計書§2.15「相関ID」）をそのままJSONフィールドへ
  * 展開する。[TraceIdFilter][promptengine.interfaces.support.TraceIdFilter]・
@@ -54,12 +59,12 @@ class SanitizingJsonEncoder : EncoderBase<ILoggingEvent>() {
         fields["level"] = event.level.toString()
         fields["logger"] = event.loggerName
         fields["thread"] = event.threadName
-        fields["message"] = event.formattedMessage
+        fields["message"] = sanitizer.sanitizeFreeText(event.formattedMessage)
         if (event.mdcPropertyMap.isNotEmpty()) {
             fields.putAll(event.mdcPropertyMap)
         }
         if (event.throwableProxy != null) {
-            fields["exception"] = throwableConverter.convert(event)
+            fields["exception"] = sanitizer.sanitizeFreeText(throwableConverter.convert(event))
         }
         val rawJson = objectMapper.writeValueAsString(fields)
         val sanitizedJson = sanitizer.sanitize(rawJson)

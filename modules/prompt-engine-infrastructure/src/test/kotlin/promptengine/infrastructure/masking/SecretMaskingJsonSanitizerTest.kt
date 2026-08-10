@@ -133,4 +133,64 @@ class SecretMaskingJsonSanitizerTest {
         field: String,
         block: () -> Unit,
     ) = io.kotest.assertions.withClue("field=$field") { block() }
+
+    // ---- sanitizeFreeText（ADR-0027決定3、CodeRabbitレビュー指摘: message/exceptionの自由記述対策） ----
+
+    @Test
+    fun `key=valueで秘密を示唆するkeyの値はマスクされる`() {
+        val result = sanitizer.sanitizeFreeText("token=$REAL_SECRET")
+
+        result shouldNotContain REAL_SECRET
+        result shouldBe "token=***"
+    }
+
+    @Test
+    fun `logger呼出しが生成するtoken=形式のmessageもマスクされる`() {
+        // logger.info("token={}", secret) がSLF4Jのプレースホルダ置換後に生成する文字列そのもの。
+        val formattedMessage = "calling provider with token=$REAL_SECRET status=pending"
+
+        val result = sanitizer.sanitizeFreeText(formattedMessage)
+
+        result shouldNotContain REAL_SECRET
+        result shouldContain "token=***"
+        result shouldContain "status=pending"
+    }
+
+    @Test
+    fun `例外メッセージに含まれる秘密もマスクされる`() {
+        val exceptionText = "java.lang.IllegalStateException: connection failed password=$REAL_SECRET\n\tat ..."
+
+        val result = sanitizer.sanitizeFreeText(exceptionText)
+
+        result shouldNotContain REAL_SECRET
+        result shouldContain "password=***"
+    }
+
+    @Test
+    fun `key colon スペース 引用符付き値もマスクされる`() {
+        val result = sanitizer.sanitizeFreeText("""apiKey: "$REAL_SECRET" region: us-east-1""")
+
+        result shouldNotContain REAL_SECRET
+        result shouldContain "region: us-east-1"
+    }
+
+    @Test
+    fun `inputTokens outputTokensのkey=value形式はマスクされない`() {
+        val text = "usage: inputTokens=120 outputTokens=30 latencyMs=42"
+
+        val result = sanitizer.sanitizeFreeText(text)
+
+        result shouldBe text
+    }
+
+    @Test
+    fun `key value対応の無い自由記述文はマスクできない既知の限界`() {
+        // sanitizeFreeTextのKDocに明記された原理的限界。key=value/key: value形状が無いプレーンな
+        // 文中の秘密はどの層でも検出できない（SensitiveValue型でのラップのみが完全な保証）。
+        val text = "the secret is $REAL_SECRET"
+
+        val result = sanitizer.sanitizeFreeText(text)
+
+        result shouldContain REAL_SECRET
+    }
 }
