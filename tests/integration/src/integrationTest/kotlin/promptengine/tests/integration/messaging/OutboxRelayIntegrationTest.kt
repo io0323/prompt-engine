@@ -1,5 +1,6 @@
 package promptengine.tests.integration.messaging
 
+import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
 import io.kotest.matchers.nulls.shouldNotBeNull
@@ -29,6 +30,7 @@ import org.testcontainers.junit.jupiter.Testcontainers
 import org.testcontainers.redpanda.RedpandaContainer
 import promptengine.infrastructure.messaging.DomainEventOutboxSource
 import promptengine.infrastructure.messaging.EventBusOutboxSource
+import promptengine.infrastructure.messaging.EventEnvelopeCodec
 import promptengine.infrastructure.messaging.EventProducer
 import promptengine.infrastructure.messaging.KafkaEventProducer
 import promptengine.infrastructure.messaging.OutboxRelayer
@@ -59,6 +61,8 @@ private const val RETRY_INTERVAL_MS = 500L
 @Testcontainers
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class OutboxRelayIntegrationTest {
+    private val envelopeCodec = EventEnvelopeCodec(jacksonObjectMapper())
+
     private lateinit var dataSource: DataSource
     private lateinit var jdbcTemplate: NamedParameterJdbcTemplate
     private lateinit var transactionTemplate: TransactionTemplate
@@ -121,16 +125,38 @@ class OutboxRelayIntegrationTest {
         jdbcTemplate.update("TRUNCATE TABLE event_bus_outbox, outbox, domain_events", MapSqlParameterSource())
     }
 
-    /** [expectedValue]を含むレコードを受信するまで、[timeout]を上限にポーリングし続ける。 */
+    /** [fragment]を含むレコードの本文そのものを返す（見つからなければnull）。 */
+    private fun pollForBodyContaining(
+        kafkaConsumer: KafkaConsumer<String, String>,
+        fragment: String,
+        timeout: Duration = Duration.ofSeconds(15),
+    ): String? {
+        val deadline = System.currentTimeMillis() + timeout.toMillis()
+        while (System.currentTimeMillis() < deadline) {
+            val records = kafkaConsumer.poll(Duration.ofSeconds(2))
+            records.firstOrNull { it.value().contains(fragment) }?.let { return it.value() }
+        }
+        return null
+    }
+
+    /**
+     * 本文に[expectedFragment]を含むレコードを受信するまで、[timeout]を上限にポーリングし続ける。
+     *
+     * P10b（ADR-0025訂正E1・ADR-0026決定1a）でBrokerメッセージ本文がpayload単体から
+     * 設計書§14の封筒全体のJSONへ変わったため、完全一致ではなく部分一致で判定する
+     * （本テストの関心は「対象イベントがBrokerへ届いたか」であり、封筒8フィールドが
+     * 揃っていることは`Brokerへ中継されるメッセージ本文は設計書14の封筒8フィールドを
+     * すべて含む`が検証する）。
+     */
     private fun pollUntilContains(
         kafkaConsumer: KafkaConsumer<String, String>,
-        expectedValue: String,
+        expectedFragment: String,
         timeout: Duration = Duration.ofSeconds(15),
     ): Boolean {
         val deadline = System.currentTimeMillis() + timeout.toMillis()
         while (System.currentTimeMillis() < deadline) {
             val records = kafkaConsumer.poll(Duration.ofSeconds(2))
-            if (records.any { it.value() == expectedValue }) return true
+            if (records.any { it.value().contains(expectedFragment) }) return true
         }
         return false
     }
@@ -182,10 +208,10 @@ class OutboxRelayIntegrationTest {
             """
             INSERT INTO event_bus_outbox
                 (outbox_id, event_id, event_type, aggregate_type, aggregate_id, actor, trace_id,
-                 payload, occurred_at, created_at, claimed_at, attempts)
+                 payload, occurred_at, created_at, claimed_at, attempts, next_attempt_at)
             VALUES
                 (:outboxId, :eventId, :eventType, 'Prompt', :aggregateId, 'system', 'trace-1',
-                 :payload::json, :now, :now, :claimedAt, :attempts)
+                 :payload::json, :now, :now, :claimedAt, :attempts, :claimableSince)
             """.trimIndent(),
             MapSqlParameterSource()
                 .addValue("outboxId", UUID.randomUUID())
@@ -194,6 +220,7 @@ class OutboxRelayIntegrationTest {
                 .addValue("aggregateId", aggregateId)
                 .addValue("payload", """{"eventId":"$eventId"}""")
                 .addValue("now", Timestamp.from(Instant.now()))
+                .addValue("claimableSince", Timestamp.from(CLAIMABLE_SINCE.invoke()))
                 .addValue("claimedAt", claimedAt?.let { Timestamp.from(it) })
                 .addValue("attempts", attempts),
         )
@@ -219,11 +246,15 @@ class OutboxRelayIntegrationTest {
                 .addValue("now", Timestamp.from(Instant.now())),
         )
         jdbcTemplate.update(
-            "INSERT INTO outbox (outbox_id, event_id, created_at) VALUES (:outboxId, :eventId, :now)",
+            """
+            INSERT INTO outbox (outbox_id, event_id, created_at, next_attempt_at)
+            VALUES (:outboxId, :eventId, :now, :claimableSince)
+            """.trimIndent(),
             MapSqlParameterSource()
                 .addValue("outboxId", UUID.randomUUID())
                 .addValue("eventId", eventId)
-                .addValue("now", Timestamp.from(Instant.now())),
+                .addValue("now", Timestamp.from(Instant.now()))
+                .addValue("claimableSince", Timestamp.from(CLAIMABLE_SINCE.invoke())),
         )
         return eventId
     }
@@ -232,7 +263,7 @@ class OutboxRelayIntegrationTest {
     fun `event_bus_outboxに書かれたイベントがEventBusOutboxSource経由でBrokerへ中継される`() {
         val eventId = insertEventBusOutboxRow(eventType = "PromptExecuted")
         val source = EventBusOutboxSource(jdbcTemplate, transactionTemplate)
-        val relayer = OutboxRelayer(source, producer, instanceId = "instance-1")
+        val relayer = OutboxRelayer(source, producer, envelopeCodec, instanceId = "instance-1")
         val kafkaConsumer = consumer("pe.execution")
 
         try {
@@ -252,11 +283,63 @@ class OutboxRelayIntegrationTest {
         }
     }
 
+    /**
+     * 設計書§14「イベント封筒: {eventId, eventType, occurredAt, aggregateType, aggregateId,
+     * actor, traceId, payload}」への準拠を、実Brokerへ中継した実メッセージで固定する。
+     *
+     * P10a時点の実装は本文に`payload`列のJSONだけを載せており、封筒の他の7フィールドが
+     * 欠落していた（設計書§14違反。ADR-0025訂正E1）。P10bで封筒全体を送る形へ是正したため、
+     * 8フィールドすべてが実際にBrokerを通って受信側へ届くことをここで検証する。
+     */
+    @Test
+    fun `Brokerへ中継されるメッセージ本文は設計書14の封筒8フィールドをすべて含む`() {
+        val aggregateId = "prompt/envelope-conformance-${UUID.randomUUID()}"
+        val eventId = insertEventBusOutboxRow(eventType = "PromptExecuted", aggregateId = aggregateId)
+        val source = EventBusOutboxSource(jdbcTemplate, transactionTemplate)
+        val relayer = OutboxRelayer(source, producer, envelopeCodec, instanceId = "instance-1")
+        val kafkaConsumer = consumer("pe.execution")
+
+        try {
+            relayUntilDispatched(relayer) shouldBe 1
+
+            val body = pollForBodyContaining(kafkaConsumer, eventId.toString())
+            body.shouldNotBeNull()
+
+            // 受信側が封筒として復元でき、8フィールドすべてが中継元の値と一致すること。
+            val received = envelopeCodec.decode(body)
+            received.eventId shouldBe eventId
+            received.eventType shouldBe "PromptExecuted"
+            received.aggregateType shouldBe "Prompt"
+            received.aggregateId shouldBe aggregateId
+            received.actor shouldBe "system"
+            received.traceId shouldBe "trace-1"
+            received.occurredAt.shouldNotBeNull()
+            // payloadは文字列エスケープされず入れ子のJSONオブジェクトとして埋め込まれる。
+            jacksonObjectMapper().readTree(received.payload).get("eventId").asText() shouldBe eventId.toString()
+
+            // 本文のトップレベルに§14の8キーが揃っていること（復元経路とは独立に生JSONで確認）。
+            val fieldNames = jacksonObjectMapper().readTree(body).fieldNames().asSequence().toSet()
+            fieldNames shouldBe
+                setOf(
+                    "eventId",
+                    "eventType",
+                    "occurredAt",
+                    "aggregateType",
+                    "aggregateId",
+                    "actor",
+                    "traceId",
+                    "payload",
+                )
+        } finally {
+            kafkaConsumer.close()
+        }
+    }
+
     @Test
     fun `既存outboxとdomain_eventsに書かれたPrompt状態遷移イベントがDomainEventOutboxSource経由でBrokerへ中継される`() {
         val eventId = insertDomainEventOutboxRow(eventType = "PromptPublished")
         val source = DomainEventOutboxSource(jdbcTemplate, transactionTemplate)
-        val relayer = OutboxRelayer(source, producer, instanceId = "instance-1")
+        val relayer = OutboxRelayer(source, producer, envelopeCodec, instanceId = "instance-1")
         val kafkaConsumer = consumer("pe.prompt")
 
         try {
@@ -282,7 +365,13 @@ class OutboxRelayIntegrationTest {
             )
         val source = EventBusOutboxSource(jdbcTemplate, transactionTemplate)
         val relayer =
-            OutboxRelayer(source, producer, instanceId = "instance-2", claimTimeout = Duration.ofSeconds(1))
+            OutboxRelayer(
+                source,
+                producer,
+                envelopeCodec,
+                instanceId = "instance-2",
+                claimTimeout = Duration.ofSeconds(1),
+            )
         val kafkaConsumer = consumer("pe.execution")
 
         try {
@@ -400,7 +489,7 @@ class OutboxRelayIntegrationTest {
             EventProducer { _, _, _, _ ->
                 throw RuntimeException("simulated broker failure")
             }
-        val relayer = OutboxRelayer(source, failingProducer, instanceId = "instance-3")
+        val relayer = OutboxRelayer(source, failingProducer, envelopeCodec, instanceId = "instance-3")
 
         val dispatched = relayer.relayOnce()
 
@@ -427,7 +516,7 @@ class OutboxRelayIntegrationTest {
             EventProducer { _, _, _, _ ->
                 throw RuntimeException("simulated broker failure")
             }
-        val relayer = OutboxRelayer(source, failingProducer, instanceId = "instance-3")
+        val relayer = OutboxRelayer(source, failingProducer, envelopeCodec, instanceId = "instance-3")
 
         val dispatched = relayer.relayOnce()
 
@@ -444,6 +533,22 @@ class OutboxRelayIntegrationTest {
     }
 
     private companion object {
+        /**
+         * クレーム対象行の`next_attempt_at`に入れる「確実に過去」の時刻。
+         *
+         * 従来これらのフィクスチャは`next_attempt_at`を指定せずDDLの`DEFAULT now()`
+         * （**DBサーバのクロック**）に任せていた。一方`OutboxSource.claimBatch`の
+         * `next_attempt_at <= :now`の`:now`は**JVMのクロック**である。両者がわずかでも
+         * ずれている（Docker上のPostgresとホストJVMでは実際に起こりうる）と、挿入直後の行が
+         * 「まだ再試行時刻に達していない」と判定されてクレームされず、`attempts`が加算されない。
+         *
+         * 実際にP10bで統合テストと単体テストを同一実行に含めた際、負荷増加とともに
+         * `既存outboxのBroker送信失敗も...`が`attempts: expected 1 but was 0`で
+         * 断続的に落ちた（クレーム0件が原因）。テスト側で明示的に過去時刻を入れ、
+         * クロック一致への依存を断つ。
+         */
+        val CLAIMABLE_SINCE: () -> Instant = { Instant.now().minusSeconds(60) }
+
         @Container
         @JvmStatic
         val postgres: PostgreSQLContainer<*> = PostgreSQLContainer("postgres:16")

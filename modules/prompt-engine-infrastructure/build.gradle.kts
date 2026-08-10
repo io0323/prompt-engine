@@ -29,3 +29,25 @@ dependencies {
 
     testImplementation(libs.spring.boot.starter.test)
 }
+
+// カバレッジ集約（P10b、ADR-0026決定8を見直し）。
+//
+// このモジュールの主要部分（JDBC Repository）はCLAUDE.mdのテスト規約に従い
+// `tests/integration`（Testcontainers）で検証しており、既定の`jacocoTestReport`
+// （自プロジェクトの`test`のexecのみ）には現れない。P10bで直近の実バグ
+// （Secretマスキングの誤検知）がこの層に集中したことを踏まえ、統合テストの実行時
+// カバレッジを合算した集約レポートに対して下限ゲートを設ける。
+//
+// 既定の jacocoTestCoverageVerification（`check`/`build`に配線済み）ではなく独立した
+// `jacocoAggregatedCoverageVerification` に下限を設定するのは、既定タスクへ統合テストの
+// execを合流させると `./gradlew build` だけでDockerが必要になるため
+// （tests/integration/build.gradle.kts 冒頭が明示的に避けている挙動）。
+// CIの`test`ジョブが integrationTest のあとに明示的に呼ぶ。
+extra["jacocoAggregatedExecutionData"] =
+    listOf("tests/integration/build/jacoco/integrationTest.exec")
+extra["jacocoAggregatedTaskDependencies"] = listOf(":tests:integration:integrationTest")
+
+// 集約後の実測値（P10b時点: 行95.88% / 分岐84.87%）を下回る「切りの良い」値にして、
+// 劣化のみを検知する（他モジュールの下限設定と同じ方針）。
+extra["jacocoAggregatedMinLineCoverage"] = 0.90
+extra["jacocoAggregatedMinBranchCoverage"] = 0.80

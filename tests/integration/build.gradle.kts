@@ -10,6 +10,11 @@ plugins {
     kotlin("jvm")
     id("org.jlleitschuh.gradle.ktlint")
     id("io.gitlab.arturbosch.detekt")
+    // integrationTaskの実行時カバレッジ（.exec）を採取するためだけに適用する。
+    // レポート生成はこのプロジェクトでは行わず、計測対象である
+    // prompt-engine-infrastructure 側の集約レポート
+    // （jacocoAggregatedReport / jacocoAggregatedCoverageVerification）が読み取る。
+    jacoco
 }
 
 // promptengine.kotlin-conventions（buildSrc）はあえて適用しない。それが配線する
@@ -59,6 +64,12 @@ val integrationTest =
         testClassesDirs = sourceSets["integrationTest"].output.classesDirs
         classpath = sourceSets["integrationTest"].runtimeClasspath
         useJUnitPlatform()
+
+        // 実行時カバレッジを固定パスの.execへ書き出す（prompt-engine-infrastructureの
+        // 集約レポートが参照する。既定パスはタスク名依存で分かりにくいため明示する）。
+        extensions.configure<JacocoTaskExtension> {
+            destinationFile = layout.buildDirectory.file("jacoco/integrationTest.exec").get().asFile
+        }
 
         // SourceSet配線やCIのタスク検出が壊れて対象0件のまま "BUILD SUCCESSFUL" になる
         // (silent green)を防ぐガード。ArchitectureTestの「plugins配下にサブプロジェクトが

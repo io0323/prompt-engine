@@ -70,6 +70,97 @@ tasks.named("check") {
     dependsOn(tasks.named("jacocoTestCoverageVerification"))
 }
 
+/**
+ * 別Gradleプロジェクト（`tests/integration`）で実行される統合テストの実行時カバレッジを
+ * 取り込んだ「集約レポート」と、その集約値に対する下限検証（P10b、ADR-0026決定8の見直し）。
+ *
+ * ## なぜ既定の jacocoTestReport / jacocoTestCoverageVerification と分けるのか
+ * `prompt-engine-infrastructure` の主要部分（JDBC Repository）は、CLAUDE.mdのテスト規約に
+ * 従い`tests/integration`（Testcontainers）で検証している。既定の`jacocoTestReport`は
+ * 自プロジェクトの`test`タスクのexecしか読まないため、この層の実測値が常に過少に出る。
+ *
+ * かといって既定のレポート／検証タスク自体に統合テストのexecを合流させると、それらは
+ * `check`（延いては`build`）に配線されているため、**`./gradlew build`だけでDocker
+ * （Testcontainers）が必要になる**。これは`tests/integration/build.gradle.kts`冒頭が
+ * 明示的に避けている挙動であり、CLAUDE.mdの`test`と`integrationTest`の使い分けにも反する。
+ *
+ * このため集約は独立したタスク対（`jacocoAggregatedReport` /
+ * `jacocoAggregatedCoverageVerification`）として提供し、`check`には配線しない。
+ * CIの`test`ジョブが`integrationTest`のあとに明示的に呼ぶ（.github/workflows/ci.yml）。
+ *
+ * オプトインしたモジュールのみで生成する。有効化するには、モジュールの build.gradle.kts で
+ * `extra["jacocoAggregatedExecutionData"]`（execファイルのパスのList<String>）と
+ * `extra["jacocoAggregatedTaskDependencies"]`（execを生成するタスクパスのList<String>）、
+ * および下限 `extra["jacocoAggregatedMinLineCoverage"]` /
+ * `extra["jacocoAggregatedMinBranchCoverage"]` を設定する。
+ */
+// 設定の読み取りとタスク登録は afterEvaluate で行う。プリコンパイル済みスクリプトプラグインの
+// 本体はプラグイン適用時（＝モジュールの build.gradle.kts が extra を設定する前）に実行される
+// ため、ここで即座に extra を読むと常に未設定として扱われてしまう。
+afterEvaluate {
+    @Suppress("UNCHECKED_CAST")
+    val aggregatedExecutionData: List<String> =
+        (project.findProperty("jacocoAggregatedExecutionData") as? List<String>) ?: emptyList()
+
+    @Suppress("UNCHECKED_CAST")
+    val aggregatedTaskDependencies: List<String> =
+        (project.findProperty("jacocoAggregatedTaskDependencies") as? List<String>) ?: emptyList()
+
+    val aggregatedMinLineCoverage =
+        (project.findProperty("jacocoAggregatedMinLineCoverage") as? Double) ?: 0.0
+    val aggregatedMinBranchCoverage =
+        (project.findProperty("jacocoAggregatedMinBranchCoverage") as? Double) ?: 0.0
+
+    if (aggregatedExecutionData.isEmpty()) return@afterEvaluate
+
+    val aggregatedSources = files("src/main/kotlin")
+    val aggregatedClasses = files(layout.buildDirectory.dir("classes/kotlin/main"))
+
+    val jacocoAggregatedReport =
+        tasks.register<JacocoReport>("jacocoAggregatedReport") {
+            description = "自プロジェクトのtestに加えtests/integrationの統合テストのカバレッジを合算したレポート。"
+            group = "verification"
+            dependsOn(tasks.named("test"))
+            aggregatedTaskDependencies.forEach { dependsOn(it) }
+
+            // execファイルは対応するテストタスクが実行された場合にのみ存在する。dependsOnで
+            // 生成を保証したうえで、存在するものだけを読む（未生成のパスを渡すとJacocoが失敗する）。
+            executionData.setFrom(
+                files(
+                    layout.buildDirectory.file("jacoco/test.exec"),
+                    *aggregatedExecutionData.map { rootProject.file(it) }.toTypedArray(),
+                ).filter { it.exists() },
+            )
+            sourceDirectories.setFrom(aggregatedSources)
+            classDirectories.setFrom(aggregatedClasses)
+            reports {
+                xml.required.set(true)
+                html.required.set(true)
+            }
+        }
+
+    tasks.register<JacocoCoverageVerification>("jacocoAggregatedCoverageVerification") {
+        description = "集約カバレッジ（単体+統合）が下限を下回らないことを検証する。"
+        group = "verification"
+        dependsOn(jacocoAggregatedReport)
+        executionData.setFrom(jacocoAggregatedReport.map { it.executionData })
+        sourceDirectories.setFrom(aggregatedSources)
+        classDirectories.setFrom(aggregatedClasses)
+        violationRules {
+            rule {
+                limit {
+                    counter = "LINE"
+                    minimum = aggregatedMinLineCoverage.toBigDecimal()
+                }
+                limit {
+                    counter = "BRANCH"
+                    minimum = aggregatedMinBranchCoverage.toBigDecimal()
+                }
+            }
+        }
+    }
+}
+
 repositories {
     mavenCentral()
 }

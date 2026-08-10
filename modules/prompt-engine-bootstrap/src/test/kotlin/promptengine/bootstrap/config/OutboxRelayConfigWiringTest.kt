@@ -1,5 +1,6 @@
 package promptengine.bootstrap.config
 
+import com.fasterxml.jackson.databind.ObjectMapper
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.mockk.mockk
@@ -34,8 +35,11 @@ class OutboxRelayConfigWiringTest {
     fun `production下でOutboxRelayConfigの全Beanと2つのOutboxRelayerが正しく配線される`() {
         val context = AnnotationConfigApplicationContext()
         context.environment.setActiveProfiles("production")
+        // MessagingSupportConfig: P10bでBrokerのワイヤ形式を封筒JSONへ変えた際に
+        // OutboxRelayerがEventEnvelopeCodecを要求するようになったため（ADR-0026決定1）。
         context.register(
             OutboxRelayConfig::class.java,
+            MessagingSupportConfig::class.java,
             StubJdbcBeansConfig::class.java,
         )
         context.refresh()
@@ -70,5 +74,8 @@ class OutboxRelayConfigWiringTest {
 
         @Bean
         fun transactionTemplate(): TransactionTemplate = mockk(relaxed = true)
+
+        @Bean
+        fun objectMapper(): ObjectMapper = ObjectMapper()
     }
 }

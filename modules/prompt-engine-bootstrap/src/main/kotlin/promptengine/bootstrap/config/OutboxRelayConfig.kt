@@ -16,6 +16,7 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler
 import org.springframework.transaction.support.TransactionTemplate
 import promptengine.infrastructure.messaging.DomainEventOutboxSource
 import promptengine.infrastructure.messaging.EventBusOutboxSource
+import promptengine.infrastructure.messaging.EventEnvelopeCodec
 import promptengine.infrastructure.messaging.EventProducer
 import promptengine.infrastructure.messaging.KafkaEventProducer
 import promptengine.infrastructure.messaging.OutboxRelayer
@@ -108,12 +109,14 @@ class OutboxRelayConfig {
     fun eventBusOutboxRelayer(
         @Qualifier(EVENT_BUS_SOURCE_QUALIFIER) source: OutboxSource,
         producer: EventProducer,
+        envelopeCodec: EventEnvelopeCodec,
         instanceId: OutboxRelayInstanceId,
         properties: OutboxRelayProperties,
     ): OutboxRelayer =
         OutboxRelayer(
             source,
             producer,
+            envelopeCodec,
             instanceId.value,
             Duration.ofSeconds(properties.claimTimeoutSeconds),
             properties.batchSize,
@@ -124,12 +127,14 @@ class OutboxRelayConfig {
     fun domainEventOutboxRelayer(
         @Qualifier(DOMAIN_EVENT_SOURCE_QUALIFIER) source: OutboxSource,
         producer: EventProducer,
+        envelopeCodec: EventEnvelopeCodec,
         instanceId: OutboxRelayInstanceId,
         properties: OutboxRelayProperties,
     ): OutboxRelayer =
         OutboxRelayer(
             source,
             producer,
+            envelopeCodec,
             instanceId.value,
             Duration.ofSeconds(properties.claimTimeoutSeconds),
             properties.batchSize,

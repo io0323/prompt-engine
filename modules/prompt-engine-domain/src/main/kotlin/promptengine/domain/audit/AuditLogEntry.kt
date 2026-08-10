@@ -13,6 +13,12 @@ import java.util.UUID
  *
  * [payload]はSecretマスク済のJSON文字列であることを呼出側が保証する（CLAUDE.md
  * 「Secret/sensitive=trueの変数値は絶対に出力しない」）。
+ *
+ * [eventId]はBroker経由のイベントを起点に追記する場合（`AuditEngine`、P10b・ADR-0026決定4）の
+ * 冪等キー。`audit_logs.event_id`（UNIQUE、V13）に対応し、`ON CONFLICT (event_id) DO NOTHING`で
+ * 同一イベントの再配信が二重の監査行にならないことを保証する（ADR-0025決定8）。
+ * CRUD/lifecycle系Commandハンドラ（P9、ADR-0017）の追記経路はキーにできるイベントを
+ * 持たないため`null`のままとし、その場合は無条件のINSERTになる。
  */
 data class AuditLogEntry(
     val auditId: UUID,
@@ -23,4 +29,5 @@ data class AuditLogEntry(
     val payload: String,
     val traceId: String,
     val occurredAt: Instant,
+    val eventId: UUID? = null,
 )
