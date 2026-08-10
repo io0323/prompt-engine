@@ -1,6 +1,7 @@
 package promptengine.bootstrap.config
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.context.annotation.Profile
@@ -33,15 +34,30 @@ import promptengine.infrastructure.persistence.JdbcIdempotentCommandExecutor
  * [OutboxRelayConfig][promptengine.bootstrap.config.OutboxRelayConfig]が配線する
  * `OutboxRelayer`が非同期に行う）をADR-0025（P10a、Issue #35）で追加し、`production`
  * プロファイルが`EventBusAdapter`起因では起動失敗しなくなった。
+ *
+ * [idempotentCommandExecutor]は`IdempotencyClaimProperties`（`promptengine.idempotency.*`）で
+ * `executeLongRunning`のクレームタイムアウトを設定する（Issue #50、ADR-0027）。
+ * `prompt-engine-infrastructure`はbootstrap配下のPropertiesクラスに依存できない
+ * （CLAUDE.mdのモジュール依存規約: infrastructureはdomainのInterfaceを実装する側であり、
+ * bootstrapへの逆方向依存は作らない）ため、`JdbcIdempotentCommandExecutor`自体は
+ * プリミティブ型の`claimTimeoutSeconds`のみを受け取り、値の注入はこのConfiguration層で行う。
  */
 @Configuration
+@EnableConfigurationProperties(IdempotencyClaimProperties::class)
 class AuditEventConfig {
     @Bean
     fun idempotentCommandExecutor(
         jdbcTemplate: NamedParameterJdbcTemplate,
         transactionTemplate: TransactionTemplate,
         objectMapper: ObjectMapper,
-    ): IdempotentCommandExecutor = JdbcIdempotentCommandExecutor(jdbcTemplate, transactionTemplate, objectMapper)
+        idempotencyClaimProperties: IdempotencyClaimProperties,
+    ): IdempotentCommandExecutor =
+        JdbcIdempotentCommandExecutor(
+            jdbcTemplate,
+            transactionTemplate,
+            objectMapper,
+            idempotencyClaimProperties.claimTimeoutSeconds,
+        )
 
     @Bean
     fun extendsFieldResolver(): ExtendsFieldResolver = ExtendsFieldResolverImpl()

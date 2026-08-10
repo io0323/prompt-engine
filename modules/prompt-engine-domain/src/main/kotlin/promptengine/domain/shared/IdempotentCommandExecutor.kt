@@ -20,13 +20,32 @@ package promptengine.domain.shared
  * [IdempotencyKeyInProgressException]を投げる。[idempotencyKey]が`null`の場合は
  * 冪等性を保証せず、都度[command]/[operation]を実行する。
  *
- * **既知の制約（[Issue #50](https://github.com/io0323/prompt-engine/issues/50)）**:
+ * **クラッシュ後の予約回収（[Issue #50](https://github.com/io0323/prompt-engine/issues/50)、ADR-0027）**:
  * [executeLongRunning]は[operation]が例外を投げた場合は`IN_PROGRESS`予約を解放するが、
- * プロセスがクラッシュした場合（OOM Kill・ノード障害等）は解放処理自体が実行されず、
- * 予約が`IN_PROGRESS`のまま残る。この場合、同一[idempotencyKey]への以降の全リクエストが
- * [IdempotencyKeyInProgressException]で永久にブロックされる（手動のDB介入以外に復旧手段が無い）。
- * `IN_PROGRESS`予約に有効期限を持たせ、期限切れ予約を新規リクエストが安全に奪取できるようにする
- * 対応をIssue #50で追跡する（P10）。
+ * プロセスがクラッシュした場合（OOM Kill・ノード障害等）は解放処理自体が実行されない。
+ * この既知の制約に対し、ADR-0025のOutbox中継が使う「クレーム所有トークン＋タイムアウトベースの
+ * 期限切れ判定＋書き戻し時のフェンシング」という3段階Claim方式（同ADR §3）を実装レベルで
+ * 適用する。予約行は所有トークン（`claimed_by`）と予約時刻（`claimed_at`）を持ち、
+ * 一定時間（既定120秒、`executeLongRunning`の[operation]が「数秒〜数十秒」かかり得ることを
+ * 踏まえた値）を超えて`IN_PROGRESS`のままの予約は期限切れとみなされる。
+ *
+ * Outboxはバックグラウンドポーラーがキューを能動的に排出する必要があるため定期的な
+ * タイムアウト監視を持つが、`idempotency_keys`は「同一[idempotencyKey]での再送」が
+ * 起きたときにのみ意味を持ち、排出すべきキューが無い。そのためバックグラウンドスイーパーは
+ * 持たず、代わりに同一[idempotencyKey]への次回リクエストが期限切れ予約をinlineで安全に
+ * 奪取する（trigger機構のみがOutboxと異なり、Claim/Fencingの3段階自体は同型）。
+ * 書き戻し（完了記録・解放）時は所有トークンが一致する行にのみ作用するフェンシング条件を
+ * 課すため、奪取済みの予約を元の所有者が誤って上書きすることは無い。
+ *
+ * 実装詳細は`JdbcIdempotentCommandExecutor`（`prompt-engine-infrastructure`、ADR-0027）を参照。
+ *
+ * **既知の限界（CodeRabbitレビュー指摘、ADR-0027）**: この奪取機構が保証するのは予約の
+ * 所有権の一貫性のみであり、奪取された側の[operation]が実際に停止することは保証しない。
+ * `claimTimeoutSeconds`はヒューリスティックであるため、元のプロセスが実際には生きていて
+ * （GCポーズ・一時的なネットワーク分断等）[operation]の実行を継続している場合、奪取後に
+ * 別リクエストが同じ[operation]を再実行すると外部副作用が二重に発生しうる。
+ * [executeLongRunning]の[operation]は再実行されても安全（冪等、または呼出先が独自の
+ * 冪等キーで重複排除する）であることを呼出側の契約とする。
  */
 interface IdempotentCommandExecutor {
     fun <T : Any> executeInTransaction(

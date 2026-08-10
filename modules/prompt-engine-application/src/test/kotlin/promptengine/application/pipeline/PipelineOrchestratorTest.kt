@@ -23,11 +23,14 @@ import promptengine.domain.execution.ExecutionAdapter
 import promptengine.domain.execution.ExecutionErrorType
 import promptengine.domain.execution.ExecutionFailedException
 import promptengine.domain.execution.ExecutionPolicy
+import promptengine.domain.execution.ParseRepairPolicy
 import promptengine.domain.execution.RawResponse
 import promptengine.domain.execution.Usage
 import promptengine.domain.fragment.Fragment
 import promptengine.domain.fragment.FragmentKey
 import promptengine.domain.fragment.FragmentRepository
+import promptengine.domain.observability.Outcome
+import promptengine.domain.observability.TokenDirection
 import promptengine.domain.optimization.ModelProfile
 import promptengine.domain.optimization.TokenBudgetExceededException
 import promptengine.domain.parsing.OutputFormatter
@@ -154,6 +157,10 @@ class PipelineOrchestratorTest {
                 "Load", "Merge", "Import", "ResolveVariables", "ResolveContext",
                 "Validation", "Optimization", "Rendering",
             )
+        fixture.metricsRecorder.renderCounts shouldBe listOf(Outcome.SUCCESS)
+        fixture.metricsRecorder.renderDurations.single().mode shouldBe PipelineMode.RENDER_ONLY
+        fixture.metricsRecorder.renderDurations.single().outcome shouldBe Outcome.SUCCESS
+        fixture.metricsRecorder.stageDurations.map { it.stage }.toSet() shouldBe result.stageDurationsMs.keys
     }
 
     @Test
@@ -187,6 +194,40 @@ class PipelineOrchestratorTest {
             )
         fixture.recordingAuditRepository.records.single().outcome shouldBe AuditOutcome.Success
         fixture.recordingEventBusAdapter.published.single().eventType shouldBe "PromptExecuted"
+        fixture.metricsRecorder.renderCounts shouldBe listOf(Outcome.SUCCESS)
+        fixture.metricsRecorder.executionAttempts shouldBe
+            listOf(RecordingMetricsRecorder.ExecutionAttemptCall(Outcome.SUCCESS, errorType = null))
+        fixture.metricsRecorder.tokenUsages.map { it.direction }.toSet() shouldBe
+            setOf(TokenDirection.INPUT, TokenDirection.OUTPUT)
+        fixture.metricsRecorder.costs.size shouldBe 1
+    }
+
+    @Test
+    fun `解析修復が発生した場合token_usage_totalとcost_totalはattempts全件を合算する`() {
+        // CodeRabbitレビュー指摘: 従来attempts.last()のみを見ており、解析修復で複数回
+        // プロバイダを呼び出した場合にトークン・コストを過小集計していた。
+        // SuccessExecutionAdapterはUsage(3,3)を毎回返すため、2 attemptsならinput/output共に6。
+        val fixture =
+            Fixture(outputFormatters = mapOf(OutputFormat.TEXT to RepairThenSucceedFormatter()))
+        val orchestrator = fixture.orchestrator()
+        val request =
+            fixture.baseRequest(
+                executionPolicy =
+                    ExecutionPolicy(
+                        timeoutMs = 5_000,
+                        parseRepair = ParseRepairPolicy(enabled = true, maxAttempts = 2),
+                    ),
+            )
+
+        val result = orchestrator.run(request, PipelineMode.FULL_EXECUTION, "trace-repair")
+
+        result.executionOutcome!!.attempts.size shouldBe 2
+        val inputUsages = fixture.metricsRecorder.tokenUsages.filter { it.direction == TokenDirection.INPUT }
+        val outputUsages = fixture.metricsRecorder.tokenUsages.filter { it.direction == TokenDirection.OUTPUT }
+        inputUsages.sumOf { it.amount } shouldBe 6L
+        outputUsages.sumOf { it.amount } shouldBe 6L
+        fixture.metricsRecorder.executionAttempts shouldBe
+            listOf(RecordingMetricsRecorder.ExecutionAttemptCall(Outcome.SUCCESS, errorType = null))
     }
 
     @Test
@@ -206,6 +247,10 @@ class PipelineOrchestratorTest {
         result.variableBindings shouldBe null
         result.rendered shouldBe null
         result.stageDurationsMs.keys shouldBe setOf("Load", "Merge", "Import", "Validation")
+        // COMPILE_ONLYはStage 1〜8の範囲外（Rendering非対象）のため、Render系メトリクスは
+        // 一切記録されない（PipelineOrchestrator.recordRenderMetrics参照、ADR-0027決定1）。
+        fixture.metricsRecorder.renderCounts shouldBe emptyList()
+        fixture.metricsRecorder.renderDurations shouldBe emptyList()
     }
 
     // ---- traceId伝播 ----
@@ -451,6 +496,9 @@ class PipelineOrchestratorTest {
         }
 
         fixture.assertAuditedFailure(StageErrorMapper.VALIDATION_FAILED)
+        // Validation(Stage 6)はRender範囲(Stage 1〜8)内のため、その失敗はrender_countの
+        // FAILUREとして記録される（Renderingまで到達していないためcontext.rendered==null）。
+        fixture.metricsRecorder.renderCounts shouldBe listOf(Outcome.FAILURE)
     }
 
     @Test
@@ -480,6 +528,7 @@ class PipelineOrchestratorTest {
         }
 
         fixture.assertAuditedFailure(StageErrorMapper.RENDER_ERROR)
+        fixture.metricsRecorder.renderCounts shouldBe listOf(Outcome.FAILURE)
     }
 
     @Test
@@ -493,6 +542,11 @@ class PipelineOrchestratorTest {
         }
 
         fixture.assertAuditedFailure(StageErrorMapper.EXECUTION_FAILED)
+        // RenderingまでのStage 1〜8は成功しているため、render_countはSUCCESS。
+        // Execution(Stage 9)自体の失敗はexecution_attempts_totalのFAILURE側へ記録される。
+        fixture.metricsRecorder.renderCounts shouldBe listOf(Outcome.SUCCESS)
+        fixture.metricsRecorder.executionAttempts shouldBe
+            listOf(RecordingMetricsRecorder.ExecutionAttemptCall(Outcome.FAILURE, ExecutionErrorType.SERVER_ERROR))
     }
 
     @Test
@@ -533,6 +587,27 @@ class PipelineOrchestratorTest {
             raw: String,
             schema: OutputSchema?,
         ): ParsedOutput = throw ParseFailedException(OutputFormat.TEXT, "forced failure for test")
+    }
+
+    /**
+     * 初回`parse`は[ParseFailedException]を投げ、解析修復（[ParseRepairPolicy]）による
+     * 2回目の`parse`で成功する。`ExecutionOutcome.attempts`が2件になる（トークン集計テスト用）。
+     */
+    private class RepairThenSucceedFormatter : OutputFormatter {
+        private var callCount = 0
+
+        override fun format(): OutputFormat = OutputFormat.TEXT
+
+        override fun instruction(schema: OutputSchema?): String = ""
+
+        override fun parse(
+            raw: String,
+            schema: OutputSchema?,
+        ): ParsedOutput {
+            callCount++
+            if (callCount == 1) throw ParseFailedException(OutputFormat.TEXT, "forced failure for first attempt")
+            return ParsedOutput(OutputFormat.TEXT, raw = raw)
+        }
     }
 
     private class FailingExecutionAdapter(
@@ -693,6 +768,7 @@ class PipelineOrchestratorTest {
         val auditRepository: AuditRepository = RecordingAuditRepository(),
         val auditFailureHandler: RecordingAuditFailureHandler = RecordingAuditFailureHandler(),
         val tracer: RecordingPipelineTracer = RecordingPipelineTracer(),
+        val metricsRecorder: RecordingMetricsRecorder = RecordingMetricsRecorder(),
     ) {
         private val compositionService = CompositionServiceImpl(templateRepository, fragmentRepository)
         private val variableResolverChain = VariableResolverChainImpl.standard(NoSecretsManagerAdapter)
@@ -760,7 +836,7 @@ class PipelineOrchestratorTest {
                     ImportStage(),
                     ResolveVariablesStage(variableResolverChain),
                     ResolveContextStage(contextResolverChain),
-                    ValidationStage(validationEngine),
+                    ValidationStage(validationEngine, metricsRecorder),
                     OptimizationStage(optimizationEngine),
                     RenderingStage(renderEngine),
                     ExecutionStage(executionEngine),
@@ -772,6 +848,7 @@ class PipelineOrchestratorTest {
                 PipelineFactory(stages),
                 AuditStage(auditRepository, auditFailureHandler),
                 tracer,
+                metricsRecorder,
             )
         }
     }

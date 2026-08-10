@@ -32,6 +32,40 @@ class SecretMaskingJsonSanitizer(
         return objectMapper.writeValueAsString(redact(root))
     }
 
+    /**
+     * JSONツリー構造を持たない自由記述テキスト（ログの`message`/`exception`等）向けの
+     * サニタイズ（`SanitizingJsonEncoder`、ADR-0027決定3のCodeRabbitレビュー指摘）。
+     *
+     * [sanitize]はJSONオブジェクトのフィールド**名**でしか照合できないため、
+     * `logger.info("token={}", secret)`のような呼出しが生成する`message: "token=sk-..."`は
+     * 素通りしていた（フィールドではなく1つの自由記述文字列の中身であるため）。
+     * このメソッドは`key=value`形状を正規表現で検出し、[isSensitiveName]と同じ判定で
+     * key部分がSecretを示唆する場合のみvalueを[SensitiveValueMaskingModule.MASK]へ置換する。
+     *
+     * `key: value`（コロン区切り）は**意図的に非対応**とする。例外の文字列表現
+     * （`Throwable.toString()`）は`"ClassName: message"`という、コロンの直後に
+     * スペースを挟む形式であり、`message`が`apiKey=secret`のように始まる場合
+     * `ClassName:`をキー、`\s*`直後の`apiKey=secret`全体を値として1つの
+     * （マスク対象外と判定される）マッチに貪欲に取り込んでしまい、本来別マッチとして
+     * 検出すべき`apiKey=secret`自体を隠してしまう（実装時に発覚した実バグ。CI環境で
+     * `IllegalStateException("apiKey=...")`のメッセージがマスクされずに再現した）。
+     * スタックトレースの`at Foo.bar(File.kt:20)`のような行にもコロンが多用されており、
+     * コロンは`key: value`の合図として自由記述テキストの中では曖昧すぎる。
+     * `=`はこの曖昧さが無いため、`=`のみをサニタイズ対象の区切り文字とする。
+     *
+     * 原理的な限界: `key`と`value`の対応が構文的に明示されない自由記述
+     * （例: `"the secret is sk-live-xyz"`）は検出できない。これはSecretマスクの第1層
+     * （[SensitiveValueMaskingModule]、[promptengine.domain.shared.SensitiveValue]型経由の
+     * 値は`toString()`が常に`"***"`を返す）でのみ完全に防げる。本メソッドは
+     * `key=value`という一般的な慣用形にのみ対応する第3層の追加防御であり、
+     * 万能の代替ではない。
+     */
+    fun sanitizeFreeText(text: String): String =
+        KEY_VALUE_PATTERN.replace(text) { match ->
+            val (key, separator, _) = match.destructured
+            if (isSensitiveName(key)) "$key$separator${SensitiveValueMaskingModule.MASK}" else match.value
+        }
+
     private fun redact(node: JsonNode): JsonNode =
         when (node) {
             is ObjectNode -> redactObject(node)
@@ -90,5 +124,12 @@ class SecretMaskingJsonSanitizer(
                 "credentials",
                 "authorization",
             )
+
+        /**
+         * `key=value`形状の自由記述テキストにマッチする（`:`区切りを対象外とする理由は
+         * [sanitizeFreeText]のKDoc参照）。値は引用符付き（内部の`\"`エスケープを許容）か、
+         * 空白・カンマ・セミコロンまでの非空白トークンのいずれか。
+         */
+        val KEY_VALUE_PATTERN = Regex("""([\w.-]+)(=)\s*("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|[^\s,;]+)""")
     }
 }

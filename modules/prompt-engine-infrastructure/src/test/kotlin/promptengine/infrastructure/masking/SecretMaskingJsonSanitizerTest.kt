@@ -133,4 +133,99 @@ class SecretMaskingJsonSanitizerTest {
         field: String,
         block: () -> Unit,
     ) = io.kotest.assertions.withClue("field=$field") { block() }
+
+    // ---- sanitizeFreeText（ADR-0027決定3、CodeRabbitレビュー指摘: message/exceptionの自由記述対策） ----
+
+    @Test
+    fun `key=valueで秘密を示唆するkeyの値はマスクされる`() {
+        val result = sanitizer.sanitizeFreeText("token=$REAL_SECRET")
+
+        result shouldNotContain REAL_SECRET
+        result shouldBe "token=***"
+    }
+
+    @Test
+    fun `logger呼出しが生成するtoken=形式のmessageもマスクされる`() {
+        // logger.info("token={}", secret) がSLF4Jのプレースホルダ置換後に生成する文字列そのもの。
+        val formattedMessage = "calling provider with token=$REAL_SECRET status=pending"
+
+        val result = sanitizer.sanitizeFreeText(formattedMessage)
+
+        result shouldNotContain REAL_SECRET
+        result shouldContain "token=***"
+        result shouldContain "status=pending"
+    }
+
+    @Test
+    fun `例外メッセージに含まれる秘密もマスクされる`() {
+        val exceptionText = "java.lang.IllegalStateException: connection failed password=$REAL_SECRET\n\tat ..."
+
+        val result = sanitizer.sanitizeFreeText(exceptionText)
+
+        result shouldNotContain REAL_SECRET
+        result shouldContain "password=***"
+    }
+
+    @Test
+    fun `二重引用符で囲まれた値もマスクされる`() {
+        // マッチ全体（引用符を含む）を"key=***"へ置換するため、引用符自体は残らない
+        // （値が完全に除去されていることが目的であり、引用符の保持は要求しない）。
+        val result = sanitizer.sanitizeFreeText("""token="$REAL_SECRET" and more text""")
+
+        result shouldNotContain REAL_SECRET
+        result shouldContain "token=***"
+        result shouldContain "and more text"
+    }
+
+    @Test
+    fun `単一引用符で囲まれた値もマスクされる`() {
+        val result = sanitizer.sanitizeFreeText("apiKey='$REAL_SECRET' and more text")
+
+        result shouldNotContain REAL_SECRET
+        result shouldContain "apiKey=***"
+        result shouldContain "and more text"
+    }
+
+    @Test
+    fun `コロン区切りのkey_valueは意図的に非対応であり値は変更されない`() {
+        // sanitizeFreeTextのKDoc「原理的な限界」参照。コロンは自由記述テキストの中では
+        // key=valueの合図として曖昧すぎる（下の回帰テストが実例を示す）ため対象外とする。
+        val result = sanitizer.sanitizeFreeText("""apiKey: $REAL_SECRET""")
+
+        result shouldContain REAL_SECRET
+    }
+
+    @Test
+    fun `例外のClassName直後にkey=value形式の秘密が続いても正しく検出される`() {
+        // 実際にCI環境で再現したバグの回帰テスト: コロンをkey=value区切りとして扱うと
+        // "IllegalStateException:"をキー、直後の"apiKey=secret"全体を値として1マッチに
+        // 貪欲に取り込んでしまい（"IllegalStateException"はSecretを示唆しないため
+        // マスク対象外と判定され）、本来検出すべきapiKey=secret自体が素通りしていた。
+        val exceptionToString = "java.lang.IllegalStateException: apiKey=$REAL_SECRET rejected"
+
+        val result = sanitizer.sanitizeFreeText(exceptionToString)
+
+        result shouldNotContain REAL_SECRET
+        result shouldContain "apiKey=***"
+    }
+
+    @Test
+    fun `inputTokens outputTokensのkey=value形式はマスクされない`() {
+        val text = "usage: inputTokens=120 outputTokens=30 latencyMs=42"
+
+        val result = sanitizer.sanitizeFreeText(text)
+
+        result shouldBe text
+    }
+
+    @Test
+    fun `key value対応の無い自由記述文はマスクできない既知の限界`() {
+        // sanitizeFreeTextのKDocに明記された原理的限界。key=value/key: value形状が無いプレーンな
+        // 文中の秘密はどの層でも検出できない（SensitiveValue型でのラップのみが完全な保証）。
+        val text = "the secret is $REAL_SECRET"
+
+        val result = sanitizer.sanitizeFreeText(text)
+
+        result shouldContain REAL_SECRET
+    }
 }

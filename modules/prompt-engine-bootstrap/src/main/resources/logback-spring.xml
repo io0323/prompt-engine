@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  設計書§2.15 Logging（構造化ログ・Secretマスク・相関ID）、ADR-0027決定3。
+
+  全プロファイル共通でこの1系統のAppender/Encoderのみを定義する（個別クラスが独自の
+  ログ出力経路をオプトインできる第二経路を作らない）。Encoderは
+  promptengine.infrastructure.logging.SanitizingJsonEncoder のみを使う。
+  他のEncoder（PatternLayoutEncoder等）へ切り替えるとSecretマスク（SecretMaskingJsonSanitizer）
+  を経由しないログ出力経路が生まれてしまうため、意図的にプロファイル分岐を持たない
+  単一のAppender定義とする。
+-->
+<configuration>
+    <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder class="promptengine.infrastructure.logging.SanitizingJsonEncoder" />
+    </appender>
+
+    <root level="INFO">
+        <appender-ref ref="STDOUT" />
+    </root>
+</configuration>

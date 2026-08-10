@@ -27,7 +27,15 @@ dependencies {
     // OutboxRelayerがBrokerへ送信するために使うProducerクライアント（ADR-0025決定9）。
     implementation(libs.kafka.clients)
 
+    // P10c: MicrometerMetricsRecorder / OpenTelemetryPipelineTracerの実装に使用（ADR-0027）。
+    implementation(libs.micrometer.core)
+    implementation(libs.opentelemetry.api)
+    implementation(libs.opentelemetry.sdk)
+    implementation(libs.opentelemetry.exporter.otlp)
+    implementation(libs.logback.classic)
+
     testImplementation(libs.spring.boot.starter.test)
+    testImplementation(libs.opentelemetry.sdk.testing)
 }
 
 // カバレッジ集約（P10b、ADR-0026決定8を見直し）。
