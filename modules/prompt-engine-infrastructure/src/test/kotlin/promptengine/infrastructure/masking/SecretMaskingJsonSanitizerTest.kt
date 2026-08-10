@@ -167,11 +167,26 @@ class SecretMaskingJsonSanitizerTest {
     }
 
     @Test
-    fun `key colon スペース 引用符付き値もマスクされる`() {
-        val result = sanitizer.sanitizeFreeText("""apiKey: "$REAL_SECRET" region: us-east-1""")
+    fun `コロン区切りのkey_valueは意図的に非対応であり値は変更されない`() {
+        // sanitizeFreeTextのKDoc「原理的な限界」参照。コロンは自由記述テキストの中では
+        // key=valueの合図として曖昧すぎる（下の回帰テストが実例を示す）ため対象外とする。
+        val result = sanitizer.sanitizeFreeText("""apiKey: $REAL_SECRET""")
+
+        result shouldContain REAL_SECRET
+    }
+
+    @Test
+    fun `例外のClassName直後にkey=value形式の秘密が続いても正しく検出される`() {
+        // 実際にCI環境で再現したバグの回帰テスト: コロンをkey=value区切りとして扱うと
+        // "IllegalStateException:"をキー、直後の"apiKey=secret"全体を値として1マッチに
+        // 貪欲に取り込んでしまい（"IllegalStateException"はSecretを示唆しないため
+        // マスク対象外と判定され）、本来検出すべきapiKey=secret自体が素通りしていた。
+        val exceptionToString = "java.lang.IllegalStateException: apiKey=$REAL_SECRET rejected"
+
+        val result = sanitizer.sanitizeFreeText(exceptionToString)
 
         result shouldNotContain REAL_SECRET
-        result shouldContain "region: us-east-1"
+        result shouldContain "apiKey=***"
     }
 
     @Test
