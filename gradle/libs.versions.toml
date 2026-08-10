@@ -11,7 +11,7 @@ mockk = "1.14.11"
 testcontainers = "2.0.5"
 flyway = "13.1.0"
 snakeyaml = "2.6"
-jackson = "2.18.2"
+jackson = "2.22.1"
 springdoc-openapi = "2.8.6"
 kafka = "4.3.1"
 
