@@ -98,15 +98,15 @@ NFR-002（キャッシュヒット時のPrompt取得、p99≤20ms）はPromptCac
   `MDC.put("traceId", ...)`／`finally`での`MDC.remove`を行う。`SanitizingJsonEncoder`は
   受け取ったMDCをそのままJSONフィールドへ展開するのみで、MDC投入経路とログ出力経路を
   分離する。
-- **promptKey/versionのMDC投入は本フェーズでは行わない**。`prompt-engine-application`
-  はCLAUDE.mdのArchUnit規約でSLF4Jへの依存を禁止されているため、`PipelineOrchestrator`
-  から直接MDCを操作できない。`PipelineTracer.withSpan`（domain）のシグネチャは
-  `stageName`/`traceId`のみで`PipelineContext`全体を受け取らないため、
-  `OpenTelemetryPipelineTracer`側で補うこともできない。promptKey単位の相関は
-  traceId経由で`audit_logs`/`execution_logs`（いずれも`trace_id`列とPromptを
-  紐づけて保持）を突き合わせれば得られるため、既存のtraceId相関で実用上の必要は
-  満たされると判断し、`PipelineTracer`/`MetricsRecorder`と同型の新しい抽象を
-  ログ専用に追加するコストには見合わないと判断した（既知のスコープ限定）。
+- **promptKey/versionのMDC投入はM1では行わない**。`prompt-engine-application`は
+  CLAUDE.mdのArchUnit規約でSLF4Jへの直接依存を禁止されているが、これは
+  「構造的に実現不可能」ということではない。P8で導入した`AuditFailureHandler`
+  （domainのフレームワーク非依存ポート、実装はinfrastructureに置く）と同じパターンを
+  踏襲すれば、`PipelineOrchestrator`から`promptKey`/`version`をログの相関IDとして
+  投入するポートを新設できる。M1では、そのポートを新設するコストが
+  「traceId経由で`audit_logs`/`execution_logs`の`trace_id`列を突き合わせれば
+  実用上は代替できる」という理由に見合わないと判断し、実装を見送った
+  （[Issue #75](https://github.com/io0323/prompt-engine/issues/75)で追跡する）。
 
 ### 4. IN_PROGRESS滞留対策（Issue #50）
 
@@ -187,3 +187,4 @@ ADR-0025のOutbox中継が使う「クレーム所有トークン＋タイムア
 - [PromptEngine_設計書.md §2.15 / §1.9](../PromptEngine_設計書.md)
 - [Issue #38: OpenTelemetry Tracer実装](https://github.com/io0323/prompt-engine/issues/38)
 - [Issue #50: IN_PROGRESS予約のクラッシュ後滞留](https://github.com/io0323/prompt-engine/issues/50)
+- [Issue #75: ログの相関IDへpromptKey/versionを追加する（domainポート方式でSLF4J隔離規約と両立）](https://github.com/io0323/prompt-engine/issues/75)
