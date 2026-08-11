@@ -122,7 +122,7 @@ Promptがアプリケーションコード内に散在すると、(a) 変更に�
 | ID | 分類 | 要件 | 目標値 |
 |---|---|---|---|
 | NFR-001 | 可用性 | 24時間365日稼働、Read系はキャッシュで縮退継続 | 99.9%（Read 99.99%） |
-| NFR-002 | 性能 | Prompt取得（キャッシュヒット） | p99 ≤ 20ms |
+| NFR-002 | 性能 | Prompt取得（キャッシュヒット） | p99 ≤ 20ms（**M1では未検証**。`PromptCache`（§16拡張ポイント#9）がM1では未実装のため測定不能。前提となるIssue #15（Template/Fragment Domain Event未実装、milestone M2）の解消後、Issue #77で実装・検証する） |
 | NFR-003 | 性能 | Render（Validation含む、実行除く） | p99 ≤ 200ms |
 | NFR-004 | 拡張性 | 水平スケール（ステートレスAPI）、Plugin追加は再起動不要 | - |
 | NFR-005 | セキュリティ | CIAP連携（OIDC/OAuth2）、RBAC+スコープ、Secretは参照のみ保持しSecret Managerへ委譲、Render結果ログにSecretをマスク | - |

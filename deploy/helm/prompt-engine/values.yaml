@@ -1,0 +1,67 @@
+# Prompt Engine（PE）M1 Helm Chart 既定値。
+#
+# api / worker / admin の3 Deploymentは全て同一イメージ（deploy/docker/Dockerfile）を使う
+# （M1時点でAdmin API/BFXが未実装のため。README「デプロイ構成」参照）。差異は次の2軸のみ:
+#   - promptengine.scheduler.enabled（Outbox Relay/Broker購読の背景ジョブ）: workerのみtrue
+#   - Serviceの公開範囲: apiのみ外部Ingress対象、worker/adminはClusterIPのみ
+
+image:
+  repository: prompt-engine
+  tag: "latest"
+  pullPolicy: IfNotPresent
+
+# NFR-005（Secretは参照のみ保持しSecret Managerへ委譲）に従い、このChartはSecretの値を
+# 直接テンプレートしない。既定はローカル検証専用のSecretを生成する（create: true）。
+# 本番ではSecret Manager/外部シークレット管理から供給し、create: false + name で
+# 既存Secretを参照すること。
+secret:
+  create: true
+  name: prompt-engine-secrets
+  datasourceUsername: prompt_engine
+  datasourcePassword: prompt_engine
+
+config:
+  datasourceUrl: jdbc:postgresql://postgres:5432/prompt_engine
+  ciapJwksUri: ""
+  otelExporterEndpoint: ""
+  eventBusKafkaBootstrapServers: "kafka:9092"
+
+# perf-measurement条件（README「性能測定」節）と揃えた既定値。
+resources:
+  requests:
+    cpu: 500m
+    memory: 512Mi
+  limits:
+    cpu: "1"
+    memory: 1Gi
+
+probes:
+  livenessPath: /actuator/health/liveness
+  readinessPath: /actuator/health/readiness
+  port: 8080
+
+api:
+  replicaCount: 2
+  hpa:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 6
+    targetCPUUtilizationPercentage: 70
+  service:
+    type: ClusterIP
+    port: 80
+    targetPort: 8080
+
+worker:
+  replicaCount: 1
+  service:
+    type: ClusterIP
+    port: 80
+    targetPort: 8080
+
+admin:
+  replicaCount: 1
+  service:
+    type: ClusterIP
+    port: 80
+    targetPort: 8080

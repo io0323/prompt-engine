@@ -1,0 +1,25 @@
+---
+pe: "1"
+kind: prompt
+key: perf-regression/conditional-loop
+name: 条件分岐とループ
+category: regression
+---
+{{#block system}}
+あなたは有能なアシスタントです。
+{{#if workflow.active}}
+現在のワークフロー: {{ workflow.name }}
+{{#each workflow.steps as step}}
+{{#if step.done}}
+完了: {{ step.label }}
+{{else}}
+未完了: {{ step.label }}
+{{/if}}
+{{/each}}
+{{else}}
+ワークフローは実行されていません。
+{{/if}}
+{{/block}}
+{{#block user}}
+状況を教えてください。
+{{/block}}

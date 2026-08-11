@@ -1,0 +1,20 @@
+{{- range $component := list "api" "worker" "admin" }}
+{{- $svc := index $.Values $component }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "prompt-engine.fullname" $ }}-{{ $component }}
+  labels:
+    {{- include "prompt-engine.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ $component }}
+spec:
+  type: {{ $svc.service.type }}
+  selector:
+    {{- include "prompt-engine.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ $component }}
+  ports:
+    - port: {{ $svc.service.port }}
+      targetPort: {{ $svc.service.targetPort }}
+      name: http
+{{- end }}

@@ -22,6 +22,17 @@ openApi {
     waitTimeInSeconds.set(60)
 }
 
+// RenderLoadSeeder（P11、README「性能測定」節）は実行中の別プロセス（Dockerコンテナ）と
+// docker composeのPostgreSQLを前提とするため、通常の./gradlew test / buildには含めない。
+// -DincludeTags=perf を明示的に渡した場合のみ実行対象に含める。
+tasks.test {
+    useJUnitPlatform {
+        if (System.getProperty("includeTags") != "perf") {
+            excludeTags("perf")
+        }
+    }
+}
+
 dependencies {
     implementation(project(":modules:prompt-engine-domain"))
     implementation(project(":modules:prompt-engine-application"))

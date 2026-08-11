@@ -1,0 +1,22 @@
+---
+pe: "1"
+kind: prompt
+key: perf-regression/filters-and-macro
+name: フィルタとマクロ
+category: regression
+macros:
+  - name: bulletList
+    params: [items]
+    body: |
+      {{#each items as i}}
+      - {{ i | trim }}
+      {{/each}}
+---
+{{#block system}}
+タイトル: {{ title | upper | truncate(20) }}
+{{/block}}
+{{#block user}}
+次のポイントを箇条書きでまとめてください。
+{{ bulletList(items=points) }}
+補足: {{ missingNote | default("特になし") }}
+{{/block}}

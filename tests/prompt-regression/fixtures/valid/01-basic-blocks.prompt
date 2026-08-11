@@ -1,0 +1,13 @@
+---
+pe: "1"
+kind: prompt
+key: perf-regression/basic-blocks
+name: 基本ブロック
+category: regression
+---
+{{#block system}}
+あなたは丁寧な案内アシスタントです。
+{{/block}}
+{{#block user}}
+こんにちは、{{ userName | trim | upper }}さん。今日のご用件は何ですか？
+{{/block}}

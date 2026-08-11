@@ -6,6 +6,7 @@ import org.apache.kafka.clients.consumer.KafkaConsumer
 import org.apache.kafka.common.serialization.StringDeserializer
 import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.beans.factory.annotation.Value
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
@@ -46,9 +47,18 @@ private const val SEARCH_INDEX_RUNNER = "searchIndexSubscriberRunner"
  * これにより同じTopicの同じメッセージが購読側ごとに独立して配送される（Kafkaの
  * consumer groupの意味論）。`AuditEngine`が`pe.execution`を読んでも
  * `ExecutionLogSubscriber`の取り分が減らない、という配送独立性がここで担保される。
+ *
+ * `promptengine.scheduler.enabled=false`（既定`true`）でこのConfiguration自体を丸ごと
+ * 無効化できる（[OutboxRelayConfig]と同じ理由、P11のHelm `api`/`admin` Deployment向け）。
  */
 @Configuration
 @Profile("production")
+@ConditionalOnProperty(
+    prefix = "promptengine.scheduler",
+    name = ["enabled"],
+    havingValue = "true",
+    matchIfMissing = true,
+)
 @EnableScheduling
 @EnableConfigurationProperties(SubscriberProperties::class)
 class SubscriberConfig {

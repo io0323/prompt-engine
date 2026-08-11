@@ -1,0 +1,27 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "prompt-engine.fullname" . }}-admin
+  labels:
+    {{- include "prompt-engine.labels" . | nindent 4 }}
+    app.kubernetes.io/component: admin
+  annotations:
+    # M1時点ではAdmin API/BFF（設計書§2.1図の将来コンポーネント）は未実装で、apiと
+    # 同一イメージ・同一エンドポイント集合が動くのみ。ClusterIPのみで公開Ingressに含めない
+    # （社内向け/将来のAdmin API実装の受け皿としてDeployment自体は先行して用意する）。
+    promptengine.io/admin-api-status: "not-implemented-in-m1"
+spec:
+  replicas: {{ .Values.admin.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "prompt-engine.labels" . | nindent 6 }}
+      app.kubernetes.io/component: admin
+  template:
+    metadata:
+      labels:
+        {{- include "prompt-engine.labels" . | nindent 8 }}
+        app.kubernetes.io/component: admin
+    spec:
+      containers:
+        {{- include "prompt-engine.container" (dict "root" . "schedulerEnabled" false) | nindent 8 }}
+      {{- include "prompt-engine.volumes" . | nindent 6 }}
