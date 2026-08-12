@@ -87,8 +87,19 @@ internal object OpenAiResponseParser {
     ): Boolean =
         usageNode.isMissingNode ||
             usageNode.isNull ||
-            !promptTokens.isIntegralNumber ||
-            !completionTokens.isIntegralNumber
+            !isValidTokenCount(promptTokens) ||
+            !isValidTokenCount(completionTokens)
+
+    /**
+     * [TokenCount]（`require(value >= 0)`のみでIntの範囲チェックは持たない）へ安全に渡せる値か
+     * どうかを判定する（CodeRabbitレビュー指摘）。`isIntegralNumber`だけでは負値・Int範囲超過
+     * （`asInt()`が黙って切り詰める）を弾けず、[TokenCount]の`require`が投げる
+     * [IllegalArgumentException]が[promptengine.domain.execution.ExecutionFailedException]で
+     * 包まれず[OpenAiExecutionAdapter.execute]の契約から漏れてしまう。`canConvertToInt()`で
+     * Int範囲内であることを、非負チェックで符号を確認する。
+     */
+    private fun isValidTokenCount(node: JsonNode): Boolean =
+        node.isIntegralNumber && node.canConvertToInt() && node.asInt() >= 0
 
     /**
      * HTTPステータスコード→[ExecutionErrorType]（ADR-0014のリトライ可否表と完全一致させる）。

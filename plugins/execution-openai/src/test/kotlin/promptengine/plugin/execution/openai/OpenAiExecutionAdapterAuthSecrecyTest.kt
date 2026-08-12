@@ -98,7 +98,9 @@ class OpenAiExecutionAdapterAuthSecrecyTest {
     private fun policy(): ExecutionPolicy = ExecutionPolicy(timeoutMs = DEFAULT_TEST_TIMEOUT_MS)
 
     companion object {
-        private const val DEFAULT_TEST_TIMEOUT_MS = 5_000L
+        // OpenAiExecutionAdapterの既定connectTimeoutMs（5000L）より必ず大きくする
+        // （execute内のrequire(policy.timeoutMs > connectTimeoutMs)を満たす必要があるため）。
+        private const val DEFAULT_TEST_TIMEOUT_MS = 6_000L
 
         @JvmField
         @RegisterExtension

@@ -10,10 +10,12 @@ import java.io.File
  *
  * `promptengine.plugin.execution.openai`パッケージ（ADR-0003命名規則）はプロバイダ固有の知識
  * （HTTP形状・認証ヘッダ・JSONスキーマ）を封じ込める境界そのものであり、実APAP接続（#31）が
- * 実現した際に`git rm -r plugins/execution-openai`一発で削除できることが暫定実装としての価値
+ * 実現した際に`plugins/execution-openai`ディレクトリと、本テスト・`prompt-engine-bootstrap`の
+ * `testImplementation`配線を合わせて削除できることが暫定実装としての価値
  * （[OpenAiExecutionAdapter][promptengine.plugin.execution.openai.OpenAiExecutionAdapter]のKDoc、
- * ADR-0029決定1参照）。この境界がコピペ等で漏れていないことを、リポジトリ全体の`.kt`ソースを
- * 走査して確認する。
+ * ADR-0029決定1参照。CodeRabbitレビュー指摘: `git rm -r`だけでは本テストと`build.gradle.kts`の
+ * 配線が残り不整合になるため、削除対象を正確に記述する）。この境界がコピペ等で漏れていないことを、
+ * リポジトリ全体の`.kt`ソースを走査して確認する。
  *
  * 本テスト自身は判定対象の文字列を保持する必要があるため、自身のソースファイルを走査対象から除外する。
  */
@@ -39,10 +41,12 @@ class ProviderNameContainmentTest {
         repoRoot: File,
     ): Boolean {
         val relative = file.relativeTo(repoRoot).invariantSeparatorsPath
+        // ルート直下の build/bin（例: "build/generated.kt"）は先頭一致になり "/build/" を
+        // 含まないため、パスセグメント単位で判定する（"/build/"のcontainsだけだと見逃す）。
+        val directories = relative.split('/').dropLast(1)
         return relative.startsWith(ALLOWED_PACKAGE_DIR) ||
             relative == SELF_RELATIVE_PATH ||
-            relative.contains("/build/") ||
-            relative.contains("/bin/")
+            directories.any { it == "build" || it == "bin" }
     }
 
     /**

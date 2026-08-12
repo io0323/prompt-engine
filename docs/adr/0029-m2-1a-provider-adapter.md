@@ -30,12 +30,19 @@ B: 例外→ErrorType写像の網羅と安全側原則の明文化、C: usage欠
 
 しかし本アダプタは**拡張ポイントの正規実装ではなく、APAP不在の間だけ存在する暫定物**である。
 配置の判断基準を「拡張ポイントとの一貫性」ではなく**「削除可能性」**に置く: 実APAP接続が
-実現した時点で、このディレクトリを`git rm -r`一発で消せる境界に置くことを優先する。
+実現した時点で、このディレクトリとbootstrapの一時的な`testImplementation`・検証ガードを
+合わせて削除できる境界に置くことを優先する。
 
 - `plugins/execution-openai`（Plugin実装、ADR-0003命名規則: `promptengine.plugin.execution.openai`）
   に置く。`prompt-engine-domain`・`prompt-engine-plugin-api`の公開型のみを参照し（ADR-0003規約6）、
   `prompt-engine-bootstrap`のDI配線（`ExecutionConfig`）は本PR（M2-1a）では変更しない
   （実接続はM2-1cのスコープ）。
+- 削除対象は`plugins/execution-openai`ディレクトリだけではない。`prompt-engine-bootstrap`の
+  `build.gradle.kts`が持つ`testImplementation(project(":plugins:execution-openai"))`
+  （決定2でArchUnit検証の対象クラスパスに乗せるために追加したもの）と、
+  `ProviderNameContainmentTest`（決定2）自身も同時に削除する必要がある
+  （CodeRabbitレビュー指摘: `git rm -r plugins/execution-openai`だけではbootstrap側の配線と
+  ガードが残り、ビルドまたはガードが不整合になる）。
 - `ExecutionAdapter`のKDoc（`prompt-engine-domain`）は、実APAP接続が`prompt-engine-infrastructure`の
   `ApapExecutionAdapter`として来ることの記述はそのまま残しつつ、それまでの間の暫定実装が
   Plugin実装として置かれる旨を追記する（コメントのみの変更。ドメイン層は規約上、具体的な

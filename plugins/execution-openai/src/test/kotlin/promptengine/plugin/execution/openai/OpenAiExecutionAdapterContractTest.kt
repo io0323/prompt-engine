@@ -47,6 +47,7 @@ class OpenAiExecutionAdapterContractTest {
         response.content.expose() shouldBe "hello"
         response.usage.inputTokens shouldBe TokenCount(10)
         response.usage.outputTokens shouldBe TokenCount(5)
+        (response.latency.value >= 0L) shouldBe true
     }
 
     @Test
@@ -185,6 +186,44 @@ class OpenAiExecutionAdapterContractTest {
     }
 
     @Test
+    fun `prompt_tokensが負値のHTTP200はUNKNOWNとして扱われる`() {
+        // TokenCount(require value >= 0)へそのまま渡すとIllegalArgumentExceptionが
+        // ExecutionFailedExceptionに包まれず漏れる（CodeRabbitレビュー指摘）。
+        wm.stubFor(
+            post(urlEqualTo("/v1/chat/completions"))
+                .willReturn(
+                    aResponse().withStatus(200).withHeader("Content-Type", "application/json").withBody(
+                        """{"choices":[{"message":{"role":"assistant","content":"hello"}}],""" +
+                            """"usage":{"prompt_tokens":-1,"completion_tokens":1}}""",
+                    ),
+                ),
+        )
+
+        val e = shouldThrow<ExecutionFailedException> { adapter().execute(prompt(), policy()) }
+        e.errorType shouldBe ExecutionErrorType.UNKNOWN
+        (e.cause is OpenAiUsageMissingException) shouldBe true
+    }
+
+    @Test
+    fun `completion_tokensがInt範囲を超えるHTTP200はUNKNOWNとして扱われる`() {
+        // asInt()は範囲外の値を黙って切り詰めるため、canConvertToInt()での明示チェックが必要
+        // （CodeRabbitレビュー指摘）。
+        wm.stubFor(
+            post(urlEqualTo("/v1/chat/completions"))
+                .willReturn(
+                    aResponse().withStatus(200).withHeader("Content-Type", "application/json").withBody(
+                        """{"choices":[{"message":{"role":"assistant","content":"hello"}}],""" +
+                            """"usage":{"prompt_tokens":1,"completion_tokens":99999999999999}}""",
+                    ),
+                ),
+        )
+
+        val e = shouldThrow<ExecutionFailedException> { adapter().execute(prompt(), policy()) }
+        e.errorType shouldBe ExecutionErrorType.UNKNOWN
+        (e.cause is OpenAiUsageMissingException) shouldBe true
+    }
+
+    @Test
     fun `不正なJSON応答はUNKNOWNに分類される`() {
         wm.stubFor(
             post(urlEqualTo("/v1/chat/completions"))
@@ -234,12 +273,40 @@ class OpenAiExecutionAdapterContractTest {
             post(urlEqualTo("/v1/chat/completions"))
                 .willReturn(aResponse().withStatus(200).withFixedDelay(READ_TIMEOUT_DELAY_MS)),
         )
+        // connectTimeoutMs(100ms) < policy.timeoutMs(300ms)の不変条件を満たしたうえで、
+        // ループバック接続（数ms未満で完了）に対しては300msの猶予が十分機能することを確認する。
+        val shortTimeoutAdapter =
+            OpenAiExecutionAdapter(
+                apiKey = SensitiveValue.of("test-key"),
+                model = "gpt-4o-mini",
+                baseUrl = "${wm.runtimeInfo.httpBaseUrl}/v1",
+                connectTimeoutMs = SHORT_CONNECT_TIMEOUT_MS,
+            )
 
         val e =
             shouldThrow<ExecutionFailedException> {
-                adapter().execute(prompt(), policy(timeoutMs = SHORT_TIMEOUT_MS))
+                shortTimeoutAdapter.execute(prompt(), policy(timeoutMs = SHORT_TIMEOUT_MS))
             }
         e.errorType shouldBe ExecutionErrorType.READ_TIMEOUT
+    }
+
+    @Test
+    fun `policy_timeoutMsがconnectTimeoutMs以下だとリクエスト送信前にIllegalArgumentExceptionで拒否される`() {
+        // 送信前にrequireで弾かれることを確認する（HTTPリクエストが1件も送られないことも検証し、
+        // 「誤って接続を試みてからタイムアウト判定する」実装への回帰を防ぐ）。
+        val misconfiguredAdapter =
+            OpenAiExecutionAdapter(
+                apiKey = SensitiveValue.of("test-key"),
+                model = "gpt-4o-mini",
+                baseUrl = "${wm.runtimeInfo.httpBaseUrl}/v1",
+                connectTimeoutMs = EQUAL_TO_POLICY_TIMEOUT_MS,
+            )
+
+        shouldThrow<IllegalArgumentException> {
+            misconfiguredAdapter.execute(prompt(), policy(timeoutMs = EQUAL_TO_POLICY_TIMEOUT_MS))
+        }
+
+        wm.verify(0, postRequestedFor(urlEqualTo("/v1/chat/completions")))
     }
 
     @Test
@@ -294,8 +361,12 @@ class OpenAiExecutionAdapterContractTest {
         ExecutionPolicy(timeoutMs = timeoutMs)
 
     companion object {
-        private const val DEFAULT_TEST_TIMEOUT_MS = 5_000L
+        // OpenAiExecutionAdapterの既定connectTimeoutMs（5000L）より必ず大きくする
+        // （execute内のrequire(policy.timeoutMs > connectTimeoutMs)を満たす必要があるため）。
+        private const val DEFAULT_TEST_TIMEOUT_MS = 6_000L
         private const val SHORT_TIMEOUT_MS = 300L
+        private const val SHORT_CONNECT_TIMEOUT_MS = 100L
+        private const val EQUAL_TO_POLICY_TIMEOUT_MS = 1_000L
         private const val READ_TIMEOUT_DELAY_MS = 2_000
 
         @JvmField

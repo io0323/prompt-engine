@@ -43,6 +43,17 @@ import java.time.Duration
  * として観測されてしまい、本来リトライ可能な接続タイムアウトを取りこぼす。したがって
  * `connectTimeout`は[policy]の`timeoutMs`より必ず短い値を明示的に設定する。
  *
+ * この不変条件（`connectTimeoutMs < policy.timeoutMs`）は[execute]内で`require`により
+ * 強制する。強制しない場合、`policy.timeoutMs`が`connectTimeoutMs`以下だと、接続確立中に
+ * リクエスト全体のタイムアウト（`HttpRequest.timeout`）が先に切れ、本来の接続タイムアウトが
+ * `HttpConnectTimeoutException`ではなく`HttpTimeoutException`として観測され、
+ * `READ_TIMEOUT`（リトライ不可）に誤分類される（CodeRabbitレビュー指摘、実測で確認済みの
+ * 罠と同型の問題がconnectTimeoutMs側にも存在した）。この`require`違反は`ExecutionPolicy`と
+ * このアダプタの`connectTimeoutMs`設定の組み合わせが不正であることを意味する呼出側の
+ * 設定誤りであり、ネットワーク起因の実行時障害ではないため、[ExecutionFailedException]では
+ * なく[IllegalArgumentException]として即座に失敗させる（`ExecutionPolicy.init`の
+ * `require(timeoutMs > 0)`と同じ「呼出側の設定不備はrequireで弾く」方針に倣う）。
+ *
  * ## 例外分類
  * ネットワーク層例外の分類は[OpenAiFailureClassifier]に集約する（分岐順序の落とし穴を
  * 1箇所に閉じ込めるため）。HTTP応答の解釈（ステータス層の分類・content/usage欠落の扱い）は
@@ -53,7 +64,8 @@ import java.time.Duration
  *   経由の抽象化はM2の実APAP接続時の課題であり、本暫定実装ではコンストラクタ引数の生文字列で扱う。
  * @param baseUrl APIのベースURL。契約テスト（WireMock）から差し替えられるよう既定値を持たせる。
  * @param connectTimeoutMs [httpClient]既定インスタンスの接続タイムアウト。[httpClient]を明示的に
- *   渡した場合はこの値は使われない。
+ *   渡した場合、実際の接続タイムアウトには使われないが、[execute]の`require`検証には
+ *   引き続き使われる（[httpClient]を差し替える場合は実際の接続タイムアウトと整合させること）。
  * @param httpClient 明示的に渡さない場合、[connectTimeoutMs]を`connectTimeout`に設定した
  *   インスタンスを構築する。
  */
@@ -61,7 +73,7 @@ class OpenAiExecutionAdapter(
     private val apiKey: SensitiveValue,
     private val model: String,
     private val baseUrl: String = DEFAULT_BASE_URL,
-    connectTimeoutMs: Long = DEFAULT_CONNECT_TIMEOUT_MS,
+    private val connectTimeoutMs: Long = DEFAULT_CONNECT_TIMEOUT_MS,
     private val httpClient: HttpClient =
         HttpClient.newBuilder()
             .connectTimeout(Duration.ofMillis(connectTimeoutMs))
@@ -72,6 +84,11 @@ class OpenAiExecutionAdapter(
         prompt: RenderedPrompt,
         policy: ExecutionPolicy,
     ): RawResponse {
+        require(policy.timeoutMs > connectTimeoutMs) {
+            "policy.timeoutMs (${policy.timeoutMs}) must exceed connectTimeoutMs ($connectTimeoutMs); " +
+                "otherwise a connect-phase timeout cannot be reliably distinguished from a read timeout " +
+                "(see class KDoc)"
+        }
         val httpRequest = buildHttpRequest(prompt, policy)
         val start = System.nanoTime()
         val httpResponse =
