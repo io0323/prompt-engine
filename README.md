@@ -236,7 +236,7 @@ Secretは`values.yaml`の`secret.create=false`と`secret.name`で外部Secret Ma
 | FR-014 | 部分実装 | `EvaluationRule.kt`（M1は実行系3種のみと明記）、`LatencyEvaluationRule.kt`/`TokenUsageEvaluationRule.kt`/`CostEvaluationRule.kt` | Latency/Token/Costのみ実装。Quality/Consistency/Determinismは拡張点定義のみ。Issueなし（Plugin追加前提の設計） |
 | FR-015 | 未実装 | （該当実装なし） | README「M1の非対象」の通り。M2milestoneで対応予定 |
 | FR-016 | 部分実装 | `Prompt.kt`（submitForReview/reject/withdraw/approveは生メソッドとして存在）、`docs/adr/0016-review-endpoints-deferred-to-m2.md` | 状態遷移メソッド自体はAggregate内にあるが、対応HTTPエンドポイントは意図的に非公開。ReviewCase Aggregate（4-eyes原則・監査発行の主体）が未実装のため、この経路の遷移は監査ログに記録されない。Issue #9（M2） |
-| FR-017 | 部分実装 | `JdbcPromptSearchRepository.kt`（Tag/Category/Status絞り込みは構造化SQL、全文検索は`ILIKE`部分一致のみ） | Fallbackのみ（README記載通り）。実FTS（tsvector/GIN等）は未実装。Issueなし |
+| FR-017 | 部分実装 | `JdbcPromptSearchRepository.kt`（Tag/Category/Status絞り込みは構造化SQL、全文検索は`ILIKE`部分一致のみ） | Fallbackのみ（README記載通り）。実FTS（tsvector/GIN等）は未実装。Issue #84（M2） |
 | FR-018 | 実装済 | `DependencyRepository.kt`（findOutbound/findInbound）、`DependencyController.kt`、`ReferenceResolver.kt`（循環検出） | 依存グラフ・影響分析・循環検出を確認 |
 | FR-019 | 部分実装 | `PromptDtos.kt`/`VersionController.kt`（単一Prompt単位のDSLテキスト入出力） | 単一Prompt単位の入出力は実装済。複数リソースをまとめた「バンドル」入出力は未実装。Issueなし |
 | FR-020 | 実装済 | `AuditRepository.kt`（append/record、update/delete非提供）、`AuditStage.kt`（Pipeline Stage12）、`V1__init.sql`（audit_logsテーブル） | 全変更・全実行の監査記録経路を確認 |
@@ -254,11 +254,19 @@ Secretは`values.yaml`の`secret.create=false`と`secret.name`で外部Secret Ma
 | NFR-003 | 検証済（p99=80.03ms、目標≤200ms達成） | `tools/perf/render_load_test.sh`（実コンテナ、CPU1/メモリ1Gi制限、2000リクエスト） | 実測条件・結果は上記「性能測定」節に記録 |
 | NFR-004 | 部分実装/未検証 | `deploy/helm/prompt-engine/templates/hpa.yaml`（HPA、CPU使用率ベース）、`PluginEngineConfig.kt`（静的Spring `@Bean`配線） | 水平スケール（ステートレスAPI+HPA）は実装済。「Plugin追加は再起動不要」は未達成 — Pluginは`plugins/`配下のGradleサブプロジェクトとしてコンパイル時に静的リンクされ、動的ロード機構が無いため追加には再ビルド・再起動が必須 |
 | NFR-005 | 検証済 | `SecurityConfig.kt`（OAuth2 Resource Server + JWT検証）、各Controllerの`@PreAuthorize`（RBAC+スコープ）、`SecretManagerAdapter.kt`（Secret参照のみ保持）、`SanitizingJsonEncoder.kt`（3層防御のログマスキング） | CIAP連携・RBAC・Secret参照のみ保持・ログマスキングをコードで確認 |
-| NFR-006 | 部分実装/未検証 | `AuditRepository.kt`（update/delete非提供のInterface）、`V1__init.sql`（追記専用はコメントの運用前提のみ、実GRANT/REVOKE文なし） | 追記専用制約はアプリケーション層のみで担保、DB層での強制は未実装。保持期間設定（既定7年）に対応する設定・パージ処理も未実装。Issueなし |
+| NFR-006 | 部分実装/未検証 | `AuditRepository.kt`（update/delete非提供のInterface）、`V1__init.sql`（追記専用はコメントの運用前提のみ、実GRANT/REVOKE文なし） | 追記専用制約はアプリケーション層のみで担保、DB層での強制は未実装（DBにUPDATE権限を持つ主体は監査履歴を改竄できてしまう）。保持期間設定（既定7年）に対応する設定・パージ処理も未実装。Issue #85（M2） |
 | NFR-007 | 検証済 | `ArchitectureTest.kt`（ArchUnitルール一式: domain非依存、application→domainのみ、core/infrastructure→application禁止、interfaces→application限定、Plugin実装の参照制限） | CIの`arch-test`ジョブで常時検証 |
 | NFR-008 | 検証済 | `OpenTelemetryPipelineTracer.kt`（実Trace実装）、`MicrometerMetricsRecorder.kt`（Metrics、`/actuator/prometheus`）、`SanitizingJsonEncoder.kt`（構造化JSON Log） | OTel互換のTrace/Metrics/構造化Logの3系統を確認 |
 | NFR-009 | 未検証 | `OutboxRelayScheduler.kt`/`SubscriberScheduler.kt`（既定750ms/500msポーリング、目標の5s以内と整合する短周期） | ポーリング間隔の設計値は目標と整合するが、エンドツーエンドの反映遅延を実測・アサートするテストは無い |
 | NFR-010 | 検証済 | `.github/workflows/contract.yml`（PRごとにoasdiffで`api/openapi.yaml`の破壊的変更を検出、`fail-on: ERR`） | CIの`contract`ジョブが機械的に検証 |
+
+**カバレッジ計測についての既知の注記**: `prompt-engine-interface`は自モジュール単体のJaCoCo計測では
+Line 12.3%・Branch 31.1%と低いが、実際の検証は`prompt-engine-bootstrap`側のE2Eテスト
+（`PromptLifecycleSmokeTest`・`ActuatorHealthProbeSecurityTest`等、Controller層を実HTTP経由で
+叩く）で行われている。これらのテストタスクは`interface`モジュールのクラスを計装しないため、
+JaCoCo上は「テスト不足」に見えるだけの計測ミスである（`prompt-engine-infrastructure`で
+P10bに発生し`jacocoAggregatedReport`で解決した問題と同種）。`prompt-engine-bootstrap`自体にも
+カバレッジゲートが未設定。Issue #86（M1完了後）で追跡する。
 
 ## M1完了後に持ち越す既知の未実装・未検証（Issue対応表）
 
@@ -281,6 +289,9 @@ Openのままの項目は無い）。
 | [#80](https://github.com/io0323/prompt-engine/issues/80) | M2 | Prompt/Response Quality・Consistency・Determinism評価Rule | FR-014 |
 | [#81](https://github.com/io0323/prompt-engine/issues/81) | M2 | バンドルのImport/Export | FR-019 |
 | [#82](https://github.com/io0323/prompt-engine/issues/82) | M2 | Plugin Manager（実行時登録・再起動不要） | FR-024 / NFR-004 |
+| [#84](https://github.com/io0323/prompt-engine/issues/84) | M2 | Prompt検索を全文検索に対応させる | FR-017 |
+| [#85](https://github.com/io0323/prompt-engine/issues/85) | M2 | 監査ログの追記専用性をDB層で強制し、保持期間設定を実装する | NFR-006 |
+| [#86](https://github.com/io0323/prompt-engine/issues/86) | M1完了後 | interface/bootstrapモジュールをカバレッジ集約とゲートの対象にする | — |
 
 （Issue #11・#35・#37・#38・#48・#50はP10a/b/cで実装済みだったがクローズ漏れていたため、
 P11の棚卸しでクローズ済み。）
