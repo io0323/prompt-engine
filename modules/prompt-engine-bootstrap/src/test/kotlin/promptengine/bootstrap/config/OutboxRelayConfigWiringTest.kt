@@ -1,15 +1,18 @@
 package promptengine.bootstrap.config
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.mockk.mockk
 import org.junit.jupiter.api.Test
+import org.springframework.beans.factory.NoSuchBeanDefinitionException
 import org.springframework.context.annotation.AnnotationConfigApplicationContext
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler
+import org.springframework.test.context.support.TestPropertySourceUtils
 import org.springframework.transaction.support.TransactionTemplate
 import promptengine.infrastructure.messaging.OutboxRelayer
 
@@ -62,6 +65,27 @@ class OutboxRelayConfigWiringTest {
             // （CodeRabbitレビュー指摘）。プールサイズ1のままだと片方の遅延がもう片方を止める。
             val taskScheduler = context.getBean(ThreadPoolTaskScheduler::class.java)
             taskScheduler.poolSize shouldBe 2
+        } finally {
+            context.close()
+        }
+    }
+
+    @Test
+    fun `promptengine_scheduler_enabled=falseならOutboxRelayConfig自体が丸ごと無効化される`() {
+        val context = AnnotationConfigApplicationContext()
+        context.environment.setActiveProfiles("production")
+        TestPropertySourceUtils.addInlinedPropertiesToEnvironment(context, "promptengine.scheduler.enabled=false")
+        context.register(
+            OutboxRelayConfig::class.java,
+            MessagingSupportConfig::class.java,
+            StubJdbcBeansConfig::class.java,
+        )
+        context.refresh()
+
+        try {
+            shouldThrow<NoSuchBeanDefinitionException> {
+                context.getBean(OutboxRelayScheduler::class.java)
+            }
         } finally {
             context.close()
         }

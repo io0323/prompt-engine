@@ -122,7 +122,7 @@ Promptがアプリケーションコード内に散在すると、(a) 変更に�
 | ID | 分類 | 要件 | 目標値 |
 |---|---|---|---|
 | NFR-001 | 可用性 | 24時間365日稼働、Read系はキャッシュで縮退継続 | 99.9%（Read 99.99%） |
-| NFR-002 | 性能 | Prompt取得（キャッシュヒット） | p99 ≤ 20ms |
+| NFR-002 | 性能 | Prompt取得（キャッシュヒット） | p99 ≤ 20ms（**M1では未検証**。`PromptCache`（§16拡張ポイント#9）がM1では未実装のため測定不能。前提となるIssue #15（Template/Fragment Domain Event未実装、milestone M2）の解消後、Issue #77で実装・検証する） |
 | NFR-003 | 性能 | Render（Validation含む、実行除く） | p99 ≤ 200ms |
 | NFR-004 | 拡張性 | 水平スケール（ステートレスAPI）、Plugin追加は再起動不要 | - |
 | NFR-005 | セキュリティ | CIAP連携（OIDC/OAuth2）、RBAC+スコープ、Secretは参照のみ保持しSecret Managerへ委譲、Render結果ログにSecretをマスク | - |
@@ -448,6 +448,15 @@ LoggingはSecretマスクをログEncoder層に集約し呼出側が経由せず
 promptKey単位の相関は`audit_logs`/`execution_logs`の`trace_id`列経由で得られるため、
 専用の新しい抽象を追加するコストには本フェーズでは見合わないと判断した。
 promptKey/versionをMDCへ乗せる対応は将来のフェーズに持ち越す。詳細はADR-0027を参照。
+
+P11での実装（ADR-0028）: Kubernetesデプロイは`api`/`worker`/`admin`の3 Deploymentで構成する
+（同一イメージ、Admin API/BFFがM1未実装のため`admin`はapiと同一挙動でClusterIPのみ公開）。
+新設した`promptengine.scheduler.enabled`プロパティでOutbox Relay/Broker購読の背景ジョブ
+（本節Alertの前提となる各種イベント処理）を`worker`のみで起動する。liveness/readiness
+プローブ（`/actuator/health/liveness`・`/actuator/health/readiness`）は認証不要にする必要が
+あり、`/actuator/health`の完全一致のみを許可していた旧設定ではサブパスに認証が要求され
+全Podが起動できない不具合があったため、`/actuator/health/**`へ修正した。詳細はADR-0028・
+`deploy/helm/prompt-engine/`を参照。
 
 ---
 

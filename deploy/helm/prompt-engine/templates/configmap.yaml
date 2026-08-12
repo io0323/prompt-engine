@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "prompt-engine.fullname" . }}-config
+  labels:
+    {{- include "prompt-engine.labels" . | nindent 4 }}
+data:
+  datasource-url: {{ .Values.config.datasourceUrl | quote }}
+  ciap-jwks-uri: {{ .Values.config.ciapJwksUri | quote }}
+  otel-exporter-endpoint: {{ .Values.config.otelExporterEndpoint | quote }}
+  eventbus-kafka-bootstrap-servers: {{ .Values.config.eventBusKafkaBootstrapServers | quote }}

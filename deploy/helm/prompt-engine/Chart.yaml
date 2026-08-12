@@ -1,0 +1,6 @@
+apiVersion: v2
+name: prompt-engine
+description: Prompt Engine（PE）M1のHelm Chart。api / worker / admin の3 Deploymentで構成する（P11）。
+type: application
+version: 0.1.0
+appVersion: "1.0.0"

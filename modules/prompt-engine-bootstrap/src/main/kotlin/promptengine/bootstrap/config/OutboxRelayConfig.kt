@@ -6,6 +6,7 @@ import org.apache.kafka.clients.producer.ProducerConfig
 import org.apache.kafka.common.serialization.StringSerializer
 import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.beans.factory.annotation.Value
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
@@ -50,9 +51,20 @@ data class OutboxRelayInstanceId(val value: String)
  * [EnableScheduling]をこのクラス自体（`production`プロファイル限定）に付与することで、
  * `@Scheduled`処理系（[org.springframework.scheduling.annotation.ScheduledAnnotationBeanPostProcessor]）
  * も非productionでは登録されない。
+ *
+ * `promptengine.scheduler.enabled=false`（既定`true`）でこのConfiguration自体を丸ごと
+ * 無効化できる（P11、Helm `api`/`admin` Deploymentが背景中継ジョブを持たないようにする
+ * ため。`worker` Deploymentのみ`true`のまま起動する）。中継Bean群は`@Scheduled`ジョブ
+ * 専用でありAPIリクエスト処理経路からは参照されないため、丸ごと止めても副作用が無い。
  */
 @Configuration
 @Profile("production")
+@ConditionalOnProperty(
+    prefix = "promptengine.scheduler",
+    name = ["enabled"],
+    havingValue = "true",
+    matchIfMissing = true,
+)
 @EnableScheduling
 @EnableConfigurationProperties(OutboxRelayProperties::class)
 class OutboxRelayConfig {

@@ -1,0 +1,22 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "prompt-engine.fullname" . }}-api
+  labels:
+    {{- include "prompt-engine.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api
+spec:
+  replicas: {{ .Values.api.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "prompt-engine.labels" . | nindent 6 }}
+      app.kubernetes.io/component: api
+  template:
+    metadata:
+      labels:
+        {{- include "prompt-engine.labels" . | nindent 8 }}
+        app.kubernetes.io/component: api
+    spec:
+      containers:
+        {{- include "prompt-engine.container" (dict "root" . "schedulerEnabled" false) | nindent 8 }}
+      {{- include "prompt-engine.volumes" . | nindent 6 }}

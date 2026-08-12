@@ -92,7 +92,12 @@ class SecurityConfig {
             csrf { disable() }
             sessionManagement { sessionCreationPolicy = SessionCreationPolicy.STATELESS }
             authorizeHttpRequests {
-                authorize("/actuator/health", permitAll)
+                // `/actuator/health/**`（`/**`は末尾スラッシュなしの`/actuator/health`自体にも
+                // マッチする）。Kubernetesの liveness/readiness プローブ
+                // （`/actuator/health/liveness`・`/actuator/health/readiness`、P11の
+                // deploy/helm/prompt-engine）は認証を持たずkubeletから直接叩かれるため、
+                // サブパスもpermitAllにしないと全PodがCrashLoopBackOffする（P11で発見・修正）。
+                authorize("/actuator/health/**", permitAll)
                 authorize("/actuator/info", permitAll)
                 // `/v3/api-docs/**`だけでは`/v3/api-docs`本体・`/v3/api-docs.yaml`
                 // （末尾が`/`で終わらない、springdocの実際のエンドポイント）にAntPathMatcherが

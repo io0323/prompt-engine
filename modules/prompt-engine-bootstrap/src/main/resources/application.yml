@@ -15,6 +15,13 @@ management:
         # prometheus: §2.15 Metrics（ADR-0027決定2）。Push型エクスポータ設定不要で
         # /actuator/prometheus をPrometheus側がスクレイプする。
         include: health,info,prometheus
+  endpoint:
+    health:
+      probes:
+        # Kubernetes環境では既定で自動有効化されるが（KUBERNETES_SERVICE_HOST検出）、
+        # ローカル/Docker単体実行時にも/actuator/health/{liveness,readiness}を
+        # 一貫して使えるよう明示的に有効化する（P11、SecurityConfigのpermitAllと対）。
+        enabled: true
 
 pe:
   # CIAP（設計書§1）が発行するJWTのJWKSエンドポイント。未設定時はローカル開発用に
@@ -25,6 +32,11 @@ pe:
     banned-words: ${PE_VALIDATION_BANNED_WORDS:}
 
 promptengine:
+  # 背景中継ジョブ（Outbox Relay/Broker購読）の起動可否（P11、Helm `api`/`worker`/`admin`
+  # Deploymentの分離用）。`false`にするとOutboxRelayConfig/SubscriberConfig自体が
+  # 丸ごと無効化される（productionプロファイルとの組み合わせでのみ意味を持つ）。
+  scheduler:
+    enabled: ${PE_SCHEDULER_ENABLED:true}
   eventbus:
     # Outbox → Broker中継のポーリング設定（productionプロファイルのみ有効、ADR-0025決定5）。
     relay:
