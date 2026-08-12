@@ -1,0 +1,88 @@
+name: Release
+on:
+  push:
+    tags: ['v*']
+
+# 実装ガイド§3.4: `v*`タグでコンテナイメージをGHCRへpush、`prompt-engine-plugin-api`を
+# Maven publish（GitHub Packages）する。GITHUB_TOKENのみで完結し、追加シークレットは不要。
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish-image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - name: Derive version from tag
+        id: version
+        # tag名（GITHUB_REF_NAME）はpushする側が任意の文字列を選べるため、Docker tag /
+        # Maven versionとして安全な文字集合であることを検証してから使う
+        # （空文字・シェル/パス上危険な文字を拒否、CodeRabbitレビュー指摘）。
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          if [[ ! "$version" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$ ]]; then
+            echo "Invalid release tag: $GITHUB_REF_NAME" >&2
+            exit 1
+          fi
+          printf 'version=%s\n' "$version" >> "$GITHUB_OUTPUT"
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push image
+        env:
+          DOCKER_BUILDKIT: "1"
+          VERSION: ${{ steps.version.outputs.version }}
+          REPO_OWNER: ${{ github.repository_owner }}
+        # VERSION・REPO_OWNERはtag名由来でシェルメタ文字を含みうるため、`${{ }}`で
+        # runスクリプトへ直接展開せずenv経由のシェル変数として参照する
+        # （script injection対策、CodeRabbitレビュー指摘）。
+        run: |
+          image="ghcr.io/${REPO_OWNER}/prompt-engine"
+          image="${image,,}"
+          docker build -f deploy/docker/Dockerfile \
+            -t "$image:$VERSION" \
+            -t "$image:latest" .
+          docker push "$image:$VERSION"
+          docker push "$image:latest"
+
+  publish-plugin-api:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v5.7.0
+        with: { distribution: temurin, java-version: '21' }
+      - uses: gradle/actions/setup-gradle@v6
+      - name: Derive version from tag
+        id: version
+        # tag名（GITHUB_REF_NAME）はpushする側が任意の文字列を選べるため、Docker tag /
+        # Maven versionとして安全な文字集合であることを検証してから使う
+        # （空文字・シェル/パス上危険な文字を拒否、CodeRabbitレビュー指摘）。
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          if [[ ! "$version" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$ ]]; then
+            echo "Invalid release tag: $GITHUB_REF_NAME" >&2
+            exit 1
+          fi
+          printf 'version=%s\n' "$version" >> "$GITHUB_OUTPUT"
+      - name: Publish prompt-engine-plugin-api to GitHub Packages
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          VERSION: ${{ steps.version.outputs.version }}
+        # VERSIONはtag名由来でシェルメタ文字を含みうるため、`${{ }}`でrunスクリプトへ
+        # 直接展開せずenv経由のシェル変数として参照する（script injection対策、
+        # CodeRabbitレビュー指摘）。
+        run: |
+          ./gradlew :modules:prompt-engine-plugin-api:publish \
+            -Pversion="$VERSION" --no-daemon
