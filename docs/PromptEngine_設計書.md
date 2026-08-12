@@ -108,7 +108,7 @@ Promptがアプリケーションコード内に散在すると、(a) 変更に�
 | FR-014 | Evaluation | Prompt Quality/Response Quality/Latency/Token/Cost/Consistency/Determinism |
 | FR-015 | Experiment | A/B Test、Canary、Benchmark、トラフィック分割、統計判定 |
 | FR-016 | Review/Approval | レビューコメント、承認ワークフロー、4-eyes原則設定可 |
-| FR-017 | Search | 全文検索、Tag/Category/Metadata/Status絞り込み |
+| FR-017 | Search | 全文検索、Tag/Category/Metadata/Status絞り込み（**M1では全文検索が`ILIKE`部分一致のフォールバックのみ**。Tag/Category/Status絞り込みは実装済。Issue #84） |
 | FR-018 | Dependency | Fragment/Template依存グラフ、影響分析、循環検出 |
 | FR-019 | Import/Export | DSLファイル（YAML+Template）の入出力、バンドル |
 | FR-020 | Audit | 全変更・全実行の監査ログ（改竄不可・追記専用） |
@@ -126,7 +126,7 @@ Promptがアプリケーションコード内に散在すると、(a) 変更に�
 | NFR-003 | 性能 | Render（Validation含む、実行除く） | p99 ≤ 200ms |
 | NFR-004 | 拡張性 | 水平スケール（ステートレスAPI）、Plugin追加は再起動不要 | - |
 | NFR-005 | セキュリティ | CIAP連携（OIDC/OAuth2）、RBAC+スコープ、Secretは参照のみ保持しSecret Managerへ委譲、Render結果ログにSecretをマスク | - |
-| NFR-006 | 監査 | Audit Logは追記専用・保持期間設定可（既定7年） | - |
+| NFR-006 | 監査 | Audit Logは追記専用・保持期間設定可（既定7年）（**M1では追記専用性をアプリケーション層のRepository Interfaceでのみ担保し、DB層でのGRANT/REVOKE等の強制は未実装。保持期間設定も未実装**。Issue #85） | - |
 | NFR-007 | 保守性 | Clean Architecture、モジュール間はInterface依存のみ | - |
 | NFR-008 | 可観測性 | OpenTelemetry互換のTrace/Metrics/Log出力 | - |
 | NFR-009 | データ整合 | Command系は強整合、Read Model/検索Indexは結果整合（遅延≤5s） | - |
