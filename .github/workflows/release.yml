@@ -31,13 +31,18 @@ jobs:
       - name: Build and push image
         env:
           DOCKER_BUILDKIT: "1"
+          VERSION: ${{ steps.version.outputs.version }}
+          REPO_OWNER: ${{ github.repository_owner }}
+        # VERSION・REPO_OWNERはtag名由来でシェルメタ文字を含みうるため、`${{ }}`で
+        # runスクリプトへ直接展開せずenv経由のシェル変数として参照する
+        # （script injection対策、CodeRabbitレビュー指摘）。
         run: |
-          image="ghcr.io/${{ github.repository_owner }}/prompt-engine"
+          image="ghcr.io/${REPO_OWNER}/prompt-engine"
           image="${image,,}"
           docker build -f deploy/docker/Dockerfile \
-            -t "$image:${{ steps.version.outputs.version }}" \
+            -t "$image:$VERSION" \
             -t "$image:latest" .
-          docker push "$image:${{ steps.version.outputs.version }}"
+          docker push "$image:$VERSION"
           docker push "$image:latest"
 
   publish-plugin-api:
@@ -56,6 +61,10 @@ jobs:
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
+          VERSION: ${{ steps.version.outputs.version }}
+        # VERSIONはtag名由来でシェルメタ文字を含みうるため、`${{ }}`でrunスクリプトへ
+        # 直接展開せずenv経由のシェル変数として参照する（script injection対策、
+        # CodeRabbitレビュー指摘）。
         run: |
           ./gradlew :modules:prompt-engine-plugin-api:publish \
-            -Pversion=${{ steps.version.outputs.version }} --no-daemon
+            -Pversion="$VERSION" --no-daemon
