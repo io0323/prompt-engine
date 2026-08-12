@@ -4,6 +4,15 @@ kind: prompt
 key: perf-regression/production-scale-support-agent
 name: 本番相当サイズ カスタマーサポートエージェント
 category: regression
+variables:
+  - name: customerName
+    type: string
+    source: static
+    default: "山田太郎"
+  - name: ticketSummary
+    type: string
+    source: static
+    default: "ダッシュボードのグラフが表示されない現象について。ブラウザはChrome最新版。"
 ---
 {{#block system}}
 あなたは「Prompt Engine」プラットフォームのカスタマーサポートを担当するAIエージェントです。

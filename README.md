@@ -29,7 +29,7 @@ Promptがアプリケーションコード内に散在すると、変更にデ�
 Clean Architectureに基づくレイヤー構成（設計書§2.2、CLAUDE.md「モジュール依存の絶対規約」）。
 依存の向きは下から上の一方向のみで、ArchUnit（`ArchitectureTest`）がCIで強制する。
 
-```
+```text
 Interface Layer      prompt-engine-interface     REST API（Command/Query/Admin）、DTO、Security
         │  依存
 Application Layer    prompt-engine-application   UseCase、Pipeline Orchestrator、トランザクション境界
@@ -105,7 +105,7 @@ Testcontainersを使うのは`tests/integration`と一部のbootstrap統合テ�
 ./gradlew build                 # 全モジュールビルド
 ./gradlew test                  # 単体テスト（Docker不要な範囲）
 ./gradlew integrationTest       # Testcontainers統合テスト
-./gradlew ktlintFormat detekt   # フォーマット + 静的解析
+./gradlew ktlintCheck detekt    # 検証 + 静的解析（フォーマット自体を直すには ktlintFormat）
 ```
 
 アプリケーションの起動:
@@ -130,8 +130,19 @@ docker build -f deploy/docker/Dockerfile -t prompt-engine:local .
 
 ### Kubernetesデプロイ（Helm）
 
+ローカル検証用（chart管理のSecretを使う。`secret.create`既定値`true`のまま）:
+
 ```bash
 helm install prompt-engine deploy/helm/prompt-engine --set image.tag=<タグ>
+```
+
+本番運用（外部Secret Managerが供給済みのSecretを参照する。NFR-005）:
+
+```bash
+helm install prompt-engine deploy/helm/prompt-engine \
+  --set image.tag=<タグ> \
+  --set secret.create=false \
+  --set secret.name=<既存Secret名>
 ```
 
 `api` / `worker` / `admin` の3 Deploymentで構成する。3つとも同一イメージ（Admin API/BFFはM1未実装、
@@ -139,8 +150,8 @@ helm install prompt-engine deploy/helm/prompt-engine --set image.tag=<タグ>
 `PE_SCHEDULER_ENABLED`（Outbox Relay/Broker購読の背景ジョブ、`worker`のみ`true`）と
 Serviceの公開範囲（`api`のみ外部Ingress対象を想定、`worker`/`admin`はClusterIPのみ）の2点のみ。
 Secretは`values.yaml`の`secret.create=false`と`secret.name`で外部Secret Managerが供給する既存Secretを
-参照する運用を想定する（NFR-005、チャート自体はSecret値をテンプレートしない設計。既定の
-`secret.create=true`はローカル検証専用）。
+参照する運用を想定する（チャート自体はSecret値をテンプレートしない設計）。**既定の`secret.create=true`は
+ローカル検証専用であり、本番では必ず`false`にして上記の手順を使うこと。**
 
 ## 性能測定（NFR-002 / NFR-003）
 
@@ -186,14 +197,18 @@ Secretは`values.yaml`の`secret.create=false`と`secret.name`で外部Secret Ma
 
 **測定方法の限界（正直に記録する）**:
 
-- ウォームアップ末尾平均（1.79ms）と測定先頭平均（17.16ms）が近くない。これは
-  JITが温まっていないためではなく、**ウォームアップは並列度1・測定は並列度10で行っており、
-  CPU 1個の制限下では並列度が上がるほどキューイング/コンテンション由来のレイテンシが
-  純粋に増える**ため（並列度が異なる条件同士を比較しても「ウォームアップ十分か」の判定には
-  ならないという、このスクリプトの設計上の限界）。JIT安定の別の傍証として、測定2,000件が
-  100%成功し、p50（5.47ms）がp99（80.03ms）・max（173.94ms）から大きく右に裾を引く分布に
-  なっている点（GC・並列コンテンションに起因する散発的な遅延であり、単調な性能劣化ではない）
-  を挙げる。
+- **ウォームアップ末尾平均（1.79ms）と測定先頭平均（17.16ms）を突き合わせて「ウォームアップは
+  十分か」を判定する、というこのスクリプトの当初のもくろみ自体が成立していない。**
+  ウォームアップは並列度1・測定は並列度10で行っており、条件そのものが異なるため
+  （CPU 1個の制限下では並列度が上がるほどキューイング/コンテンションの影響を受けやすくなる、
+  という一般的な傾向はあるが、本測定はそれを切り分けて検証してはいない）、この2値の乖離を
+  「JITが未安定」の根拠にも「安定している」の根拠にも使えない。同様に、p50（5.47ms）に対し
+  p99（80.03ms）・max（173.94ms）が大きく右に裾を引く分布についても、GCや並列コンテンションを
+  原因と断定できる追加計測（GCログ、スレッドダンプ等）は取得していない ── あくまで一つの
+  仮説であり、確認できた事実は「測定2,000件が100%成功し、目標の200msを一度も超えなかった」
+  という点のみである。
+  ウォームアップ十分性を厳密に判定したい場合は、測定と同じ並列度でウォームアップ末尾を
+  比較する手順に変更する必要があり、本フェーズでは未対応（今後の改善余地）。
 - ローカル開発機での単発実測であり、CI環境・本番環境のリソース制約やネットワーク条件とは
   異なる。CI回帰ゲート化は本フェーズのスコープ外（必要になった時点で別Issueを起こす）。
 

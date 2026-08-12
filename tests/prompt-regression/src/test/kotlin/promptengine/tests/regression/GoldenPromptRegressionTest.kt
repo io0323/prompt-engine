@@ -86,6 +86,15 @@ class GoldenPromptRegressionTest {
         val fixtures = fixtureFiles()
         fixtures.shouldNotBeEmpty()
 
+        val fixtureNames = fixtures.map { it.nameWithoutExtension }.toSet()
+        val orphanedGoldenNames =
+            Files.list(goldenDir()).use { stream ->
+                stream.filter { it.extension == "hash" }.map { it.nameWithoutExtension }.toList().toSet()
+            } - fixtureNames
+        check(orphanedGoldenNames.isEmpty()) {
+            "fixtureが無いgolden fileが残っている（削除漏れ）: $orphanedGoldenNames"
+        }
+
         return fixtures.map { fixture ->
             DynamicTest.dynamicTest(fixture.nameWithoutExtension) {
                 val actualHash = renderHashOf(fixture)

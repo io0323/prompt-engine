@@ -29,47 +29,51 @@ import org.testcontainers.junit.jupiter.Testcontainers
 @Testcontainers
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("dev")
-class ActuatorHealthProbeSecurityTest {
+class ActuatorHealthProbeSecurityTest
     @Autowired
-    private lateinit var restTemplate: TestRestTemplate
+    constructor(
+        private val restTemplate: TestRestTemplate,
+    ) {
+        @Test
+        fun `actuator health のトップレベルは認証無しで到達できる`() {
+            val response = restTemplate.getForEntity("/actuator/health", String::class.java)
+            response.statusCode shouldBe HttpStatus.OK
+        }
 
-    @Test
-    fun `actuator health のトップレベルは認証無しで到達できる`() {
-        restTemplate.getForEntity("/actuator/health", String::class.java).statusCode shouldBe HttpStatus.OK
-    }
+        @Test
+        fun `actuator health liveness は認証無しで到達できる`() {
+            val response = restTemplate.getForEntity("/actuator/health/liveness", String::class.java)
+            response.statusCode shouldBe HttpStatus.OK
+        }
 
-    @Test
-    fun `actuator health liveness は認証無しで到達できる`() {
-        restTemplate.getForEntity("/actuator/health/liveness", String::class.java).statusCode shouldBe HttpStatus.OK
-    }
+        @Test
+        fun `actuator health readiness は認証無しで到達できる`() {
+            val response = restTemplate.getForEntity("/actuator/health/readiness", String::class.java)
+            response.statusCode shouldBe HttpStatus.OK
+        }
 
-    @Test
-    fun `actuator health readiness は認証無しで到達できる`() {
-        restTemplate.getForEntity("/actuator/health/readiness", String::class.java).statusCode shouldBe HttpStatus.OK
-    }
+        @Test
+        fun `保護対象のAPIは引き続き認証を要求する`() {
+            val response =
+                restTemplate.postForEntity(
+                    "/api/v1/prompts/ns/name/render",
+                    null,
+                    String::class.java,
+                )
+            response.statusCode shouldBe HttpStatus.UNAUTHORIZED
+        }
 
-    @Test
-    fun `保護対象のAPIは引き続き認証を要求する`() {
-        val response =
-            restTemplate.postForEntity(
-                "/api/v1/prompts/ns/name/render",
-                null,
-                String::class.java,
-            )
-        response.statusCode shouldBe HttpStatus.UNAUTHORIZED
-    }
+        companion object {
+            @Container
+            @JvmStatic
+            val postgres: PostgreSQLContainer<*> = PostgreSQLContainer("postgres:16")
 
-    companion object {
-        @Container
-        @JvmStatic
-        val postgres: PostgreSQLContainer<*> = PostgreSQLContainer("postgres:16")
-
-        @DynamicPropertySource
-        @JvmStatic
-        fun registerDataSourceProperties(registry: DynamicPropertyRegistry) {
-            registry.add("spring.datasource.url", postgres::getJdbcUrl)
-            registry.add("spring.datasource.username", postgres::getUsername)
-            registry.add("spring.datasource.password", postgres::getPassword)
+            @DynamicPropertySource
+            @JvmStatic
+            fun registerDataSourceProperties(registry: DynamicPropertyRegistry) {
+                registry.add("spring.datasource.url", postgres::getJdbcUrl)
+                registry.add("spring.datasource.username", postgres::getUsername)
+                registry.add("spring.datasource.password", postgres::getPassword)
+            }
         }
     }
-}

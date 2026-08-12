@@ -43,9 +43,14 @@ Domain Event発行自体がIssue #15（milestone M2、ADR-0008決定3で意図�
 - **ウォームアップ**: 5,000リクエスト（単一接続、逐次）。JITのTier1（C1）コンパイルは
   既定`-XX:Tier3InvocationThreshold`前後（数百回）で発生するが、Render経路が呼ぶメソッド群
   （Parse/Compile/Resolve/Render複数クラス）を一通りTier4（C2）まで載せるには経験的に
-  数千回規模が必要なため、実測で確認できる安全側の値として5,000を採用した。ウォームアップ末尾
-  200件の平均と、本測定先頭200件の平均を突き合わせ、値が近いこと（JIT安定後の定常状態で
-  測定が始まっていること）をスクリプト実行のたびに確認する。
+  数千回規模が必要なため、実測で確認できる安全側の値として5,000を採用した。
+- **既知の限界（ウォームアップ十分性の判定）**: 当初、ウォームアップ末尾200件の平均と
+  測定先頭200件の平均を突き合わせて判定する計画だったが、ウォームアップは並列度1・
+  測定は並列度10で行っており条件が異なるため、この比較は「ウォームアップが十分か」の
+  根拠として使えないことが実測後に判明した（CodeRabbitレビュー指摘）。両者を同じ並列度で
+  比較する手順への変更は本ADRのスコープ外とし、現状は「測定2,000件が100%成功し目標を
+  一度も超えなかった」という事実のみを根拠とする。詳細はREADME「性能測定」節の
+  「測定方法の限界」を参照。
 - **測定環境の限界**: ローカル開発機での実測であり、CI/本番環境のリソース制約・ネットワーク
   条件とは異なる。CI回帰ゲート化は本ADRのスコープ外とし、必要になった時点で別Issueを起こす。
 
@@ -84,6 +89,7 @@ liveness/readinessプローブが実際に叩く`/actuator/health/liveness`・
 
 - [ADR-0008: Template/Fragment Domain Model（決定3、Domain Event見送り）](0008-template-fragment-domain-model.md)
 - [ADR-0016: Review Endpoints Deferred to M2](0016-review-endpoints-deferred-to-m2.md)
-- docs/PromptEngine_設計書.md §1.9（NFR-002/NFR-003）・§16（拡張ポイント#9 Cache）
+- docs/PromptEngine_設計書.md §1.9（NFR-002/NFR-003）・§2.15（Monitoring仕様、
+  api/worker/admin構成・health probe認可の実装注記）・§16（拡張ポイント#9 Cache）
 - Issue #15・#77（NFR-002関連）
 - `deploy/docker/Dockerfile`・`deploy/helm/prompt-engine/`・`tools/perf/render_load_test.sh`

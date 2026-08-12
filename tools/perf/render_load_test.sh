@@ -57,6 +57,11 @@ for i in $(seq 1 30); do
   pg_isready -h localhost -p "$POSTGRES_HOST_PORT" -U prompt_engine >/dev/null 2>&1 && break
   sleep 1
 done
+pg_isready -h localhost -p "$POSTGRES_HOST_PORT" -U prompt_engine >/dev/null 2>&1 || {
+  echo "postgres did not become ready on port ${POSTGRES_HOST_PORT}"
+  docker compose -f compose.yaml -f "$WORKDIR/compose.override.yml" logs postgres
+  exit 1
+}
 POSTGRES_CID=$(docker compose ps -q postgres)
 COMPOSE_NETWORK=$(docker inspect -f '{{range $k,$v := .NetworkSettings.Networks}}{{$k}}{{end}}' "$POSTGRES_CID")
 
@@ -134,7 +139,10 @@ build_curl_config "$WORKDIR/warmup.curl" "$WARMUP_REQUESTS"
 curl -K "$WORKDIR/warmup.curl" > "$WORKDIR/warmup.raw" 2>/dev/null
 
 echo "--- 8. measurement ($MEASURE_REQUESTS requests, concurrency=$CONCURRENCY, connection reused per worker) ---"
+[ "$CONCURRENCY" -ge 1 ] || { echo "CONCURRENCY must be >= 1"; exit 1; }
 PER_WORKER=$(( MEASURE_REQUESTS / CONCURRENCY ))
+[ "$PER_WORKER" -ge 1 ] || { echo "MEASURE_REQUESTS must be >= CONCURRENCY"; exit 1; }
+ACTUAL_MEASURE_REQUESTS=$(( PER_WORKER * CONCURRENCY ))
 pids=()
 for w in $(seq 1 "$CONCURRENCY"); do
   build_curl_config "$WORKDIR/measure-$w.curl" "$PER_WORKER"
@@ -149,6 +157,13 @@ TOTAL_MEASURED=$(wc -l < "$WORKDIR/measure.raw" | tr -d ' ')
 SUCCESS_MEASURED=$(awk '$1==200' "$WORKDIR/measure.raw" | wc -l | tr -d ' ')
 awk '$1==200{print $2}' "$WORKDIR/warmup.raw" > "$WORKDIR/warmup.times"
 awk '$1==200{print $2}' "$WORKDIR/measure.raw" > "$WORKDIR/measure.times"
+
+if [ "$SUCCESS_MEASURED" -eq 0 ]; then
+  echo "no successful (HTTP 200) responses out of ${TOTAL_MEASURED}; aborting aggregation"
+  head -20 "$WORKDIR/measure.raw"
+  docker logs --tail 100 "$APP_CONTAINER"
+  exit 1
+fi
 
 percentile() {
   local file="$1" pct="$2"
@@ -166,7 +181,7 @@ echo "RESULT"
 echo "  image: $IMAGE_TAG"
 echo "  resource limits: cpus=$PERF_CPUS memory=$PERF_MEMORY"
 echo "  warmup requests: $WARMUP_REQUESTS (single connection, sequential)"
-echo "  measured requests: $MEASURE_REQUESTS (concurrency=$CONCURRENCY, ${PER_WORKER}/worker, connection reused per worker)"
+echo "  measured requests: $ACTUAL_MEASURE_REQUESTS (concurrency=$CONCURRENCY, ${PER_WORKER}/worker, connection reused per worker)"
 echo "  measured success rate: ${SUCCESS_MEASURED}/${TOTAL_MEASURED} (HTTP 200)"
 echo "  warmup tail-200 avg (ms): $WARMUP_TAIL_AVG"
 echo "  measured head-200 avg (ms): $MEASURE_HEAD_AVG   <- 上の値に近ければウォームアップ十分と判断"
