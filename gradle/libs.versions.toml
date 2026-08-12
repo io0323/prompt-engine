@@ -14,6 +14,7 @@ snakeyaml = "2.6"
 jackson = "2.22.1"
 springdoc-openapi = "2.8.6"
 kafka = "4.3.1"
+wiremock = "3.13.2"
 
 [libraries]
 kotlin-reflect = { module = "org.jetbrains.kotlin:kotlin-reflect", version.ref = "kotlin" }
@@ -84,6 +85,11 @@ jackson-module-kotlin = { module = "com.fasterxml.jackson.module:jackson-module-
 # plugins/formatter-json用。Spring BOM管理下ではない単体プロジェクトのため、
 # snakeyamlと同じ方針でバージョンを明示指定する（ADR-0014）。
 jackson-databind = { module = "com.fasterxml.jackson.core:jackson-databind", version.ref = "jackson" }
+
+# plugins/execution-openai用の契約テスト（M2-1a、ADR-0029）。スタブHTTPサーバでプロバイダ応答
+# （正常系・429・5xx・4xx・タイムアウト・不正JSON等）を再現する。testImplementationのみで
+# 本番コードには含まれない。
+wiremock = { module = "org.wiremock:wiremock", version.ref = "wiremock" }
 
 # 注意: 以下の [plugins] エントリはドキュメント目的で定義しているが、モジュールの build.gradle.kts から
 # alias(libs.plugins.*) では参照しない。buildSrc（kotlin-dsl）が Kotlin Gradle Plugin を暗黙提供しており、
