@@ -2,7 +2,11 @@
 
 ## ステータス
 
-Accepted
+Accepted（決定1「ModelProfileの供給源」・決定2「リトライ責務」は有効のまま維持。決定3
+「実プロバイダAPIテストの扱い」・決定4「本番プロファイルの起動条件」のうちOpenAI固有の
+配線部分はADR-0031によりsupersede——APAPを独立基盤として構築する方針が確定し、
+`plugins/execution-openai`はPEPから削除された。`promptengine.execution.provider`の
+切替機構自体はADR-0031で`fake`/`apap`として引き続き有効）
 
 ## コンテキスト
 
