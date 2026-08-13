@@ -14,17 +14,34 @@ image:
 # 直接テンプレートしない。既定はローカル検証専用のSecretを生成する（create: true）。
 # 本番ではSecret Manager/外部シークレット管理から供給し、create: false + name で
 # 既存Secretを参照すること。
+#
+# executionApiKey: config.executionProvider を実プロバイダへ切り替える場合にのみ使う
+# （M2-1c、ADR-0030決定4）。SecretManagerAdapter（EnvironmentSecretManagerAdapter）が
+# 環境変数 PE_SECRET_<name大文字> を読む規約に合わせ、Secretのキー名は
+# execution-api-key固定・環境変数名は _helpers.tpl 側で PE_SECRET_OPENAI_API_KEY に
+# マッピングする。既定値は空文字（provider=fakeのままなら未使用、fail-fastガードが
+# 誤配線を検知する）。
 secret:
   create: true
   name: prompt-engine-secrets
   datasourceUsername: prompt_engine
   datasourcePassword: prompt_engine
+  executionApiKey: ""
 
 config:
   datasourceUrl: jdbc:postgresql://postgres:5432/prompt_engine
   ciapJwksUri: ""
   otelExporterEndpoint: ""
   eventBusKafkaBootstrapServers: "kafka:9092"
+  # 実行アダプタの選択（M2-1c、ADR-0030決定4）。既定fakeはM1からの挙動を変えない。
+  # 本番で実プロバイダへ切り替える場合はexecutionProvider: openaiとし、
+  # secret.executionApiKeyも併せて設定すること（未設定ならfail-fastで起動が失敗する）。
+  executionProvider: fake
+  executionModelName: gpt-4o-mini
+  # ModelProfileの供給元（M2-1c、ADR-0030決定1）。APAP不在のためconfigとして保持する。
+  modelProfileMaxContextTokens: 8000
+  modelProfileTokenizerId: approx
+  modelProfileCostPerToken: "0.000001"
 
 # perf-measurement条件（README「性能測定」節）と揃えた既定値。
 resources:
