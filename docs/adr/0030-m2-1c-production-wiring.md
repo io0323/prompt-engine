@@ -94,7 +94,10 @@ ADR-0014決定7・`RetryingExecutionAdapter`の実装は変更しない（「PE�
 - **実測の実施**: レイテンシ・usage・コストの実測（`OpenAiExecutionAdapterMeasurementTest`、
   複数回・課金を伴う）はユーザー自身が手元で実行する。手順書を`tools/perf/README.md`に
   用意した（使用fixture・ウォームアップ回数と課金への注記・測定回数とその根拠・記録項目・
-  想定コストを明記、`render_load_test.sh`の手順書粒度に揃える）。
+  想定コストを明記、`render_load_test.sh`の手順書粒度に揃える）。**本PR時点では実測は
+  未実施**（CIのJUnit XMLで`OpenAiExecutionAdapterRealApiTest`/
+  `OpenAiExecutionAdapterMeasurementTest`とも`skipped="1"`を確認済み）。実測未実施の
+  状態はGitHub Issue #92で追跡し、実測完了時に結果をIssue #92と本ADRへ反映する。
 - `OpenAiExecutionAdapterRealApiTest`（1リクエストのみの接続性確認、CIでも実行されうる形だが
   実際にはキー未設定のため常にスキップされる）と`OpenAiExecutionAdapterMeasurementTest`
   （反復実測、ユーザーが明示的に`--tests`指定して実行）を目的別に分離した。
