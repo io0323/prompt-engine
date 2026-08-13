@@ -64,6 +64,18 @@ promptengine:
   observability:
     otel:
       exporter-endpoint: ${PE_OTEL_EXPORTER_ENDPOINT:}
+  # 実行アダプタの選択（M2-1c、ADR-0030決定4）。既定fakeはM1からの挙動を変えない。
+  # 実プロバイダへ切り替える場合、APIキーは本ファイルではなくSecretManagerAdapter経由
+  # （環境変数 PE_SECRET_OPENAI_API_KEY）で供給する（ExecutionConfig.buildRealAdapter参照）。
+  execution:
+    provider: ${PE_EXECUTION_PROVIDER:fake}
+    model-name: ${PE_EXECUTION_MODEL_NAME:gpt-4o-mini}
+  # ModelProfileの供給元（M2-1c、ADR-0030決定1）。APAP不在のためconfigとして保持し、
+  # 価格改定・モデル追加のたびに値を変更してデプロイし直す運用とする。
+  model-profile:
+    max-context-tokens: ${PE_MODEL_PROFILE_MAX_CONTEXT_TOKENS:8000}
+    tokenizer-id: ${PE_MODEL_PROFILE_TOKENIZER_ID:approx}
+    cost-per-token: ${PE_MODEL_PROFILE_COST_PER_TOKEN:0.000001}
 
 springdoc:
   api-docs:
