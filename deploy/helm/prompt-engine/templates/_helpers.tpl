@@ -50,17 +50,12 @@ CLAUDE.md「モジュール構成」・Chart.yaml参照）。
         configMapKeyRef:
           name: {{ include "prompt-engine.fullname" .root }}-config
           key: eventbus-kafka-bootstrap-servers
-    # 実行アダプタの選択・ModelProfile設定（M2-1c、ADR-0030決定1・4）。
+    # 実行アダプタの選択・ModelProfile設定（ADR-0030決定1・4、ADR-0031）。
     - name: PE_EXECUTION_PROVIDER
       valueFrom:
         configMapKeyRef:
           name: {{ include "prompt-engine.fullname" .root }}-config
           key: execution-provider
-    - name: PE_EXECUTION_MODEL_NAME
-      valueFrom:
-        configMapKeyRef:
-          name: {{ include "prompt-engine.fullname" .root }}-config
-          key: execution-model-name
     - name: PE_MODEL_PROFILE_MAX_CONTEXT_TOKENS
       valueFrom:
         configMapKeyRef:
@@ -76,20 +71,6 @@ CLAUDE.md「モジュール構成」・Chart.yaml参照）。
         configMapKeyRef:
           name: {{ include "prompt-engine.fullname" .root }}-config
           key: model-profile-cost-per-token
-    # SecretManagerAdapter（EnvironmentSecretManagerAdapter）が読む環境変数名の規約
-    # PE_SECRET_<name大文字>（ExecutionConfig.API_KEY_SECRET_NAME="OPENAI_API_KEY"）に
-    # 合わせる。provider=fakeのままなら未使用（fail-fastガードがopenai選択時のみ必須にする）。
-    # optional: true — create: false + 既存の外部Secretを参照する運用（NFR-005）で、
-    # その外部Secretがexecution-api-keyキーを持たない場合でもPod生成をブロックしない
-    # ため（CodeRabbitレビュー指摘）。provider=fakeなら本キーは未使用なので、Secret側に
-    # 無くても問題ない。provider=openaiでキーが本当に無い場合はExecutionConfigの
-    # fail-fastガードが起動時に検知する。
-    - name: PE_SECRET_OPENAI_API_KEY
-      valueFrom:
-        secretKeyRef:
-          name: {{ .root.Values.secret.name }}
-          key: execution-api-key
-          optional: true
     - name: SPRING_PROFILES_ACTIVE
       value: "production"
     - name: PE_SCHEDULER_ENABLED
