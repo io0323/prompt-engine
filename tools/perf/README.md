@@ -24,13 +24,17 @@ CPU/メモリ制限付きで起動し、`/render`へcurl（接続再利用）で
 `@EnabledIfEnvironmentVariable`で`PE_OPENAI_API_KEY`未設定時は自動的にスキップされる
 （CIで実行されないのはこのため。「スキップされた」事実はJUnit XMLの`skipped`件数として残る）。
 
-| クラス | 目的 | リクエスト数 |
-|---|---|---|
-| `OpenAiExecutionAdapterRealApiTest` | 接続性の最小確認（CIでも実行されうる形。ただしCIではキー未設定のため常にスキップ） | 1 |
-| `OpenAiExecutionAdapterMeasurementTest` | 本実測。レイテンシ・usage・コストを記録する | ウォームアップ + 測定分（後述） |
+| クラス | 目的 | 有効化条件 | リクエスト数 |
+|---|---|---|---|
+| `OpenAiExecutionAdapterRealApiTest` | 接続性の最小確認（CIでも実行されうる形。ただしCIではキー未設定のため常にスキップ） | `PE_OPENAI_API_KEY` | 1 |
+| `OpenAiExecutionAdapterMeasurementTest` | 本実測。レイテンシ・usage・コストを記録する | `PE_OPENAI_API_KEY` **かつ** `PE_OPENAI_RUN_MEASUREMENT=true` | ウォームアップ + 測定分（後述） |
 
-**`OpenAiExecutionAdapterMeasurementTest`のみを明示的に指定して実行する**（`RealApiTest`は
-接続性確認用の別目的であり、実測とは分けて余分な課金をしないため）。
+`OpenAiExecutionAdapterMeasurementTest`は`PE_OPENAI_API_KEY`だけでは実行されない
+（第2条件`PE_OPENAI_RUN_MEASUREMENT=true`も必須）。接続性確認用に`PE_OPENAI_API_KEY`だけを
+設定した状態で`--tests`を付けずに広く`test`を実行しても、既定22回の有償リクエストが
+意図せず走らないようにするため。**`OpenAiExecutionAdapterMeasurementTest`のみを明示的に
+指定して実行する**（`RealApiTest`は接続性確認用の別目的であり、実測とは分けて余分な課金を
+しないため）。
 
 fixtureは`tests/prompt-regression`のGolden Prompt回帰テストが使う本番相当サイズのfixture
 （`04-production-scale-support-agent.prompt`、長いsystemブロック + 複数のfew-shot例、P11の
@@ -81,6 +85,7 @@ fixture（システムプロンプト + few-shot 3往復 + ユーザー入力）
 
 ```bash
 export PE_OPENAI_API_KEY="sk-..."   # 使い捨てキー推奨
+export PE_OPENAI_RUN_MEASUREMENT=true   # 反復計測（課金あり）を明示的に許可する第2条件
 
 # 既定（ウォームアップ2回 + 測定20回）で実行
 ./gradlew :plugins:execution-openai:test \
@@ -94,7 +99,7 @@ PE_OPENAI_MEASURE_COUNT=10 PE_OPENAI_WARMUP_COUNT=1 \
   --rerun
 
 # 実行後、キーを失効させる（OpenAIダッシュボード側の操作）
-unset PE_OPENAI_API_KEY
+unset PE_OPENAI_API_KEY PE_OPENAI_RUN_MEASUREMENT
 ```
 
 `--rerun`はGradleのUP-TO-DATE判定でテストがスキップされる（＝実行されない）のを避けるため
@@ -102,5 +107,5 @@ unset PE_OPENAI_API_KEY
 
 結果は標準出力にそのまま表示される（`./gradlew`の`test`タスクはデフォルトで
 `@Test`内の`println`出力を表示しないため、標準出力を見るには
-`--info`か、結果をコピーする場合は`build/test-results/test/TEST-...RealApiTest.xml`の
+`--info`か、結果をコピーする場合は`build/test-results/test/TEST-...MeasurementTest.xml`の
 system-outセクションを参照すること）。

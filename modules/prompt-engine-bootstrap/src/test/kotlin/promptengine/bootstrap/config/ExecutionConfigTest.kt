@@ -75,6 +75,21 @@ class ExecutionConfigTest {
     }
 
     @Test
+    fun `実プロバイダでAPIキーが空白文字列なら構築時にfail-fastする`() {
+        // Helmのsecret.executionApiKey既定値は空文字列。値を入れ忘れたまま実プロバイダへ
+        // 切り替えた誤設定を、nullチェックだけでは検知できない（CodeRabbitレビュー指摘）。
+        val e =
+            shouldThrow<IllegalStateException> {
+                config.executionAdapter(
+                    environment = environmentWithProfiles(),
+                    secretManagerAdapter = secretManagerAdapter(apiKey = "   "),
+                    providerProperties = ExecutionProviderProperties(provider = ExecutionConfig.REAL_PROVIDER),
+                )
+            }
+        e.message shouldContain "requires the '${ExecutionConfig.API_KEY_SECRET_NAME}' secret to be configured"
+    }
+
+    @Test
     fun `未知のproviderは構築時にfail-fastする`() {
         val e =
             shouldThrow<IllegalStateException> {

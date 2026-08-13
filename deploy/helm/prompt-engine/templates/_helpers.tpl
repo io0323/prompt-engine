@@ -79,11 +79,17 @@ CLAUDE.md「モジュール構成」・Chart.yaml参照）。
     # SecretManagerAdapter（EnvironmentSecretManagerAdapter）が読む環境変数名の規約
     # PE_SECRET_<name大文字>（ExecutionConfig.API_KEY_SECRET_NAME="OPENAI_API_KEY"）に
     # 合わせる。provider=fakeのままなら未使用（fail-fastガードがopenai選択時のみ必須にする）。
+    # optional: true — create: false + 既存の外部Secretを参照する運用（NFR-005）で、
+    # その外部Secretがexecution-api-keyキーを持たない場合でもPod生成をブロックしない
+    # ため（CodeRabbitレビュー指摘）。provider=fakeなら本キーは未使用なので、Secret側に
+    # 無くても問題ない。provider=openaiでキーが本当に無い場合はExecutionConfigの
+    # fail-fastガードが起動時に検知する。
     - name: PE_SECRET_OPENAI_API_KEY
       valueFrom:
         secretKeyRef:
           name: {{ .root.Values.secret.name }}
           key: execution-api-key
+          optional: true
     - name: SPRING_PROFILES_ACTIVE
       value: "production"
     - name: PE_SCHEDULER_ENABLED

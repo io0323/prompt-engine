@@ -23,14 +23,23 @@ import kotlin.math.roundToLong
  * 出力するのみで、レイテンシに対するassertion（合否判定）は行わない——実プロバイダの応答時間は
  * ネットワーク・プロバイダ側の負荷状況に左右され、固定閾値でのpass/fail判定は本フェーズの
  * 目的（「何が崩れるか」を実測して報告すること）に合わない。
+ *
+ * `PE_OPENAI_API_KEY`だけでなく`PE_OPENAI_RUN_MEASUREMENT=true`も必須にする（2条件のAND、
+ * JUnit5の`@EnabledIfEnvironmentVariable`は繰り返し指定可能で複数条件はANDで評価される
+ * ことを実測・公式ドキュメントで確認済み、CodeRabbitレビュー指摘）。理由:
+ * [OpenAiExecutionAdapterRealApiTest]の接続性確認のためだけに`PE_OPENAI_API_KEY`を
+ * 設定した状態で`--tests`を付けずに`./gradlew test`等を広く実行すると、本クラス
+ * （既定22回の有償リクエスト）まで意図せず実行されてしまう。第2の明示フラグにより、
+ * 反復計測は「本当にそれを意図した実行」でのみ発生するようにする。
  */
 @EnabledIfEnvironmentVariable(named = "PE_OPENAI_API_KEY", matches = ".+")
+@EnabledIfEnvironmentVariable(named = "PE_OPENAI_RUN_MEASUREMENT", matches = "true")
 class OpenAiExecutionAdapterMeasurementTest {
     @Test
     fun `本番相当サイズのfixtureで反復計測しレイテンシ_usage_コストを記録する`() {
         val apiKey = System.getenv("PE_OPENAI_API_KEY")
-        val measureCount = (System.getenv("PE_OPENAI_MEASURE_COUNT") ?: DEFAULT_MEASURE_COUNT.toString()).toInt()
-        val warmupCount = (System.getenv("PE_OPENAI_WARMUP_COUNT") ?: DEFAULT_WARMUP_COUNT.toString()).toInt()
+        val measureCount = parsePositiveInt("PE_OPENAI_MEASURE_COUNT", DEFAULT_MEASURE_COUNT)
+        val warmupCount = parsePositiveInt("PE_OPENAI_WARMUP_COUNT", DEFAULT_WARMUP_COUNT)
         val adapter = OpenAiExecutionAdapter(apiKey = SensitiveValue.of(apiKey), model = MODEL_NAME)
 
         println("=== warmup ($warmupCount requests, not recorded) ===")
@@ -75,6 +84,23 @@ class OpenAiExecutionAdapterMeasurementTest {
     ): Long {
         val idx = (sortedMs.size * p).roundToLong().toInt().coerceIn(1, sortedMs.size) - 1
         return sortedMs[idx]
+    }
+
+    /**
+     * 環境変数を正の整数として読む。0・負数・非数値は早期に明確なエラーとして拒否する
+     * （CodeRabbitレビュー指摘: 未検証だと`measureCount=0`で空リストのpercentile計算や
+     * ゼロ除算（平均トークン数算出）が不明瞭なエラーとして現れる）。
+     */
+    private fun parsePositiveInt(
+        envVarName: String,
+        default: Int,
+    ): Int {
+        val raw = System.getenv(envVarName) ?: return default
+        val value = raw.toIntOrNull()
+        require(value != null && value > 0) {
+            "$envVarName must be a positive integer: '$raw'"
+        }
+        return value
     }
 
     /**

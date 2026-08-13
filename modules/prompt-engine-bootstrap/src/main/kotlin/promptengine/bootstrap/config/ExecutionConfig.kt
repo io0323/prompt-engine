@@ -77,18 +77,25 @@ class ExecutionConfig {
      * APIキーは[SecretManagerAdapter]（既存Bean、[PluginEngineConfig]）経由で解決する
      * （新しい供給経路を作らない、ADR-0030決定4）。未設定の場合はBean生成自体を失敗させ、
      * 最初のリクエストで初めて落ちる事態を避ける（fail-fast）。
+     *
+     * `null`だけでなく空白文字列も拒否する（CodeRabbitレビュー指摘）:
+     * [EnvironmentSecretManagerAdapter][promptengine.infrastructure.adapter.secret.EnvironmentSecretManagerAdapter]は
+     * 環境変数が「設定されているが空文字列」の場合も非nullの[SensitiveValue]を返すため、
+     * `checkNotNull`だけでは検知できない。Helmの`secret.executionApiKey`既定値が空文字列
+     * であるため、この経路は現実的に起こりうる誤設定（値を入れ忘れたまま`provider=openai`に
+     * 切り替えた場合）である。
      */
     private fun buildRealAdapter(
         secretManagerAdapter: SecretManagerAdapter,
         modelName: String,
     ): ExecutionAdapter {
-        val apiKey =
-            checkNotNull(secretManagerAdapter.getSecret(API_KEY_SECRET_NAME)) {
-                "promptengine.execution.provider=$REAL_PROVIDER requires the " +
-                    "'$API_KEY_SECRET_NAME' secret to be configured"
-            }
+        val apiKey = secretManagerAdapter.getSecret(API_KEY_SECRET_NAME)
+        check(apiKey != null && apiKey.expose().isNotBlank()) { missingApiKeyMessage() }
         return OpenAiExecutionAdapter(apiKey = apiKey, model = modelName)
     }
+
+    private fun missingApiKeyMessage(): String =
+        "promptengine.execution.provider=$REAL_PROVIDER requires the '$API_KEY_SECRET_NAME' secret to be configured"
 
     @Bean
     fun executionEngine(
@@ -114,6 +121,7 @@ class ExecutionConfig {
             costPerToken = Cost(modelProfileProperties.costPerToken.toBigDecimal()),
         )
 
+    /** [PipelineRequestFactory]を[defaultModelProfile]で構築する。 */
     @Bean
     fun pipelineRequestFactory(defaultModelProfile: ModelProfile): PipelineRequestFactory =
         PipelineRequestFactory(defaultModelProfile)

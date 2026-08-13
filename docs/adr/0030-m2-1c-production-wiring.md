@@ -133,9 +133,17 @@ ADR-0014決定7・`RetryingExecutionAdapter`の実装は変更しない（「PE�
 取り除く際は、(a) `plugins/execution-openai`ディレクトリ、(b) `prompt-engine-bootstrap`の
 依存宣言（`build.gradle.kts`の`implementation(project(":plugins:execution-openai"))`）、
 (c) `ProviderNameContainmentTest`、(d) `ExecutionConfig.kt`のprovider分岐・実アダプタ構築処理、
-の4点を揃えて削除する必要がある。`ProviderNameContainmentTest`のallowlistは
-`ExecutionConfig.kt`（Composition Root、暫定実装を参照する唯一の正当な場所）と、
-それを検証する`ExecutionConfigTest.kt`の2ファイルに限定している。
+の4点を揃えて削除する必要がある。
+
+`ProviderNameContainmentTest`のallowlistは`ExecutionConfig.kt`（Composition Root、暫定実装を
+参照する唯一の正当な場所）のみに限定している（自己除外する`ProviderNameContainmentTest.kt`
+自身を除く）。`ExecutionConfigTest.kt`はallowlistに含めていない——`ExecutionConfig`の
+`REAL_PROVIDER`/`API_KEY_SECRET_NAME`を`internal`可視性にして名前で参照することで、
+文字列リテラルを直接書かずに済ませているため（CodeRabbitレビュー指摘で判明した記述の
+不一致を訂正）。`ProductionProfileGuardTest.kt`も同様に`ExecutionConfig.REAL_PROVIDER`を
+参照する。実APAP接続時に暫定実装を取り除く際は、上記4点に加えて`ExecutionConfigTest.kt`・
+`ProductionProfileGuardTest.kt`のこれらの参照・関連テストケースも合わせて更新・削除する
+必要がある。
 
 ## 影響範囲
 
