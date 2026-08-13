@@ -9,6 +9,7 @@ import org.springframework.boot.builder.SpringApplicationBuilder
 import org.testcontainers.containers.PostgreSQLContainer
 import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
+import promptengine.bootstrap.config.ExecutionConfig
 
 /**
  * ADR-0015の方針（本番プロファイルでInMemory/Fake実装が選択された場合に起動時エラーとする）を
@@ -43,6 +44,16 @@ import org.testcontainers.junit.jupiter.Testcontainers
  * Testcontainersコンテナへ一度も接続できず`application.yml`既定のURL（ホストの別プロセスや
  * 存在しないDB）へ接続を試みて失敗した例外でも合格しており、この経路のバグも同時に
  * 隠蔽されていた。コマンドライン引数はSpring Bootのプロパティ優先順位で最上位のため確実に勝つ。
+ *
+ * **M2-1c追加**: 実プロバイダ選択かつAPIキー未設定の場合のfail-fastも同じ手法
+ * （原因チェーンの明示確認）で検証する（`ExecutionConfig.buildRealAdapter`の`checkNotNull`、
+ * ADR-0030決定4）。実プロバイダ選択かつキー設定済みで実際に起動できることの検証は、
+ * `EnvironmentSecretManagerAdapter`が`System.getenv()`を直接読むため（Spring `Environment`
+ * 経由ではない）本テストのようなコマンドライン引数上書きでは到達できない。その経路は
+ * [ExecutionConfigTest]（Spring Contextを起動しない軽量な単体テスト、
+ * `EnvironmentSecretManagerAdapter`のテスト用コンストラクタでMapを直接注入）が担う。
+ * `provider`の具体値は文字列リテラルとして書かず[ExecutionConfig.REAL_PROVIDER]を参照する
+ * （`ProviderNameContainmentTest`のallowlistを`ExecutionConfig.kt`自身に限定し続けるため）。
  */
 @Testcontainers
 class ProductionProfileGuardTest {
@@ -76,6 +87,37 @@ class ProductionProfileGuardTest {
         }
     }
 
+    @Test
+    fun `実プロバイダ選択でAPIキー未設定の場合はリクエスト前に起動が失敗する`() {
+        val app =
+            SpringApplicationBuilder(PromptEngineApplication::class.java)
+                .web(WebApplicationType.NONE)
+                .profiles("production")
+
+        val thrown =
+            shouldThrow<Exception> {
+                app.run(
+                    "--spring.datasource.url=${postgres.jdbcUrl}",
+                    "--spring.datasource.username=${postgres.username}",
+                    "--spring.datasource.password=${postgres.password}",
+                    "--promptengine.execution.provider=${ExecutionConfig.REAL_PROVIDER}",
+                ).close()
+            }
+
+        val guardCause =
+            generateSequence<Throwable>(thrown) { it.cause }
+                .filterIsInstance<IllegalStateException>()
+                .firstOrNull { it.message?.contains(MISSING_API_KEY_MESSAGE_FRAGMENT) == true }
+
+        withClue(
+            "起動失敗の原因チェーンにAPIキー未設定のfail-fastガード" +
+                "(IllegalStateException: '$MISSING_API_KEY_MESSAGE_FRAGMENT'を含む)が" +
+                "見つからなかった。起動は別の理由で失敗している可能性がある: $thrown",
+        ) {
+            guardCause.shouldNotBeNull()
+        }
+    }
+
     companion object {
         @Container
         @JvmStatic
@@ -83,5 +125,7 @@ class ProductionProfileGuardTest {
 
         private const val GUARD_MESSAGE_FRAGMENT =
             "FakeExecutionAdapter must not be selected under the 'production' profile"
+        private val MISSING_API_KEY_MESSAGE_FRAGMENT =
+            "requires the '${ExecutionConfig.API_KEY_SECRET_NAME}' secret to be configured"
     }
 }

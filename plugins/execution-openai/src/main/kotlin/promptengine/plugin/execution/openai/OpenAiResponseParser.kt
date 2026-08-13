@@ -25,7 +25,7 @@ internal object OpenAiResponseParser {
         httpResponse: HttpResponse<String>,
         latency: LatencyMs,
     ): RawResponse {
-        requireOkStatus(httpResponse.statusCode())
+        requireOkStatus(objectMapper, httpResponse)
         val tree = parseJsonTree(objectMapper, httpResponse.body())
         return RawResponse(
             content = SensitiveValue.of(extractContent(tree)),
@@ -34,9 +34,47 @@ internal object OpenAiResponseParser {
         )
     }
 
-    private fun requireOkStatus(status: Int) {
-        if (status != HTTP_OK) {
-            throw ExecutionFailedException(classifyStatus(status), retryCount = 0)
+    private fun requireOkStatus(
+        objectMapper: ObjectMapper,
+        httpResponse: HttpResponse<String>,
+    ) {
+        val status = httpResponse.statusCode()
+        if (status == HTTP_OK) return
+        val errorType = classifyStatus(status)
+        val cause =
+            if (errorType == ExecutionErrorType.CLIENT_ERROR) {
+                contextLengthExceededCause(objectMapper, httpResponse.body())
+            } else {
+                null
+            }
+        throw ExecutionFailedException(errorType, retryCount = 0, cause = cause)
+    }
+
+    /**
+     * `error.code == "context_length_exceeded"`（OpenAIの構造化エラーコード）をベストエフォートで
+     * 検出する（M2-1c、ADR-0030決定1）。ボディがJSONとして解釈できない・想定した形でない場合は
+     * `null`を返し、呼出元は通常の`CLIENT_ERROR`（causeなし）として扱う——この検出はあくまで
+     * 運用診断の補助であり、失敗時にステータスコード自体の分類を妨げてはならない。
+     */
+    @Suppress("SwallowedException")
+    private fun contextLengthExceededCause(
+        objectMapper: ObjectMapper,
+        body: String,
+    ): Throwable? {
+        // ボディがJSONとして解釈できない場合、この検出はあきらめて通常のCLIENT_ERROR
+        // （causeなし）に倒す。ステータス自体は既に確定しているため、この段階の例外を
+        // 呼出元へ伝える必要は無い（意図的なswallow）。
+        val tree =
+            try {
+                objectMapper.readTree(body)
+            } catch (e: JsonProcessingException) {
+                return null
+            }
+        val code = tree.path("error").path("code")
+        return if (code.isTextual && code.asText() == OPENAI_CONTEXT_LENGTH_EXCEEDED_CODE) {
+            OpenAiContextLengthExceededException()
+        } else {
+            null
         }
     }
 
@@ -120,4 +158,5 @@ internal object OpenAiResponseParser {
     private const val HTTP_TOO_MANY_REQUESTS = 429
     private const val HTTP_CLIENT_ERROR_THRESHOLD = 400
     private const val HTTP_SERVER_ERROR_THRESHOLD = 500
+    private const val OPENAI_CONTEXT_LENGTH_EXCEEDED_CODE = "context_length_exceeded"
 }

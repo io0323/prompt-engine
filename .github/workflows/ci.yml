@@ -97,6 +97,18 @@ jobs:
       - name: Skip (Gradle not yet initialized — P0 pending)
         if: steps.gradlew.outputs.exists == 'false'
         run: echo "::notice::./gradlew not found. Skipping until P0 (repository init) is complete."
+      - name: 実プロバイダAPI疎通確認テストのスキップ状況を通知
+        # PE_OPENAI_API_KEY未設定時はJUnit5がOpenAiExecutionAdapterRealApiTestをskip扱いにする
+        # （M2-1c、ADR-0030決定3）。tag除外と違いJUnit XMLに`skipped="1"`として残るため、
+        # ここで検出してChecksタブに明示する（「実行されなかった」事実がログに埋もれるsilent
+        # greenを防ぐ）。CIではこのキーを意図的に設定しない（実プロバイダへの課金・外部要因の
+        # 不安定性を必須ゲートに持ち込まない方針）ため、このnoticeは常時出る想定。
+        if: always() && steps.gradlew.outputs.exists == 'true'
+        run: |
+          xml="plugins/execution-openai/build/test-results/test/TEST-promptengine.plugin.execution.openai.OpenAiExecutionAdapterRealApiTest.xml"
+          if [ -f "$xml" ] && grep -q 'skipped="1"' "$xml"; then
+            echo "::notice::実プロバイダAPI疎通確認テスト（OpenAiExecutionAdapterRealApiTest）はスキップされました（PE_OPENAI_API_KEY未設定、意図された挙動）。実測はユーザーが手元で実行する運用です（tools/perf/README.md参照）。"
+          fi
       - uses: actions/upload-artifact@v7
         if: always() && steps.gradlew.outputs.exists == 'true'
         with:

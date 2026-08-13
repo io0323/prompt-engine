@@ -48,10 +48,10 @@ dependencies {
     implementation(project(":plugins:tokenizer-approx"))
     implementation(project(":plugins:validator-policy"))
 
-    // execution-openai（M2-1a、ADR-0029）はDI配線しない（実接続はM2-1cのスコープ）。
-    // testImplementationのみで、ArchitectureTestの「Plugin実装は...に依存しない」検証
-    // （ADR-0003規約6）の対象クラスパスに乗せる目的に限定する。
-    testImplementation(project(":plugins:execution-openai"))
+    // execution-openai（M2-1a、ADR-0029）はM2-1cでDI配線した（ExecutionConfig、
+    // promptengine.execution.provider）。ArchUnit/ProviderNameContainmentTestのallowlistは
+    // ExecutionConfig.kt一箇所に限定している（ADR-0030決定4）。
+    implementation(project(":plugins:execution-openai"))
 
     implementation(libs.spring.boot.starter.web)
     implementation(libs.spring.boot.starter.actuator)

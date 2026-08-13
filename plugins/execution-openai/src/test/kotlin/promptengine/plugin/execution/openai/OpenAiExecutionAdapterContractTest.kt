@@ -102,11 +102,49 @@ class OpenAiExecutionAdapterContractTest {
     }
 
     @Test
-    fun `429を除く4xxはCLIENT_ERRORに分類される`() {
+    fun `429を除く4xxはCLIENT_ERRORに分類されcauseは付与されない`() {
         wm.stubFor(post(urlEqualTo("/v1/chat/completions")).willReturn(aResponse().withStatus(401)))
 
         val e = shouldThrow<ExecutionFailedException> { adapter().execute(prompt(), policy()) }
         e.errorType shouldBe ExecutionErrorType.CLIENT_ERROR
+        e.cause shouldBe null
+    }
+
+    @Test
+    fun `コンテキスト長超過エラーはCLIENT_ERRORに分類されつつcauseで他の4xxと区別される`() {
+        // ModelProfile.maxContextTokensと実モデルの上限が乖離した場合の実運用シナリオ（ADR-0030決定1）。
+        // リトライ可否自体は他の4xxと同じ（CLIENT_ERROR、リトライ不可）だが、原因が
+        // 「設定不備」であることをcauseの型で識別可能にする。
+        wm.stubFor(
+            post(urlEqualTo("/v1/chat/completions"))
+                .willReturn(
+                    aResponse().withStatus(400).withHeader("Content-Type", "application/json").withBody(
+                        """{"error":{"message":"This model's maximum context length is 8192 tokens.",""" +
+                            """"type":"invalid_request_error","param":"messages","code":"context_length_exceeded"}}""",
+                    ),
+                ),
+        )
+
+        val e = shouldThrow<ExecutionFailedException> { adapter().execute(prompt(), policy()) }
+        e.errorType shouldBe ExecutionErrorType.CLIENT_ERROR
+        (e.cause is OpenAiContextLengthExceededException) shouldBe true
+    }
+
+    @Test
+    fun `error_codeがcontext_length_exceeded以外の400はCLIENT_ERRORでcauseは付与されない`() {
+        wm.stubFor(
+            post(urlEqualTo("/v1/chat/completions"))
+                .willReturn(
+                    aResponse().withStatus(400).withHeader("Content-Type", "application/json").withBody(
+                        """{"error":{"message":"invalid request",""" +
+                            """"type":"invalid_request_error","code":"invalid_value"}}""",
+                    ),
+                ),
+        )
+
+        val e = shouldThrow<ExecutionFailedException> { adapter().execute(prompt(), policy()) }
+        e.errorType shouldBe ExecutionErrorType.CLIENT_ERROR
+        e.cause shouldBe null
     }
 
     @Test
