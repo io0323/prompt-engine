@@ -16,9 +16,9 @@ import promptengine.bootstrap.config.ExecutionConfig
  * アプリケーション全体の起動シーケンスで検証する（P9c、9cキックオフの必須要件）。
  *
  * [FakeExecutionAdapter][promptengine.plugin.execution.fake.FakeExecutionAdapter]（唯一の
- * [promptengine.domain.execution.ExecutionAdapter]実装、M2で実APAPアダプタに置き換わるまでの
- * 暫定）が、`production`プロファイルの`init`ガード（P9cで追加）により`IllegalStateException`を
- * 投げ、Bean生成が失敗してコンテキスト全体が起動しないことを確認する。
+ * 実装済み[promptengine.domain.execution.ExecutionAdapter]、APAPは独立基盤として別途構築する
+ * 方針が確定し実装待ち、ADR-0031）が、`production`プロファイルの`init`ガード（P9cで追加）により
+ * `IllegalStateException`を投げ、Bean生成が失敗してコンテキスト全体が起動しないことを確認する。
  *
  * `@SpringBootTest`ではなく[SpringApplicationBuilder]を直接操作する: コンテキスト起動失敗を
  * 検証する場合、`@SpringBootTest`のテストライフサイクル自体が起動失敗時にテストを
@@ -45,15 +45,9 @@ import promptengine.bootstrap.config.ExecutionConfig
  * 存在しないDB）へ接続を試みて失敗した例外でも合格しており、この経路のバグも同時に
  * 隠蔽されていた。コマンドライン引数はSpring Bootのプロパティ優先順位で最上位のため確実に勝つ。
  *
- * **M2-1c追加**: 実プロバイダ選択かつAPIキー未設定の場合のfail-fastも同じ手法
- * （原因チェーンの明示確認）で検証する（`ExecutionConfig.buildRealAdapter`の`checkNotNull`、
- * ADR-0030決定4）。実プロバイダ選択かつキー設定済みで実際に起動できることの検証は、
- * `EnvironmentSecretManagerAdapter`が`System.getenv()`を直接読むため（Spring `Environment`
- * 経由ではない）本テストのようなコマンドライン引数上書きでは到達できない。その経路は
- * [ExecutionConfigTest]（Spring Contextを起動しない軽量な単体テスト、
- * `EnvironmentSecretManagerAdapter`のテスト用コンストラクタでMapを直接注入）が担う。
- * `provider`の具体値は文字列リテラルとして書かず[ExecutionConfig.REAL_PROVIDER]を参照する
- * （`ProviderNameContainmentTest`のallowlistを`ExecutionConfig.kt`自身に限定し続けるため）。
+ * `provider=apap`選択時のfail-fast（ADR-0031、APAP未実装）も同じ手法（原因チェーンの明示確認）
+ * で検証する。`provider`の具体値は文字列リテラルとして書かず[ExecutionConfig.APAP_PROVIDER]を
+ * 参照する。
  */
 @Testcontainers
 class ProductionProfileGuardTest {
@@ -88,7 +82,7 @@ class ProductionProfileGuardTest {
     }
 
     @Test
-    fun `実プロバイダ選択でAPIキー未設定の場合はリクエスト前に起動が失敗する`() {
+    fun `provider=apap選択時はAPAP未実装のため起動が失敗する`() {
         val app =
             SpringApplicationBuilder(PromptEngineApplication::class.java)
                 .web(WebApplicationType.NONE)
@@ -100,18 +94,18 @@ class ProductionProfileGuardTest {
                     "--spring.datasource.url=${postgres.jdbcUrl}",
                     "--spring.datasource.username=${postgres.username}",
                     "--spring.datasource.password=${postgres.password}",
-                    "--promptengine.execution.provider=${ExecutionConfig.REAL_PROVIDER}",
+                    "--promptengine.execution.provider=${ExecutionConfig.APAP_PROVIDER}",
                 ).close()
             }
 
         val guardCause =
             generateSequence<Throwable>(thrown) { it.cause }
                 .filterIsInstance<IllegalStateException>()
-                .firstOrNull { it.message?.contains(MISSING_API_KEY_MESSAGE_FRAGMENT) == true }
+                .firstOrNull { it.message?.contains(APAP_NOT_IMPLEMENTED_MESSAGE_FRAGMENT) == true }
 
         withClue(
-            "起動失敗の原因チェーンにAPIキー未設定のfail-fastガード" +
-                "(IllegalStateException: '$MISSING_API_KEY_MESSAGE_FRAGMENT'を含む)が" +
+            "起動失敗の原因チェーンにAPAP未実装のfail-fastガード" +
+                "(IllegalStateException: '$APAP_NOT_IMPLEMENTED_MESSAGE_FRAGMENT'を含む)が" +
                 "見つからなかった。起動は別の理由で失敗している可能性がある: $thrown",
         ) {
             guardCause.shouldNotBeNull()
@@ -125,7 +119,6 @@ class ProductionProfileGuardTest {
 
         private const val GUARD_MESSAGE_FRAGMENT =
             "FakeExecutionAdapter must not be selected under the 'production' profile"
-        private val MISSING_API_KEY_MESSAGE_FRAGMENT =
-            "requires the '${ExecutionConfig.API_KEY_SECRET_NAME}' secret to be configured"
+        private const val APAP_NOT_IMPLEMENTED_MESSAGE_FRAGMENT = "is not yet implemented"
     }
 }

@@ -4,19 +4,12 @@ import io.kotest.assertions.throwables.shouldNotThrowAny
 import io.kotest.assertions.throwables.shouldThrow
 import org.junit.jupiter.api.Test
 
-/** [ExecutionProviderProperties]の`init`検証（M2-1c、ADR-0030決定4）。 */
+/** [ExecutionProviderProperties]の`init`検証（ADR-0030決定4、ADR-0031）。 */
 class ExecutionProviderPropertiesTest {
     @Test
     fun `providerが空白なら構築時に例外を投げる`() {
         shouldThrow<IllegalArgumentException> {
             ExecutionProviderProperties(provider = "  ")
-        }
-    }
-
-    @Test
-    fun `modelNameが空白なら構築時に例外を投げる`() {
-        shouldThrow<IllegalArgumentException> {
-            ExecutionProviderProperties(modelName = "  ")
         }
     }
 
