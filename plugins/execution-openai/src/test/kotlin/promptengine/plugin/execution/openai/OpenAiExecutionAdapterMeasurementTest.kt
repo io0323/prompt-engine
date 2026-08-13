@@ -136,17 +136,22 @@ class OpenAiExecutionAdapterMeasurementTest {
         println("  HTTP status: ${httpResponse.statusCode()}")
         println("  response body: ${httpResponse.body().take(RESPONSE_BODY_PREVIEW_LENGTH)}")
 
-        val result = runCatching { OpenAiResponseParser.parse(ObjectMapper(), httpResponse, LatencyMs(0)) }
-        val failure = result.exceptionOrNull()
-        when {
-            result.isSuccess -> println("  classified: success（このシナリオでは想定外——エラーにならなかった）")
-            failure is ExecutionFailedException ->
+        // 想定外の成功・想定外の例外型は、このシナリオがエラー経路として機能していない
+        // （＝実プロバイダの挙動が前提から崩れている）ことを意味するため、診断出力だけで
+        // 済ませずテスト自体を失敗させる（CodeRabbitレビュー指摘）。どのExecutionErrorTypeに
+        // 分類されるかは意図的に固定しない（それ自体が実測で確認したい対象のため）。
+        val failure =
+            runCatching { OpenAiResponseParser.parse(ObjectMapper(), httpResponse, LatencyMs(0)) }
+                .exceptionOrNull()
+        when (failure) {
+            is ExecutionFailedException ->
                 println(
                     "  classified ExecutionErrorType: ${failure.errorType}" +
                         " / cause: ${failure.cause?.javaClass?.simpleName ?: "none"}" +
                         (failure.cause?.message?.let { " ($it)" } ?: ""),
                 )
-            else -> println("  classification中に想定外の例外: $failure")
+            null -> throw AssertionError("$label: expected an error response but the request succeeded")
+            else -> throw AssertionError("$label: expected ExecutionFailedException but got $failure", failure)
         }
     }
 
