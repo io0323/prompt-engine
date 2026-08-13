@@ -1,14 +1,23 @@
 package promptengine.plugin.execution.openai
 
+import com.fasterxml.jackson.databind.JsonNode
+import com.fasterxml.jackson.databind.ObjectMapper
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable
+import promptengine.domain.execution.ExecutionFailedException
 import promptengine.domain.execution.ExecutionPolicy
 import promptengine.domain.render.MessageRole
 import promptengine.domain.render.OutputFormat
 import promptengine.domain.render.RenderedMessage
 import promptengine.domain.render.RenderedPrompt
+import promptengine.domain.shared.LatencyMs
 import promptengine.domain.shared.SensitiveValue
 import promptengine.domain.shared.TokenCount
+import java.net.URI
+import java.net.http.HttpClient
+import java.net.http.HttpRequest
+import java.net.http.HttpResponse
+import java.time.Duration
 import kotlin.math.roundToLong
 
 /**
@@ -29,8 +38,14 @@ import kotlin.math.roundToLong
  * ことを実測・公式ドキュメントで確認済み、CodeRabbitレビュー指摘）。理由:
  * [OpenAiExecutionAdapterRealApiTest]の接続性確認のためだけに`PE_OPENAI_API_KEY`を
  * 設定した状態で`--tests`を付けずに`./gradlew test`等を広く実行すると、本クラス
- * （既定22回の有償リクエスト）まで意図せず実行されてしまう。第2の明示フラグにより、
+ * （既定25回の有償リクエスト）まで意図せず実行されてしまう。第2の明示フラグにより、
  * 反復計測は「本当にそれを意図した実行」でのみ発生するようにする。
+ *
+ * 正常系の反復計測（既定22回、[本番相当サイズのfixtureで反復計測しレイテンシ_usage_コストを記録する]）
+ * に加え、エラー経路の実測（3回、[エラー経路を実測しExecutionErrorTypeへの分類が実物と一致するか確認する]、
+ * Issue #92）を行う。契約テスト（`OpenAiExecutionAdapterContractTest`）はWireMockのスタブに対して
+ * しか通っておらず、実プロバイダが本当にその形で応答するかは未確認だった——ADR-0014/ADR-0029の
+ * 前提が崩れるとすればまずここである。
  */
 @EnabledIfEnvironmentVariable(named = "PE_OPENAI_API_KEY", matches = ".+")
 @EnabledIfEnvironmentVariable(named = "PE_OPENAI_RUN_MEASUREMENT", matches = "true")
@@ -77,6 +92,96 @@ class OpenAiExecutionAdapterMeasurementTest {
                 "の設定値であり、本テストは算出しない。実コストはプロバイダの請求ダッシュボードで確認すること。",
         )
     }
+
+    /**
+     * エラー経路の実測（3リクエスト、Issue #92）。
+     *
+     * 正常系の反復計測だけでは、ADR-0014/ADR-0029のリトライ方針・分類ロジックが実際に
+     * 前提とする「プロバイダの4xx応答の形」を検証できない——契約テスト（`OpenAiExecutionAdapterContractTest`）
+     * はWireMockのスタブに対してしか通っておらず、実プロバイダが本当にその形（`error.code`等）で
+     * 返すかは未確認のまま。3ケースとも1リクエストのみで、認証・モデル解決・入力検証のいずれかの
+     * 段階で拒否される想定のため課金はほぼ発生しない（コンテキスト長超過はモデル実行前に拒否され、
+     * 無効なキー・存在しないモデル名は認証/ルーティング段階で拒否される）。
+     *
+     * [OpenAiExecutionAdapter]を経由せず生の[HttpClient]でリクエストを送る。理由:
+     * [ExecutionFailedException]は`errorType`と（一部ケースのみ）`cause`しか保持せず、生の
+     * HTTPステータス・応答本文を呼出元へ返さない（ADR-0014決定9、秘密情報混入を避ける設計）。
+     * 「実際に返ってきたHTTPステータス・応答本文」と「分類されたExecutionErrorType」を両方
+     * 記録するには、1回のHTTPレスポンスを両方の用途に使う必要がある。[OpenAiResponseParser.parse]
+     * （internal、同一モジュール）へ生の[HttpResponse]をそのまま渡すことで、
+     * [OpenAiExecutionAdapter]が内部的に使うのと全く同じ分類ロジックを、生のステータス・本文と
+     * 併せて記録できる（再実装せず実際のロジックを直接検証する）。
+     */
+    @Test
+    fun `エラー経路を実測しExecutionErrorTypeへの分類が実物と一致するか確認する`() {
+        val apiKey = System.getenv("PE_OPENAI_API_KEY")
+        println("=== error path measurement (3 requests) ===")
+
+        measureErrorPath("コンテキスト長超過", buildRawRequest(apiKey, MODEL_NAME, oversizedContent()))
+        measureErrorPath("無効なAPIキー", buildRawRequest(INVALID_API_KEY, MODEL_NAME, "ping"))
+        measureErrorPath("存在しないモデル名", buildRawRequest(apiKey, NONEXISTENT_MODEL_NAME, "ping"))
+    }
+
+    private fun measureErrorPath(
+        label: String,
+        httpRequest: HttpRequest,
+    ) {
+        val httpClient =
+            HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(ERROR_PATH_CONNECT_TIMEOUT_SECONDS))
+                .build()
+        val httpResponse = httpClient.send(httpRequest, HttpResponse.BodyHandlers.ofString())
+
+        println("--- $label ---")
+        println("  HTTP status: ${httpResponse.statusCode()}")
+        println("  response body: ${httpResponse.body().take(RESPONSE_BODY_PREVIEW_LENGTH)}")
+
+        val result = runCatching { OpenAiResponseParser.parse(ObjectMapper(), httpResponse, LatencyMs(0)) }
+        val failure = result.exceptionOrNull()
+        when {
+            result.isSuccess -> println("  classified: success（このシナリオでは想定外——エラーにならなかった）")
+            failure is ExecutionFailedException ->
+                println(
+                    "  classified ExecutionErrorType: ${failure.errorType}" +
+                        " / cause: ${failure.cause?.javaClass?.simpleName ?: "none"}" +
+                        (failure.cause?.message?.let { " ($it)" } ?: ""),
+                )
+            else -> println("  classification中に想定外の例外: $failure")
+        }
+    }
+
+    private fun buildRawRequest(
+        apiKey: String,
+        model: String,
+        content: String,
+    ): HttpRequest {
+        val mapper = ObjectMapper()
+        val message =
+            mapper.createObjectNode().apply {
+                put("role", "user")
+                put("content", content)
+            }
+        val messages = mapper.createArrayNode().apply { add(message) }
+        val root =
+            mapper.createObjectNode().apply {
+                put("model", model)
+                set<JsonNode>("messages", messages)
+            }
+        return HttpRequest.newBuilder()
+            .uri(URI.create("https://api.openai.com/v1/chat/completions"))
+            .timeout(Duration.ofMillis(TIMEOUT_MS))
+            .header("Authorization", "Bearer $apiKey")
+            .header("Content-Type", "application/json")
+            .POST(HttpRequest.BodyPublishers.ofString(mapper.writeValueAsString(root)))
+            .build()
+    }
+
+    /**
+     * 既知のどのモデルのコンテキスト長上限も確実に超える入力を生成する（実際の上限値を
+     * 前提にしない。将来上限が拡張されても超過し続けるよう十分な余裕を持たせる）。
+     * モデル実行前の入力検証で拒否される想定のため、この入力自体が生成コストを生むことはない。
+     */
+    private fun oversizedContent(): String = FILLER_LINE.repeat(OVERSIZED_CONTENT_REPEAT_COUNT)
 
     private fun percentile(
         sortedMs: List<Long>,
@@ -182,5 +287,13 @@ class OpenAiExecutionAdapterMeasurementTest {
         private const val PREVIEW_LENGTH = 60
         private const val PERCENTILE_50 = 0.50
         private const val PERCENTILE_99 = 0.99
+
+        // エラー経路測定（Issue #92）用の定数。
+        private const val INVALID_API_KEY = "sk-invalid-test-key-0000000000000000000000000000"
+        private const val NONEXISTENT_MODEL_NAME = "gpt-this-model-does-not-exist-pe-m2-1c"
+        private const val FILLER_LINE = "This is filler text used only to intentionally exceed the context window. "
+        private const val OVERSIZED_CONTENT_REPEAT_COUNT = 50_000
+        private const val ERROR_PATH_CONNECT_TIMEOUT_SECONDS = 10L
+        private const val RESPONSE_BODY_PREVIEW_LENGTH = 500
     }
 }
