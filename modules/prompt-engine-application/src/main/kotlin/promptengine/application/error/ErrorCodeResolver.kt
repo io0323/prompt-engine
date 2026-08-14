@@ -4,6 +4,7 @@ import promptengine.application.pipeline.StageErrorMapper
 import promptengine.domain.prompt.ArchiveRequiresForceException
 import promptengine.domain.shared.IdempotencyKeyConflictException
 import promptengine.domain.shared.IdempotencyKeyInProgressException
+import promptengine.domain.shared.OptimisticLockConflictException
 import promptengine.domain.validation.ValidationFailedException
 
 /** 設計書§13.3 `details[]`の1件。`prompt-engine-interface`はdomain型（`Finding`等）に依存できないため、この型経由で受け渡す。 */
@@ -26,6 +27,7 @@ object ErrorCodeResolver {
     const val INVALID_STATE_TRANSITION = "INVALID_STATE_TRANSITION"
     const val IDEMPOTENCY_KEY_CONFLICT = "IDEMPOTENCY_KEY_CONFLICT"
     const val IDEMPOTENCY_KEY_IN_PROGRESS = "IDEMPOTENCY_KEY_IN_PROGRESS"
+    const val VERSION_CONFLICT = "VERSION_CONFLICT"
 
     fun resolve(throwable: Throwable): String =
         when (throwable) {
@@ -34,6 +36,7 @@ object ErrorCodeResolver {
             is ArchiveRequiresForceException -> INVALID_STATE_TRANSITION
             is IdempotencyKeyConflictException -> IDEMPOTENCY_KEY_CONFLICT
             is IdempotencyKeyInProgressException -> IDEMPOTENCY_KEY_IN_PROGRESS
+            is OptimisticLockConflictException -> VERSION_CONFLICT
             else -> StageErrorMapper.errorCodeFor(throwable)
         }
 
