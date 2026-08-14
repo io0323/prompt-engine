@@ -196,6 +196,16 @@ class JdbcReviewCaseRepositoryIntegrationTest {
                 String::class.java,
             )
         comment shouldBe "not aligned with policy"
+
+        val eventTypes =
+            jdbcTemplate.query(
+                """
+                SELECT event_type FROM domain_events
+                WHERE aggregate_id = :reviewId AND aggregate_type = 'ReviewCase' ORDER BY sequence
+                """.trimIndent(),
+                MapSqlParameterSource("reviewId", created.reviewId),
+            ) { rs, _ -> rs.getString("event_type") }
+        eventTypes shouldBe listOf("PromptReviewRequested", "PromptRejected")
     }
 
     @Test
