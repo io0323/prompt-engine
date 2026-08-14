@@ -95,8 +95,14 @@ class PromptLifecycleSmokeTest {
 
         // 自己承認は拒否される（4-eyes、promptengine.review.allow-self-approvalの既定false）。
         // 作成者自身のsubjectでapproveを試み、409（INVALID_STATE_TRANSITION、'SelfApproval'）を
-        // 確認する（このガードが実際に実行される経路をE2Eで通す。ADR-0032）。
-        approve(headersFor(AUTHOR_SUBJECT, "prompt:approve")).statusCode shouldBe HttpStatus.CONFLICT
+        // 確認する（このガードが実際に実行される経路をE2Eで通す。ADR-0032）。ステータスコードだけ
+        // でなくerror.codeも確認し、別の理由（例: 別のガード）による409と混同しないようにする
+        // （CodeRabbitレビュー指摘）。
+        val selfApproveResponse = approve(headersFor(AUTHOR_SUBJECT, "prompt:approve"))
+        selfApproveResponse.statusCode shouldBe HttpStatus.CONFLICT
+        @Suppress("UNCHECKED_CAST")
+        val selfApproveError = selfApproveResponse.body?.get("error") as? Map<String, Any?>
+        selfApproveError?.get("code") shouldBe "INVALID_STATE_TRANSITION"
 
         // 承認者（作成者とは異なるsubject）によるapproveは成功する。InReview→Approved。
         approve(headersFor(APPROVER_SUBJECT, "prompt:approve")).statusCode shouldBe HttpStatus.OK

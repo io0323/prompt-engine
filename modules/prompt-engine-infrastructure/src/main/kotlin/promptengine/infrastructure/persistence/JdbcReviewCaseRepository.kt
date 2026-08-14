@@ -30,7 +30,13 @@ import java.util.UUID
  *
  * `approvals`は追記専用に見えるが、実装を単純にするため保存のたびに
  * DELETE→再INSERTする（`variable_defs`と同じ方式、P2/ADR-0008）。件数は
- * レビュー参加者数程度で小さく、性能上の懸念はない。
+ * レビュー参加者数程度で小さく、性能上の懸念はない。`approval_id`は保存のたびに
+ * 新規採番するため安定した識別子ではない（外部からこの列を参照する用途は無い、
+ * ADR-0032は`approvals`をReviewCase Aggregate内部の値として扱う）。[loadApprovals]の
+ * 並び順は`decided_at, approver`（`approver`は`ReviewCase.approve`が重複承認を拒否する
+ * ため一意）でタイブレークし、`decided_at`が同一の場合でも保存のたびに順序が変わらない
+ * ようにする（`approval_id`は保存ごとに再採番されるためタイブレークに使わない、
+ * CodeRabbitレビュー指摘）。
  */
 class JdbcReviewCaseRepository(
     private val jdbcTemplate: NamedParameterJdbcTemplate,
@@ -153,7 +159,7 @@ class JdbcReviewCaseRepository(
         jdbcTemplate.query(
             """
             SELECT approver, decision, comment, decided_at
-            FROM approvals WHERE review_id = :reviewId ORDER BY decided_at, approval_id
+            FROM approvals WHERE review_id = :reviewId ORDER BY decided_at, approver
             """.trimIndent(),
             MapSqlParameterSource("reviewId", reviewId),
         ) { rs, _ ->

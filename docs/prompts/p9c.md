@@ -60,13 +60,15 @@ P1から現在までbootstrapのDI配線が未着手であり、このアプリ�
 
 - IdempotentCommandExecutor.executeLongRunningのIN_PROGRESS滞留対策はIssue #50でP10へ送り済み（9cはブロックしない）
 - Bootstrap DIはP1〜9a分も含め全く未着手。今回が初のDI配線
-- **E2Eスモークテストの`publish`について（M2-2で解消済み。以下は9c実施当時の記録）**:
-  `submit-review`/`approve`/`reject`エンドポイントは、9c実施当時はADR-0016によりM2スコープ
-  （ReviewCase Aggregate未実装のため）だった。M1のAPIサーフェスだけではDraft→Approvedへ
-  遷移させる手段が無く、`publish`はApproved状態のVersionにしか実行できないため、E2E
-  スモークテストは実HTTPだけでは完走できなかった。Approved状態への遷移のみテストフィクスチャ
-  （`PromptRepository`を直接操作）で先回りし、`publish`以降（`publish`・`render`という
-  実装済みエンドポイント自体の動作）は実HTTPで検証する方針としていた（ADR-0016・
-  GitHub Issue #9）。M2-2でReviewCase Aggregateとsubmit-review/approve/rejectを実装し
-  （ADR-0032、ADR-0016をsupersede）、このテストフィクスチャのバイパスは
-  `PromptLifecycleSmokeTest`から削除した。現在は全工程が実HTTPで完走する。
+- **E2Eスモークテストの`publish`について**: `submit-review`/`approve`/`reject`エンドポイントは
+  ADR-0016によりM2スコープ（ReviewCase Aggregate未実装のため）。M1のAPIサーフェスだけでは
+  Draft→Approvedへ遷移させる手段が無く、`publish`はApproved状態のVersionにしか実行できない
+  ため、E2Eスモークテストは実HTTPだけでは完走できない。Approved状態への遷移のみ
+  テストフィクスチャ（`PromptRepository`を直接操作）で先回りし、`publish`以降（`publish`・
+  `render`という実装済みエンドポイント自体の動作）は引き続き実HTTPで検証する
+  （`PromptLifecycleSmokeTest`のKDoc参照、ADR-0016・GitHub Issue #9）。
+
+**追記（M2-2、CodeRabbitレビュー指摘によりこの節自体は9c当時の記録として保持し、以下を
+別項として追記する）**: ReviewCase Aggregateとsubmit-review/approve/rejectを実装し
+（ADR-0032、ADR-0016をsupersede）、上記フィクスチャのバイパスは`PromptLifecycleSmokeTest`
+から削除した。現在は全工程が実HTTPで完走する。

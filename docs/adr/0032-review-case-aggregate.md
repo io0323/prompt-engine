@@ -33,9 +33,12 @@ Aggregate（Governanceコンテキスト、設計書§4.1）が発火元と定�
 ### 1. approve確定時はReviewCaseとPromptを同一DBトランザクションで更新する
 
 `submitForReview`/`approve`/`reject`のいずれも、1つのApplication層ハンドラが
-`ReviewCaseRepository`と`PromptRepository`の両方の`save()`を1つの`TransactionTemplate.execute`
-ブロック内で呼ぶ（既存の`EventStorePromptRepository.save`・`JdbcIdempotentCommandExecutor`と
-同じ、`@Transactional`アノテーションではなく`TransactionTemplate`を使う既存方式を踏襲）。
+`IdempotentCommandExecutor.executeInTransaction`（既存のCRUD系ハンドラが共通で使う
+トランザクション境界。実装は`JdbcIdempotentCommandExecutor`が`TransactionTemplate`で持つ）
+の1呼び出し内で`ReviewCaseRepository`と`PromptRepository`の両方の`save()`を呼ぶ。
+ハンドラ自身は`TransactionTemplate`を直接扱わない（`@Transactional`アノテーションを
+使わない既存方針は維持しつつ、境界の宣言はCRUD系ハンドラと同じ`executeInTransaction`
+経由に統一する）。
 
 **何を諦めたか**: Aggregate境界の独立性。`ReviewCase`（Governance）と`Prompt`（Prompt
 Authoring）は設計書§4.1で別Bounded Contextと定義されており、本来はそれぞれが自身の
