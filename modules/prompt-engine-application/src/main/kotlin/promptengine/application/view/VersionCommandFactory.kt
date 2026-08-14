@@ -1,9 +1,12 @@
 package promptengine.application.view
 
+import promptengine.application.command.ApproveCommand
 import promptengine.application.command.CreateVersionCommand
 import promptengine.application.command.DeprecateCommand
 import promptengine.application.command.PublishCommand
+import promptengine.application.command.RejectCommand
 import promptengine.application.command.RollbackCommand
+import promptengine.application.command.SubmitReviewCommand
 import promptengine.application.query.DiffQuery
 import promptengine.application.query.GetVersionQuery
 
@@ -52,6 +55,49 @@ object VersionCommandFactory {
         RollbackCommand(
             DomainValueFactory.promptKey(key),
             DomainValueFactory.semVer(targetSemVer),
+            meta.actor,
+            meta.traceId,
+            meta.idempotencyKey,
+        )
+
+    fun submitReviewCommand(
+        key: String,
+        semVer: String,
+        meta: RequestMeta,
+    ): SubmitReviewCommand =
+        SubmitReviewCommand(
+            DomainValueFactory.promptKey(key),
+            DomainValueFactory.semVer(semVer),
+            meta.actor,
+            meta.traceId,
+            meta.idempotencyKey,
+        )
+
+    fun approveCommand(
+        key: String,
+        semVer: String,
+        comment: String?,
+        meta: RequestMeta,
+    ): ApproveCommand =
+        ApproveCommand(
+            DomainValueFactory.promptKey(key),
+            DomainValueFactory.semVer(semVer),
+            comment,
+            meta.actor,
+            meta.traceId,
+            meta.idempotencyKey,
+        )
+
+    fun rejectCommand(
+        key: String,
+        semVer: String,
+        comment: String,
+        meta: RequestMeta,
+    ): RejectCommand =
+        RejectCommand(
+            DomainValueFactory.promptKey(key),
+            DomainValueFactory.semVer(semVer),
+            comment,
             meta.actor,
             meta.traceId,
             meta.idempotencyKey,

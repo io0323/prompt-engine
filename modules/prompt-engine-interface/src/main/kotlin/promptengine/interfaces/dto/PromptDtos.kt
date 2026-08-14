@@ -46,6 +46,14 @@ data class RollbackRequestDto(
 /** `POST /prompts/{namespace}/{name}/versions/{version}/deprecate`（設計書§13.1）のリクエストボディ。 */
 data class DeprecateRequestDto(val recommendedReplacement: String? = null)
 
+/** `POST /prompts/{namespace}/{name}/versions/{version}/approve`（設計書§13.1）のリクエストボディ。 */
+data class ApproveRequestDto(val comment: String? = null)
+
+/** `POST /prompts/{namespace}/{name}/versions/{version}/reject`（設計書§13.1、comment必須）のリクエストボディ。 */
+data class RejectRequestDto(
+    @field:NotBlank val comment: String,
+)
+
 /** `POST /prompts/{namespace}/{name}/aliases`（設計書§13.1）のリクエストボディ。 */
 data class SetAliasRequestDto(
     @field:NotBlank val alias: String,

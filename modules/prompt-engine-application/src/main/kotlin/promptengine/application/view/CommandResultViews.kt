@@ -11,7 +11,9 @@ import promptengine.application.command.UpdatePromptMetadataResult
 
 /**
  * CRUD系Commandハンドラの結果（`key`/`semVer`等がdomain型）をString主体のViewへ変換する
- * （[PromptViews.kt][promptengine.application.view]のKDoc参照）。
+ * （[PromptViews.kt][promptengine.application.view]のKDoc参照）。ReviewCase関連は
+ * detektの`TooManyFunctions`閾値対策で`GovernanceCommandResultViews.kt`へ分離する
+ * （`CommandHandlersConfig`のKDoc「detekt閾値対策で分割」と同じ考え方）。
  */
 data class KeySemVerView(val key: String, val semVer: String)
 
