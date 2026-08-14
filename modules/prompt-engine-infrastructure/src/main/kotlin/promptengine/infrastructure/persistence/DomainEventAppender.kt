@@ -3,6 +3,8 @@ package promptengine.infrastructure.persistence
 import com.fasterxml.jackson.databind.ObjectMapper
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
+import promptengine.domain.event.DomainEvent
+import promptengine.domain.governance.ReviewCaseDomainEvent
 import promptengine.domain.prompt.PromptDomainEvent
 import java.sql.Timestamp
 import java.time.Instant
@@ -10,30 +12,24 @@ import java.util.UUID
 
 /**
  * `domain_events`への追記・`outbox`への追記（設計書§2.14・§3.4「Aggregate単位・イベント追記」、
- * ADR-0006）を行う共通処理。[EventStorePromptRepository.save]と
- * [JdbcPromptMetadataRepository.upsert]の両方（Prompt Aggregateの状態変化を伴わない
- * メタデータ更新も[promptengine.domain.prompt.PromptUpdated]を発行するため、P9b）が使う。
+ * ADR-0006）を行う共通処理。[EventStorePromptRepository.save]・
+ * [JdbcPromptMetadataRepository.upsert]・`JdbcReviewCaseRepository.save`（ADR-0032）が使う。
  *
  * 呼出元が同一トランザクション（[org.springframework.transaction.support.TransactionTemplate]）
  * の中で呼ぶことを前提とする。本関数自体はトランザクション境界を持たない。
  *
  * `MAX(sequence)`はread-then-writeであり、行ロック無しでは同一[aggregateId]への並行呼び出しが
  * 同じ`sequence`を読んで`(aggregate_id, sequence)`のUNIQUE制約違反を起こしうる（レビュー指摘）。
- * `prompts`の対象行を`SELECT ... FOR UPDATE`でロックしてから読むことで、同一Aggregateへの
- * 並行呼び出しを直列化する（`aggregateId`は常に`prompts.prompt_id`。他Aggregate種別の
- * イベントはP9b時点で発行されないため、ロック対象テーブルを`prompts`に固定してよい）。
+ * Aggregate自身の行を`SELECT ... FOR UPDATE`でロックしてから読むことで、同一Aggregateへの
+ * 並行呼び出しを直列化する。ロック対象テーブルはAggregate種別ごとに異なる（[appendDomainEvents]は
+ * `prompts`、[appendGovernanceDomainEvents]は`review_cases`）ため、挿入本体（[insertDomainEventRows]）
+ * は共通化しつつロッククエリのみ呼出元ごとに分ける。
  */
-internal fun NamedParameterJdbcTemplate.appendDomainEvents(
+private fun NamedParameterJdbcTemplate.insertDomainEventRows(
     objectMapper: ObjectMapper,
     aggregateId: UUID,
-    events: List<PromptDomainEvent>,
+    events: List<DomainEvent>,
 ) {
-    if (events.isEmpty()) return
-    queryForObject(
-        "SELECT prompt_id FROM prompts WHERE prompt_id = :aggregateId FOR UPDATE",
-        MapSqlParameterSource("aggregateId", aggregateId),
-        UUID::class.java,
-    )
     val baseSequence =
         queryForObject(
             "SELECT COALESCE(MAX(sequence), 0) FROM domain_events WHERE aggregate_id = :aggregateId",
@@ -70,4 +66,33 @@ internal fun NamedParameterJdbcTemplate.appendDomainEvents(
                 .addValue("createdAt", Timestamp.from(Instant.now())),
         )
     }
+}
+
+internal fun NamedParameterJdbcTemplate.appendDomainEvents(
+    objectMapper: ObjectMapper,
+    aggregateId: UUID,
+    events: List<PromptDomainEvent>,
+) {
+    if (events.isEmpty()) return
+    queryForObject(
+        "SELECT prompt_id FROM prompts WHERE prompt_id = :aggregateId FOR UPDATE",
+        MapSqlParameterSource("aggregateId", aggregateId),
+        UUID::class.java,
+    )
+    insertDomainEventRows(objectMapper, aggregateId, events)
+}
+
+/** [appendDomainEvents]の`ReviewCase`向け（`review_cases`行をロック対象とする、ADR-0032）。 */
+internal fun NamedParameterJdbcTemplate.appendGovernanceDomainEvents(
+    objectMapper: ObjectMapper,
+    aggregateId: UUID,
+    events: List<ReviewCaseDomainEvent>,
+) {
+    if (events.isEmpty()) return
+    queryForObject(
+        "SELECT review_id FROM review_cases WHERE review_id = :aggregateId FOR UPDATE",
+        MapSqlParameterSource("aggregateId", aggregateId),
+        UUID::class.java,
+    )
+    insertDomainEventRows(objectMapper, aggregateId, events)
 }

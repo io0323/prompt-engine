@@ -43,6 +43,11 @@ import promptengine.interfaces.support.TraceIdFilter
  * パス変数が`{namespace}`・`{name}`の2つに分かれている理由は[PromptController]のKDoc
  * （ADR-0023参照）。`namespace`/`name`から`PromptKey`文字列表現への復元は各メソッドの先頭で
  * [DomainValueFactory.promptKeyText]を呼ぶことに統一し、他の場所で組み立て直さない。
+ *
+ * `submit-review`/`approve`/`reject`（Governanceコンテキスト、ADR-0032）は
+ * detektの`LongParameterList`閾値対策で[ReviewController]へ分離する（同じ
+ * `@RequestMapping`ベースパスを共有する複数Controllerという構成は[PromptController]と
+ * 本Controllerの関係と同じ）。
  */
 @RestController
 @RequestMapping("/api/v1/prompts/{namespace}/{name}")

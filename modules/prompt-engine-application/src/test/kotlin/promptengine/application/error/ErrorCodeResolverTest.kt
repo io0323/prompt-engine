@@ -7,6 +7,7 @@ import promptengine.domain.prompt.ArchiveRequiresForceException
 import promptengine.domain.prompt.PromptKey
 import promptengine.domain.shared.IdempotencyKeyConflictException
 import promptengine.domain.shared.IdempotencyKeyInProgressException
+import promptengine.domain.shared.OptimisticLockConflictException
 import promptengine.domain.shared.SemVer
 import promptengine.domain.validation.Finding
 import promptengine.domain.validation.Severity
@@ -47,6 +48,14 @@ class ErrorCodeResolverTest {
         val ex = IdempotencyKeyInProgressException("idem-1")
 
         ErrorCodeResolver.resolve(ex) shouldBe ErrorCodeResolver.IDEMPOTENCY_KEY_IN_PROGRESS
+    }
+
+    @Test
+    fun `resolve はOptimisticLockConflictExceptionをVERSION_CONFLICTへ変換する`() {
+        class FakeConflict : OptimisticLockConflictException("conflict")
+        val ex = FakeConflict()
+
+        ErrorCodeResolver.resolve(ex) shouldBe ErrorCodeResolver.VERSION_CONFLICT
     }
 
     @Test

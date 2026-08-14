@@ -7,6 +7,7 @@ import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
 import org.springframework.transaction.support.TransactionTemplate
 import promptengine.domain.dependency.DependencyRepository
 import promptengine.domain.fragment.FragmentRepository
+import promptengine.domain.governance.ReviewCaseRepository
 import promptengine.domain.metrics.MetricsRepository
 import promptengine.domain.prompt.PromptAliasRepository
 import promptengine.domain.prompt.PromptMetadataRepository
@@ -20,6 +21,7 @@ import promptengine.infrastructure.persistence.JdbcMetricsRepository
 import promptengine.infrastructure.persistence.JdbcPromptAliasRepository
 import promptengine.infrastructure.persistence.JdbcPromptMetadataRepository
 import promptengine.infrastructure.persistence.JdbcPromptSearchRepository
+import promptengine.infrastructure.persistence.JdbcReviewCaseRepository
 import promptengine.infrastructure.persistence.JdbcTemplateRepository
 
 /**
@@ -48,6 +50,13 @@ class RepositoryConfig {
         transactionTemplate: TransactionTemplate,
         objectMapper: ObjectMapper,
     ): FragmentRepository = JdbcFragmentRepository(jdbcTemplate, transactionTemplate, objectMapper)
+
+    @Bean
+    fun reviewCaseRepository(
+        jdbcTemplate: NamedParameterJdbcTemplate,
+        transactionTemplate: TransactionTemplate,
+        objectMapper: ObjectMapper,
+    ): ReviewCaseRepository = JdbcReviewCaseRepository(jdbcTemplate, transactionTemplate, objectMapper)
 
     @Bean
     fun promptAliasRepository(jdbcTemplate: NamedParameterJdbcTemplate): PromptAliasRepository =

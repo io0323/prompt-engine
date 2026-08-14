@@ -233,6 +233,14 @@ Promptがアプリケーションコード内に散在すると、(a) 変更に�
 
 ルール: Published Versionの内容はImmutable。修正は必ず新Versionとして作成。1 Promptにつき「Published」は同時に1 Version（Experiment中はVariantとして複数配信可）。
 
+`approve`の「必要承認数充足」について（M2-2、ADR-0032決定2/3）: 必要承認数はグローバル設定
+（`promptengine.review.required-approvals`、既定1）を`submitForReview`時点で`ReviewCase`
+（Governanceコンテキスト、§4.1・§4.3）へ複製・保存する値であり、以後この設定を変更しても
+進行中の`ReviewCase`には遡及しない。4-eyes原則（作成者と承認者が別人であることの強制）は
+`promptengine.review.allow-self-approval`（既定`false`）で制御し、こちらは複製せず`approve`
+のたびに現在の設定値を読む。`InReview→Approved`遷移自体は`Prompt` Aggregateが実行するが、
+対応するDomain Event（`PromptApproved`、§14）の発火元は`ReviewCase`である（ADR-0004）。
+
 `archive`の「参照クライアントゼロ確認」について: P10bで`execution_logs`（本節下部・§12）への書き込み経路（`PromptExecuted`を購読する`ExecutionLogSubscriber`）が入り、「直近N日間に実行が無いこと」を自動確認できるようになった（[Issue #48](https://github.com/io0323/prompt-engine/issues/48)をクローズ、ADR-0026決定5）。判定は`prompt_versions.created_at`とカットオーバー時刻（`promptengine.archive.execution-logs-cutover-at`）の比較を伴う。
 
 - カットオーバー**以降**に作られたVersion: 判定窓（`promptengine.archive.inactivity-threshold-days`、既定90日）に実行記録が無ければ`force`無しでarchiveできる。実行記録があれば拒否する。

@@ -74,6 +74,12 @@ promptengine:
     max-context-tokens: ${PE_MODEL_PROFILE_MAX_CONTEXT_TOKENS:8000}
     tokenizer-id: ${PE_MODEL_PROFILE_TOKENIZER_ID:approx}
     cost-per-token: ${PE_MODEL_PROFILE_COST_PER_TOKEN:0.000001}
+  # ReviewCaseの承認ポリシー（ADR-0032決定2/3）。required-approvalsはsubmitForReview時点で
+  # ReviewCaseへ複製されるため、変更しても進行中のReviewCaseには遡及しない。
+  # allow-self-approvalは複製されず、approveのたびに現在値を読む。既定falseは4-eyes強制。
+  review:
+    required-approvals: ${PE_REVIEW_REQUIRED_APPROVALS:1}
+    allow-self-approval: ${PE_REVIEW_ALLOW_SELF_APPROVAL:false}
 
 springdoc:
   api-docs:

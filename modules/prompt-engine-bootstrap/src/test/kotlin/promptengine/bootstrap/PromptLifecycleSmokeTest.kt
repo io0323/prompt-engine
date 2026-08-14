@@ -18,6 +18,7 @@ import org.springframework.http.HttpEntity
 import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpMethod
 import org.springframework.http.HttpStatus
+import org.springframework.http.MediaType
 import org.springframework.security.oauth2.jwt.JwtDecoder
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder
 import org.springframework.test.context.DynamicPropertyRegistry
@@ -25,9 +26,6 @@ import org.springframework.test.context.DynamicPropertySource
 import org.testcontainers.containers.PostgreSQLContainer
 import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
-import promptengine.domain.prompt.PromptKey
-import promptengine.domain.prompt.PromptRepository
-import promptengine.domain.shared.SemVer
 import java.security.KeyPairGenerator
 import java.security.interfaces.RSAPrivateKey
 import java.security.interfaces.RSAPublicKey
@@ -36,24 +34,27 @@ import java.util.Date
 import java.util.UUID
 
 /**
- * E2Eスモークテスト（9cキックオフ必須要件、最低限: Prompt作成→Version作成→publish→renderの通し）。
+ * E2Eスモークテスト（9cキックオフ必須要件、最低限: Prompt作成→Version作成→
+ * submit-review→approve→publish→renderの通し）。
  *
- * **Approved化はHTTP経由ではなくRepository直接操作で行う**: `publish`は`Approved`状態の
- * Versionにしか実行できないが、Draft→InReview→Approvedへ遷移させる`submit-review`/
- * `approve`/`reject`の3エンドポイントはADR-0016によりM2スコープへ見送られている
- * （`ReviewCase` Aggregateを経由しない実装だと、この意思決定上重要な状態遷移が監査ログに
- * 記録されないガバナンス上の懸念のため。GitHub Issue #9参照）。このためM1のAPIサーフェス
- * だけでは`publish`前提の`Approved`状態を実HTTPだけで作ることができない（9c、E2E初回確認で
- * 発覚）。[approveVersionDirectly]でRepositoryを直接操作してテストフィクスチャとして
- * Approved状態を先回りし、`publish`以降（`publish`・`render`という実装済みエンドポイント
- * 自体の動作）は引き続き実HTTPで検証する。
+ * **Approved化も含め全工程を実HTTPで行う**（ADR-0032、ReviewCase Aggregate実装によりADR-0016を
+ * supersede）。`submit-review`/`approve`/`reject`の3エンドポイントが公開されたため、
+ * かつてのRepository直接操作によるフィクスチャ（`approveVersionDirectly`）は不要になった。
+ *
+ * **作成者と承認者に異なるsubjectのJWTを使う**（4-eyes原則、`promptengine.review.
+ * allow-self-approval`の既定値`false`が実際にガードとして機能することを確認する目的。
+ * 単一subjectでE2Eを通すと、このガードが一度も通過されないまま緑になる）。
+ * [AUTHOR_SUBJECT]がsubmit-reviewを行い、まず[AUTHOR_SUBJECT]自身でのapprove試行が
+ * 拒否されること（自己承認防止）を確認してから、[APPROVER_SUBJECT]でのapproveが
+ * 成功することを確認する。
  *
  * `SecurityConfig`の既定JwtDecoderは、実運用でのJWT誤発行を防ぐため秘密鍵を保持しない
  * （`SecurityConfig.devPublicKey`のKDoc参照）。本テストは実HTTP（`TestRestTemplate`、
  * `RANDOM_PORT`）でBearerトークンを送る必要があるため、`spring-security-test`の`jwt()`
  * postProcessor（`MockMvc`専用、実HTTPには使えない）は使えない。かわりに[TestSecurityConfig]で
  * `jwtDecoder`をテスト専有の鍵ペア（秘密鍵も保持）に差し替え、[signedJwt]でこのテストが
- * 自己署名したBearerトークンを使う。
+ * 自己署名したBearerトークンを使う。[signedJwt]は`subject`を引数に取り、作成者・承認者
+ * それぞれの異なるトークンを発行できる。
  *
  * `@TestInstance(Lifecycle.PER_CLASS)`は使わない（9cで削除。原因調査）:
  * `@Testcontainers`の`@Container`静的フィールドは通常`beforeAll`相当のタイミングでコンテナを
@@ -82,63 +83,40 @@ class PromptLifecycleSmokeTest {
     @Autowired
     private lateinit var restTemplate: TestRestTemplate
 
-    @Autowired
-    private lateinit var promptRepository: PromptRepository
-
     private val promptKey = "e2e-smoke/greeting-${UUID.randomUUID()}"
 
     @Test
-    fun `Prompt作成からVersion作成・Approved化・publish・renderまでが通る`() {
-        val headers =
-            HttpHeaders().apply {
-                setBearerAuth(signedJwt("prompt:write prompt:publish prompt:read"))
-                contentType = org.springframework.http.MediaType.APPLICATION_JSON
-            }
+    fun `Prompt作成からVersion作成・submit-review・approve・publish・renderまでが通る`() {
+        val authorHeaders = headersFor(AUTHOR_SUBJECT, "prompt:write prompt:publish prompt:read")
 
-        // 1. Prompt作成（HTTP）: 初版1.0.0を含めてPrompt Aggregateを作る。
-        val createBody =
-            mapOf(
-                "key" to promptKey,
-                "name" to "E2E Smoke Greeting",
-                "semVer" to "1.0.0",
-                "source" to SAMPLE_SOURCE,
-            )
-        val createResponse =
-            restTemplate.exchange(
-                url("/api/v1/prompts"),
-                HttpMethod.POST,
-                HttpEntity(createBody, headers),
-                Map::class.java,
-            )
-        createResponse.statusCode shouldBe HttpStatus.CREATED
+        createPrompt(authorHeaders).statusCode shouldBe HttpStatus.CREATED
+        createVersion(authorHeaders).statusCode shouldBe HttpStatus.CREATED
+        submitReview(headersFor(AUTHOR_SUBJECT, "prompt:write")).statusCode shouldBe HttpStatus.OK
 
-        // 2. Version作成（HTTP）: publish/renderで実際に使う1.1.0を専用エンドポイントで追加する。
-        val createVersionBody = mapOf("semVer" to "1.1.0", "source" to SAMPLE_SOURCE)
-        val createVersionResponse =
-            restTemplate.exchange(
-                url("/api/v1/prompts/$promptKey/versions"),
-                HttpMethod.POST,
-                HttpEntity(createVersionBody, headers),
-                Map::class.java,
-            )
-        createVersionResponse.statusCode shouldBe HttpStatus.CREATED
+        // 自己承認は拒否される（4-eyes、promptengine.review.allow-self-approvalの既定false）。
+        // 作成者自身のsubjectでapproveを試み、409（INVALID_STATE_TRANSITION、'SelfApproval'）を
+        // 確認する（このガードが実際に実行される経路をE2Eで通す。ADR-0032）。ステータスコードだけ
+        // でなくerror.codeも確認し、別の理由（例: 別のガード）による409と混同しないようにする
+        // （CodeRabbitレビュー指摘）。
+        val selfApproveResponse = approve(headersFor(AUTHOR_SUBJECT, "prompt:approve"))
+        selfApproveResponse.statusCode shouldBe HttpStatus.CONFLICT
+        @Suppress("UNCHECKED_CAST")
+        val selfApproveError = selfApproveResponse.body?.get("error") as? Map<String, Any?>
+        selfApproveError?.get("code") shouldBe "INVALID_STATE_TRANSITION"
 
-        // 3. Approved化（Repository直接。クラスKDoc「Approved化はHTTP経由ではなく...」参照）。
-        approveVersionDirectly(promptKey, SemVer(1, 1, 0))
+        // 承認者（作成者とは異なるsubject）によるapproveは成功する。InReview→Approved。
+        approve(headersFor(APPROVER_SUBJECT, "prompt:approve")).statusCode shouldBe HttpStatus.OK
 
-        // 4. publish（HTTP）: Approved化した1.1.0を公開する。
-        val publishResponse =
-            restTemplate.exchange(
-                url("/api/v1/prompts/$promptKey/versions/1.1.0/publish"),
-                HttpMethod.POST,
-                HttpEntity<Void>(headers),
-                Map::class.java,
-            )
-        publishResponse.statusCode shouldBe HttpStatus.OK
+        publish(authorHeaders).statusCode shouldBe HttpStatus.OK
+        verifyRenderIsDeterministic(authorHeaders)
+    }
 
-        // 5. render（HTTP）: 状態ゲート（ADR-0024）導入後もPublished済み1.1.0なら成功する。
-        // 同一入力で2回呼び、renderHashが決定論的（同じ入力なら常に同じハッシュ）であることも
-        // 確認する（CodeRabbitレビュー指摘: 従来はmessagesが空でないことしか検証していなかった）。
+    /**
+     * render（HTTP）: 状態ゲート（ADR-0024）導入後もPublished済み1.1.0なら成功する。
+     * 同一入力で2回呼び、renderHashが決定論的（同じ入力なら常に同じハッシュ）であることも
+     * 確認する（CodeRabbitレビュー指摘: 従来はmessagesが空でないことしか検証していなかった）。
+     */
+    private fun verifyRenderIsDeterministic(headers: HttpHeaders) {
         val renderBody = mapOf("versionRef" to "1.1.0", "modelProfile" to "gpt-class-large")
         val firstRenderResponse = render(renderBody, headers)
         firstRenderResponse.statusCode shouldBe HttpStatus.OK
@@ -152,6 +130,59 @@ class PromptLifecycleSmokeTest {
         (firstRenderResponse.body?.get("renderHash") as? String).isNullOrBlank() shouldBe false
     }
 
+    /** Prompt作成（HTTP）: 初版1.0.0を含めてPrompt Aggregateを作る。 */
+    private fun createPrompt(headers: HttpHeaders) =
+        restTemplate.exchange(
+            url("/api/v1/prompts"),
+            HttpMethod.POST,
+            HttpEntity(
+                mapOf(
+                    "key" to promptKey,
+                    "name" to "E2E Smoke Greeting",
+                    "semVer" to "1.0.0",
+                    "source" to SAMPLE_SOURCE,
+                ),
+                headers,
+            ),
+            Map::class.java,
+        )
+
+    /** Version作成（HTTP）: publish/renderで実際に使う1.1.0を専用エンドポイントで追加する。 */
+    private fun createVersion(headers: HttpHeaders) =
+        restTemplate.exchange(
+            url("/api/v1/prompts/$promptKey/versions"),
+            HttpMethod.POST,
+            HttpEntity(mapOf("semVer" to "1.1.0", "source" to SAMPLE_SOURCE), headers),
+            Map::class.java,
+        )
+
+    /** submit-review（HTTP）: Draft→InReview。 */
+    private fun submitReview(headers: HttpHeaders) =
+        restTemplate.exchange(
+            url("/api/v1/prompts/$promptKey/versions/1.1.0/submit-review"),
+            HttpMethod.POST,
+            HttpEntity<Void>(headers),
+            Map::class.java,
+        )
+
+    /** approve（HTTP）: 必要承認数（既定1）に達すればInReview→Approved。 */
+    private fun approve(headers: HttpHeaders) =
+        restTemplate.exchange(
+            url("/api/v1/prompts/$promptKey/versions/1.1.0/approve"),
+            HttpMethod.POST,
+            HttpEntity<Void>(headers),
+            Map::class.java,
+        )
+
+    /** publish（HTTP）: Approved化した1.1.0を公開する。 */
+    private fun publish(headers: HttpHeaders) =
+        restTemplate.exchange(
+            url("/api/v1/prompts/$promptKey/versions/1.1.0/publish"),
+            HttpMethod.POST,
+            HttpEntity<Void>(headers),
+            Map::class.java,
+        )
+
     private fun render(
         body: Map<String, String>,
         headers: HttpHeaders,
@@ -162,26 +193,24 @@ class PromptLifecycleSmokeTest {
         Map::class.java,
     )
 
-    /**
-     * `submit-review`/`approve`相当をRepository直接操作で行う（クラスKDoc参照、ADR-0016・
-     * GitHub Issue #9によりHTTP経由のエンドポイントとしては存在しない）。
-     */
-    private fun approveVersionDirectly(
-        key: String,
-        semVer: SemVer,
-    ) {
-        val prompt = requireNotNull(promptRepository.findByKey(PromptKey(key))) { "prompt not found: $key" }
-        val inReview = prompt.submitForReview(semVer, validationPassed = true)
-        val approved = inReview.approve(semVer, approvalCount = 1, requiredApprovalCount = 1)
-        promptRepository.save(approved)
-    }
+    private fun headersFor(
+        subject: String,
+        scope: String,
+    ): HttpHeaders =
+        HttpHeaders().apply {
+            setBearerAuth(signedJwt(scope, subject))
+            contentType = MediaType.APPLICATION_JSON
+        }
 
     private fun url(path: String): String = "http://localhost:$port$path"
 
-    private fun signedJwt(scope: String): String {
+    private fun signedJwt(
+        scope: String,
+        subject: String,
+    ): String {
         val claims =
             JWTClaimsSet.Builder()
-                .subject("e2e-smoke-test-client")
+                .subject(subject)
                 .issueTime(Date.from(Instant.now()))
                 .expirationTime(Date.from(Instant.now().plusSeconds(60)))
                 .claim("scope", scope)
@@ -199,6 +228,9 @@ class PromptLifecycleSmokeTest {
     }
 
     companion object {
+        private const val AUTHOR_SUBJECT = "e2e-smoke-author"
+        private const val APPROVER_SUBJECT = "e2e-smoke-approver"
+
         private const val SAMPLE_SOURCE =
             """---
 pe: "1"

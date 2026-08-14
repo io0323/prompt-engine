@@ -67,3 +67,8 @@ P1から現在までbootstrapのDI配線が未着手であり、このアプリ�
   テストフィクスチャ（`PromptRepository`を直接操作）で先回りし、`publish`以降（`publish`・
   `render`という実装済みエンドポイント自体の動作）は引き続き実HTTPで検証する
   （`PromptLifecycleSmokeTest`のKDoc参照、ADR-0016・GitHub Issue #9）。
+
+**追記（M2-2、CodeRabbitレビュー指摘によりこの節自体は9c当時の記録として保持し、以下を
+別項として追記する）**: ReviewCase Aggregateとsubmit-review/approve/rejectを実装し
+（ADR-0032、ADR-0016をsupersede）、上記フィクスチャのバイパスは`PromptLifecycleSmokeTest`
+から削除した。現在は全工程が実HTTPで完走する。

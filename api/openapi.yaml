@@ -114,6 +114,78 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/KeySemVerResponseDto"
+  /api/v1/prompts/{namespace}/{name}/versions/{version}/submit-review:
+    post:
+      tags:
+      - review-controller
+      operationId: submitReview
+      parameters:
+      - name: namespace
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: version
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: Idempotency-Key
+        in: header
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/KeySemVerResponseDto"
+  /api/v1/prompts/{namespace}/{name}/versions/{version}/reject:
+    post:
+      tags:
+      - review-controller
+      operationId: reject
+      parameters:
+      - name: namespace
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: version
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: Idempotency-Key
+        in: header
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RejectRequestDto"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/KeySemVerResponseDto"
   /api/v1/prompts/{namespace}/{name}/versions/{version}/publish:
     post:
       tags:
@@ -178,6 +250,44 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/DeprecateRequestDto"
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/KeySemVerResponseDto"
+  /api/v1/prompts/{namespace}/{name}/versions/{version}/approve:
+    post:
+      tags:
+      - review-controller
+      operationId: approve
+      parameters:
+      - name: namespace
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: version
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: Idempotency-Key
+        in: header
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ApproveRequestDto"
       responses:
         "200":
           description: OK
@@ -772,10 +882,23 @@ components:
       - semVer
       - source
       - variables
+    RejectRequestDto:
+      type: object
+      properties:
+        comment:
+          type: string
+          minLength: 1
+      required:
+      - comment
     DeprecateRequestDto:
       type: object
       properties:
         recommendedReplacement:
+          type: string
+    ApproveRequestDto:
+      type: object
+      properties:
+        comment:
           type: string
     RollbackRequestDto:
       type: object
