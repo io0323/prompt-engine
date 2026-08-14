@@ -121,6 +121,23 @@ class ReviewCaseTest {
     }
 
     @Test
+    fun `approve はallowSelfApprovalがtrueでも別approverによる承認を正しく記録する`() {
+        val reviewCase = createInReview(requiredApprovals = 1)
+
+        val (updated, event) =
+            reviewCase.approve(
+                "user:approver1",
+                null,
+                allowSelfApproval = true,
+                context = approverContext("user:approver1"),
+            )
+
+        updated.status shouldBe ReviewCaseStatus.Approved
+        event.shouldNotBeNull()
+        event.actor shouldBe "user:approver1"
+    }
+
+    @Test
     fun `approve は同一approverによる重複承認を拒否する`() {
         val reviewCase = createInReview(requiredApprovals = 2)
         val (afterFirst, _) =
@@ -219,5 +236,28 @@ class ReviewCaseTest {
         restored.reviewId shouldBe reviewId
         restored.status shouldBe ReviewCaseStatus.Approved
         restored.approvalCount shouldBe 2
+    }
+
+    @Test
+    fun `approvalCount はREJECTEDの記録を数に含めない`() {
+        val memento =
+            ReviewCaseMemento(
+                reviewId = createInReview().reviewId,
+                promptKey = promptKey,
+                semVer = semVer,
+                submittedBy = "user:author",
+                requiredApprovals = 2,
+                status = ReviewCaseStatus.InReview,
+                approvals =
+                    listOf(
+                        ApprovalRecord("user:a", ApprovalDecision.APPROVED, null, context.occurredAt),
+                        ApprovalRecord("user:b", ApprovalDecision.REJECTED, "no", context.occurredAt),
+                    ),
+            )
+
+        @OptIn(promptengine.domain.shared.PersistenceApi::class)
+        val restored = ReviewCase.restore(memento)
+
+        restored.approvalCount shouldBe 1
     }
 }
