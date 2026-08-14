@@ -51,7 +51,8 @@ class ExecutionConfigTest {
                     providerProperties = ExecutionProviderProperties(provider = ExecutionConfig.APAP_PROVIDER),
                 )
             }
-        e.message shouldContain "is not yet implemented"
+        e.message shouldContain
+            "promptengine.execution.provider=${ExecutionConfig.APAP_PROVIDER} is not yet implemented"
     }
 
     @Test

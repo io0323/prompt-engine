@@ -17,7 +17,7 @@ import promptengine.bootstrap.config.ExecutionConfig
  *
  * [FakeExecutionAdapter][promptengine.plugin.execution.fake.FakeExecutionAdapter]（唯一の
  * 実装済み[promptengine.domain.execution.ExecutionAdapter]、APAPは独立基盤として別途構築する
- * 方針が確定し実装待ち、ADR-0031）が、`production`プロファイルの`init`ガード（P9cで追加）により
+ * 方針が確定して実装待ちである（ADR-0031）。`production`プロファイルの`init`ガード（P9cで追加）により
  * `IllegalStateException`を投げ、Bean生成が失敗してコンテキスト全体が起動しないことを確認する。
  *
  * `@SpringBootTest`ではなく[SpringApplicationBuilder]を直接操作する: コンテキスト起動失敗を
@@ -119,6 +119,7 @@ class ProductionProfileGuardTest {
 
         private const val GUARD_MESSAGE_FRAGMENT =
             "FakeExecutionAdapter must not be selected under the 'production' profile"
-        private const val APAP_NOT_IMPLEMENTED_MESSAGE_FRAGMENT = "is not yet implemented"
+        private const val APAP_NOT_IMPLEMENTED_MESSAGE_FRAGMENT =
+            "promptengine.execution.provider=${ExecutionConfig.APAP_PROVIDER} is not yet implemented"
     }
 }
