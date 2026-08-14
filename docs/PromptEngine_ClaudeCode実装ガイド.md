@@ -154,11 +154,11 @@ include(
 | P10 | Evaluation + Audit + Monitoring | 非同期評価Subscriber、Audit追記、Metrics/Trace、Outbox→Broker中継worker（P2で追記のみ実装、GitHub Issue #11） | イベント発火→評価記録→監査検索がE2Eで通る |
 | P11 | 仕上げ | Helm/Dockerfile、README、prompt-regression、負荷確認 | p99目標（設計書NFR-002/003）をローカル計測で確認 |
 
-**M1の非対象**: Experiment Engine、Search Engine本実装（Fallbackのみ）、
-Review/Approvalワークフロー（ReviewCase Aggregate および UI を含む）、実APAP接続。これらは M2 で追加。
-そのためM1のPrompt Aggregateは submitForReview/approve/reject の状態遷移自体は実行するが、
-対応するDomain Event（PromptReviewRequested/PromptApproved/PromptRejected、設計書§14）は
-ReviewCase Aggregateが発火元であり、M1の間は発行されない（ADR-0004）。
+**M1の非対象**: Experiment Engine、Search Engine本実装（Fallbackのみ）、実APAP接続。これらは
+M2で追加。Review/Approvalワークフロー（ReviewCase Aggregate、submit-review/approve/reject
+の3エンドポイント）はM2-2で実装済み（ADR-0032）。対応するDomain Event
+（PromptReviewRequested/PromptApproved/PromptRejected、設計書§14）はReviewCase Aggregateが
+発火元であり、Prompt Aggregate自身は発行しない（ADR-0004）。
 
 ---
 
@@ -746,18 +746,21 @@ E2Eテスト（tests/integration）: 3モードそれぞれで、
 
 ## 6.10 P9 — REST API + 認可
 
-submit-review/approve/reject の3エンドポイントは M2（ReviewCase Aggregate実装後）へ
-先送り済み（ADR-0016）。ReviewCase Aggregateを経由しない実装で公開すると、対応する
-Domain Event発行（監査ログの正規の記録経路）を伴わない状態遷移を外部から起こせて
-しまうため。
+**P9実施当時（M1）の状態、現在はM2-2で解消済み**: submit-review/approve/reject の
+3エンドポイントは当時 M2（ReviewCase Aggregate実装後）へ先送りされていた（ADR-0016）。
+ReviewCase Aggregateを経由しない実装で公開すると、対応するDomain Event発行（監査ログの
+正規の記録経路）を伴わない状態遷移を外部から起こせてしまうため。M2-2でReviewCase
+Aggregateを実装し、この3エンドポイントを設計書§13.1のとおり公開した（ADR-0032、
+ADR-0016をsupersede）。以下はP9実施当時の制約の記録として残す。
 
-**注意（9cのE2E確認で判明）**: 上記の帰結として、M1のAPIサーフェスだけではDraft→
-Approvedへ遷移させる手段が存在しない。`publish`はApproved状態のVersionにしか実行
-できないため、「Prompt作成→Version作成→publish→render」を実HTTPのみで完走させる
-E2Eテストは作れない。Approved状態への遷移のみテストフィクスチャ（`PromptRepository`
-の直接操作）で先回りし、`publish`以降（`publish`・`render`という実装済みエンドポイント
-自体の動作）を実HTTPで検証する方針とする（`PromptLifecycleSmokeTest`のKDoc・
-`docs/prompts/p9c.md`参照、GitHub Issue #9）。
+**注意（9cのE2E確認で判明、M2-2で解消）**: 上記の帰結として、当時はM1のAPIサーフェス
+だけではDraft→Approvedへ遷移させる手段が存在しなかった。`publish`はApproved状態の
+Versionにしか実行できないため、「Prompt作成→Version作成→publish→render」を実HTTP
+のみで完走させるE2Eテストは作れなかった。Approved状態への遷移のみテストフィクスチャ
+（`PromptRepository`の直接操作）で先回りし、`publish`以降（`publish`・`render`という
+実装済みエンドポイント自体の動作）を実HTTPで検証する方針としていた
+（GitHub Issue #9）。M2-2でsubmit-review/approveが実HTTP経由で使えるようになり、
+このバイパスは`PromptLifecycleSmokeTest`から削除した（ADR-0032）。
 
 ```text
 >>>
