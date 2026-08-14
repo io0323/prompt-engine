@@ -10,7 +10,6 @@ data:
   otel-exporter-endpoint: {{ .Values.config.otelExporterEndpoint | quote }}
   eventbus-kafka-bootstrap-servers: {{ .Values.config.eventBusKafkaBootstrapServers | quote }}
   execution-provider: {{ .Values.config.executionProvider | quote }}
-  execution-model-name: {{ .Values.config.executionModelName | quote }}
   model-profile-max-context-tokens: {{ .Values.config.modelProfileMaxContextTokens | quote }}
   model-profile-tokenizer-id: {{ .Values.config.modelProfileTokenizerId | quote }}
   model-profile-cost-per-token: {{ .Values.config.modelProfileCostPerToken | quote }}

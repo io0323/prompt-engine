@@ -2,7 +2,9 @@
 
 ## ステータス
 
-Accepted
+Accepted（暫定実装の配置・存在自体はADR-0031によりsupersede——APAPを独立基盤として構築する
+方針が確定し、`plugins/execution-openai`はPEPから削除された。例外分類・タイムアウト区別・
+usage欠落の扱いに関する決定4〜9の実測知見はAPAP側へ引き継がれる。詳細はADR-0031参照）
 
 ## コンテキスト
 
