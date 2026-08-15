@@ -5,6 +5,7 @@ import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.shouldNotBe
 import org.flywaydb.core.Flyway
 import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.BeforeAll
@@ -150,6 +151,17 @@ class JdbcFragmentRepositoryIntegrationTest {
     @Test
     fun `存在しないkeyを検索するとnullを返す`() {
         repository.findByKey(uniqueKey()) shouldBe null
+    }
+
+    @Test
+    fun `eventsが空でも保存でき created_byは既定値 domain_eventsは追記されない`() {
+        val key = uniqueKey()
+        val created = Fragment.create(key, NewFragmentVersion(SemVer(0, 1, 0), FragmentContent("body")), context).first
+
+        repository.save(created, emptyList())
+
+        repository.findByKey(key) shouldNotBe null
+        recordedEventTypes(key) shouldBe emptyList()
     }
 
     @Test
