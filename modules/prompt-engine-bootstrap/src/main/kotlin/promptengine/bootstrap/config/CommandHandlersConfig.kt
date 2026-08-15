@@ -32,6 +32,7 @@ import promptengine.domain.template.TemplateRepository
 @Configuration
 @EnableConfigurationProperties(ArchiveGuardProperties::class)
 class CommandHandlersConfig {
+    @Suppress("LongParameterList")
     @Bean
     fun createPromptHandler(
         promptRepository: PromptRepository,

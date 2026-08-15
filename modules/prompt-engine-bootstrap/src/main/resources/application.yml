@@ -80,6 +80,11 @@ promptengine:
   review:
     required-approvals: ${PE_REVIEW_REQUIRED_APPROVALS:1}
     allow-self-approval: ${PE_REVIEW_ALLOW_SELF_APPROVAL:false}
+  # PromptCache（Issue #77、ADR-0033）。ttl-seconds既定30秒はOutboxRelayの
+  # claim-timeout-secondsの既定値と揃えたもの（イベント無効化が届く前に読まれる窓の上限）。
+  cache:
+    ttl-seconds: ${PE_CACHE_TTL_SECONDS:30}
+    redis-uri: ${PE_CACHE_REDIS_URI:redis://localhost:6379}
 
 springdoc:
   api-docs:

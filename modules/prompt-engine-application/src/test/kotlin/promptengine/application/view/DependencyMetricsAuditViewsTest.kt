@@ -166,6 +166,11 @@ class DependencyMetricsAuditViewsTest {
 
         override fun findInbound(promptKey: PromptKey): List<DependencyEdge> = emptyList()
 
+        override fun findInboundTemplateOrFragment(
+            kind: DependencyKind,
+            key: String,
+        ): List<DependencyEdge> = emptyList()
+
         override fun replaceOutbound(
             promptKey: PromptKey,
             semVer: SemVer,

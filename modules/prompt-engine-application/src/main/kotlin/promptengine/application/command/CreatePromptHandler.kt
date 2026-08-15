@@ -53,7 +53,11 @@ data class CreatePromptResult(val key: PromptKey, val semVer: SemVer)
  * ハンドラにビジネスルールを書かない（CLAUDE.md方針）: 状態遷移の妥当性は`Prompt.create`
  * （Aggregate）が判断する。本ハンドラは「データを集めてAggregateに渡し、結果を永続化して
  * イベントを発行する」だけを行う。
+ *
+ * 依存が7個になるのは、dependenciesテーブルへの書き込みをCompositionService.compile
+ * ベースへ揃えた結果（ADR-0033決定3）。意味のある単位への分割余地が無いため許容する。
  */
+@Suppress("LongParameterList")
 class CreatePromptHandler(
     private val promptRepository: PromptRepository,
     private val promptMetadataRepository: PromptMetadataRepository,

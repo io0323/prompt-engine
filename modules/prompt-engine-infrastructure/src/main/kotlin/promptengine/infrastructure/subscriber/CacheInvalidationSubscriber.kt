@@ -1,28 +1,30 @@
 package promptengine.infrastructure.subscriber
 
-import promptengine.domain.cache.PromptCacheInvalidator
+import promptengine.domain.cache.PromptCache
+import promptengine.domain.dependency.DependencyRepository
 import promptengine.domain.event.EventEnvelope
 import promptengine.domain.event.EventSubscriber
 import promptengine.domain.event.EventTopic
-import promptengine.domain.prompt.PromptKey
+import promptengine.domain.shared.VersionRange
 
 /**
  * Promptの配信内容が変化するイベントを購読し、そのPromptのキャッシュを無効化する
- * （設計書§14 `CacheInvalidated`、ADR-0026決定6）。
+ * （設計書§14 `CacheInvalidated`、ADR-0026決定6、Template/Fragment対応はADR-0033）。
  *
  * `PromptPublished`（配信Version切替）を主対象とし、配信内容が実質的に切り替わる
- * `PromptRolledBack` / `PromptArchived` / `PromptDiscarded`も同じ扱いにする
- * （`docs/prompts/p10b.md`「Cache Invalidator（PromptPublished 等で invalidateByPrompt）」の
- * 「等」の解釈。設計書§14に無い判断ではなく、いずれも§14の`pe.prompt`トピックに
- * 定義済みのイベント）。
+ * `PromptRolledBack` / `PromptArchived` / `PromptDiscarded`も同じ扱いにする。
+ * M2-3で`TemplatePublished`/`TemplateArchived`/`FragmentPublished`/`FragmentArchived`を
+ * 追加した: これらは対象Template/Fragmentへの逆依存（[DependencyRepository]）のうち、
+ * `toVersion`（SemVer範囲）が発行された`semVer`にマッチするPromptだけを無効化する
+ * （多段階のグラフ探索は行わない。理由は[DependencyRepository.findInboundTemplateOrFragment]
+ * のKDoc・ADR-0033決定3参照）。
  *
- * `aggregateId`はビジネスキー（`PromptKey.value`）。`pe.prompt`には`domain_events`由来の
- * イベントも流れ、そちらの`aggregateId`は`prompts.prompt_id`（UUID文字列）である
- * （ADR-0025決定7・`DomainEventOutboxSource`）。[PromptKey]として解釈できない`aggregateId`は
- * 無効化対象を特定できないため何もしない（例外にしてDLQを汚さない）。
+ * キーの復元は[CacheInvalidationPayloadCodec]（`payload`ベース、ADR-0033）に委ねる。
  */
 class CacheInvalidationSubscriber(
-    private val cacheInvalidator: PromptCacheInvalidator,
+    private val promptCache: PromptCache,
+    private val dependencyRepository: DependencyRepository,
+    private val payloadCodec: CacheInvalidationPayloadCodec,
 ) : EventSubscriber {
     override val name: String = SUBSCRIBER_NAME
 
@@ -30,16 +32,37 @@ class CacheInvalidationSubscriber(
 
     override fun handle(envelope: EventEnvelope) {
         if (envelope.eventType !in INVALIDATING_EVENT_TYPES) return
-        val key = runCatching { PromptKey(envelope.aggregateId) }.getOrNull() ?: return
-        cacheInvalidator.invalidateByPrompt(key)
+        when (val target = payloadCodec.decode(envelope) ?: return) {
+            is CacheInvalidationTarget.DirectPrompt -> promptCache.invalidateByPrompt(target.promptKey)
+            is CacheInvalidationTarget.TemplateOrFragmentVersionChanged -> invalidateDependents(target)
+        }
+    }
+
+    private fun invalidateDependents(target: CacheInvalidationTarget.TemplateOrFragmentVersionChanged) {
+        dependencyRepository
+            .findInboundTemplateOrFragment(target.kind, target.key)
+            .asSequence()
+            .filter { VersionRange.parse(it.toVersion).matches(target.semVer) }
+            .map { it.fromKey }
+            .distinct()
+            .forEach { promptCache.invalidateByPrompt(it) }
     }
 
     companion object {
         /** Brokerのconsumer group IDおよび`dead_letter_queue.subscriber_name`。 */
         const val SUBSCRIBER_NAME = "pe-cache-invalidator"
 
-        /** 配信されるPromptの内容が実質的に切り替わる、設計書§14の`pe.prompt`イベント。 */
+        /** 配信されるPrompt/Template/Fragmentの内容が実質的に切り替わる、設計書§14の`pe.prompt`イベント。 */
         val INVALIDATING_EVENT_TYPES =
-            setOf("PromptPublished", "PromptRolledBack", "PromptArchived", "PromptDiscarded")
+            setOf(
+                "PromptPublished",
+                "PromptRolledBack",
+                "PromptArchived",
+                "PromptDiscarded",
+                "TemplatePublished",
+                "TemplateArchived",
+                "FragmentPublished",
+                "FragmentArchived",
+            )
     }
 }

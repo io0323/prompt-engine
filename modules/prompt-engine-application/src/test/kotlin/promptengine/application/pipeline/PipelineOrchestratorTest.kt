@@ -781,6 +781,7 @@ class PipelineOrchestratorTest {
         val auditFailureHandler: RecordingAuditFailureHandler = RecordingAuditFailureHandler(),
         val tracer: RecordingPipelineTracer = RecordingPipelineTracer(),
         val metricsRecorder: RecordingMetricsRecorder = RecordingMetricsRecorder(),
+        val promptCache: RecordingPromptCache = RecordingPromptCache(),
     ) {
         private val compositionService = CompositionServiceImpl(templateRepository, fragmentRepository)
         private val variableResolverChain = VariableResolverChainImpl.standard(NoSecretsManagerAdapter)
@@ -844,7 +845,7 @@ class PipelineOrchestratorTest {
             val stages =
                 listOf(
                     LoadStage(promptRepository, FakePromptAliasRepository()),
-                    MergeStage(compositionService),
+                    MergeStage(compositionService, promptCache),
                     ImportStage(),
                     ResolveVariablesStage(variableResolverChain),
                     ResolveContextStage(contextResolverChain),
