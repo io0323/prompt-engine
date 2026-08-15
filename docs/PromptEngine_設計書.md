@@ -122,7 +122,7 @@ Promptがアプリケーションコード内に散在すると、(a) 変更に�
 | ID | 分類 | 要件 | 目標値 |
 |---|---|---|---|
 | NFR-001 | 可用性 | 24時間365日稼働、Read系はキャッシュで縮退継続 | 99.9%（Read 99.99%） |
-| NFR-002 | 性能 | Prompt取得（キャッシュヒット） | p99 ≤ 20ms（M2-3で`PromptCache`（§16拡張ポイント#9、Redis実装）を実装し測定した実測値をADR-0033の実装報告に記録。測定条件はM1 P11のNFR-003測定手順を踏襲） |
+| NFR-002 | 性能 | Prompt取得（キャッシュヒット） | p99 ≤ 20ms（M2-3で`PromptCache`（§16拡張ポイント#9、Redis実装）を実装。P11のNFR-003測定手順・条件を踏襲した再測定でEnd-to-End p99=78.14ms（目標200ms達成、キャッシュ無し時80.03msから改善）を確認したが、Mergeステージ単体を分離したp99≤20msの直接測定は計装（Micrometer Timerの`publishPercentileHistogram`）が無く未達成。詳細はREADME「性能測定」節・ADR-0033参照） |
 | NFR-003 | 性能 | Render（Validation含む、実行除く） | p99 ≤ 200ms |
 | NFR-004 | 拡張性 | 水平スケール（ステートレスAPI）、Plugin追加は再起動不要 | - |
 | NFR-005 | セキュリティ | CIAP連携（OIDC/OAuth2）、RBAC+スコープ、Secretは参照のみ保持しSecret Managerへ委譲、Render結果ログにSecretをマスク | - |
