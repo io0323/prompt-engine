@@ -159,6 +159,11 @@ val verifyIntegrationTestExecuted =
 dependencies {
     "integrationTestImplementation"(project(":modules:prompt-engine-domain"))
     "integrationTestImplementation"(project(":modules:prompt-engine-infrastructure"))
+    // M2-3: Fragment publish→キャッシュ無効化を内容で検証する統合テストが、実際の
+    // CompositionServiceImpl（prompt-engine-core）・MergeStage（prompt-engine-application）を
+    // 使うため（ADR-0033）。
+    "integrationTestImplementation"(project(":modules:prompt-engine-core"))
+    "integrationTestImplementation"(project(":modules:prompt-engine-application"))
 
     "integrationTestImplementation"(
         platform("org.springframework.boot:spring-boot-dependencies:${libs.versions.spring.boot.get()}"),
