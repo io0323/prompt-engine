@@ -169,6 +169,9 @@ dependencies {
     "integrationTestImplementation"(libs.jackson.module.kotlin)
     "integrationTestRuntimeOnly"(libs.postgresql)
 
+    // M2-3: RedisPromptCache統合テスト（ADR-0033決定d）。
+    "integrationTestImplementation"(libs.lettuce.core)
+
     "integrationTestImplementation"(platform(libs.junit.bom))
     "integrationTestImplementation"(libs.junit.jupiter)
     "integrationTestRuntimeOnly"(libs.junit.platform.launcher)
