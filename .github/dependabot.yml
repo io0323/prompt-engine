@@ -34,6 +34,17 @@ updates:
       - dependency-name: "org.jetbrains.kotlin:kotlin-gradle-plugin"
       - dependency-name: "org.jetbrains.kotlin:kotlin-allopen"
 
+      # springdoc-openapi 3.x系はSpring Boot 4.1.0（Spring Framework 7ベース）を要求する
+      # （3.1.0のリリースノート「Upgrade Spring Boot to version 4.1.0」に明記）。
+      # このリポジトリはSpring Boot 3.x系に固定しているため（CLAUDE.md技術スタック）、
+      # springdocを3.x系へ上げると上記と全く同じ原因（実際に適用されるKotlinコンパイラ
+      # 2.0.21が、Spring Boot 4系のBOMが引き込む依存のKotlinメタデータ（2.2.0/2.3.0）を
+      # 読めない）でprompt-engine-interfaceのcompileKotlinが失敗する（PR #97で確認・
+      # クローズ）。Spring Boot 3.x系のままとどまる限り、springdocのメジャー更新を
+      # 安全に取り込むことはできない。マイナー/パッチ更新（2.8.x系内）は通常通り提案してよい。
+      - dependency-name: "org.springdoc:springdoc-openapi-starter-webmvc-ui"
+        update-types: ["version-update:semver-major"]
+
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
