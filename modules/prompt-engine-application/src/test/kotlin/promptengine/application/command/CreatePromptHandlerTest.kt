@@ -2,8 +2,15 @@ package promptengine.application.command
 
 import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
+import promptengine.domain.fragment.Fragment
+import promptengine.domain.fragment.FragmentKey
+import promptengine.domain.fragment.FragmentRepository
 import promptengine.domain.prompt.PromptKey
 import promptengine.domain.shared.SemVer
+import promptengine.domain.template.Template
+import promptengine.domain.template.TemplateKey
+import promptengine.domain.template.TemplateRepository
+import promptengine.engine.compiler.CompositionServiceImpl
 import promptengine.engine.compiler.ExtendsFieldResolverImpl
 
 class CreatePromptHandlerTest {
@@ -20,6 +27,18 @@ class CreatePromptHandlerTest {
         {{#block user}}hello{{/block}}
         """.trimIndent()
 
+    private class EmptyTemplateRepository : TemplateRepository {
+        override fun findByKey(key: TemplateKey): Template? = null
+
+        override fun save(template: Template): Template = template
+    }
+
+    private class EmptyFragmentRepository : FragmentRepository {
+        override fun findByKey(key: FragmentKey): Fragment? = null
+
+        override fun save(fragment: Fragment): Fragment = fragment
+    }
+
     @Test
     fun `Draft状態のPromptを作成しメタデータを保存しPromptCreatedを記録する`() {
         val promptRepository = InMemoryPromptRepository()
@@ -31,6 +50,7 @@ class CreatePromptHandlerTest {
                 metadataRepository,
                 dependencyRepository,
                 ExtendsFieldResolverImpl(),
+                CompositionServiceImpl(EmptyTemplateRepository(), EmptyFragmentRepository()),
                 PassthroughIdempotentCommandExecutor(),
             )
 

@@ -1,5 +1,7 @@
 package promptengine.application.command
 
+import promptengine.domain.composition.CompositionMode
+import promptengine.domain.composition.CompositionService
 import promptengine.domain.context.ContextRequirement
 import promptengine.domain.dependency.DependencyRepository
 import promptengine.domain.event.EventContext
@@ -57,6 +59,7 @@ class CreatePromptHandler(
     private val promptMetadataRepository: PromptMetadataRepository,
     private val dependencyRepository: DependencyRepository,
     private val extendsFieldResolver: ExtendsFieldResolver,
+    private val compositionService: CompositionService,
     private val idempotentCommandExecutor: IdempotentCommandExecutor,
     private val clock: Clock = Clock.systemUTC(),
 ) {
@@ -81,11 +84,15 @@ class CreatePromptHandler(
             val eventContext =
                 EventContext(actor = command.actor, traceId = command.traceId, occurredAt = Instant.now(clock))
             val (prompt, event) = Prompt.create(command.key, newVersion, eventContext)
+            // CreateVersionHandlerと同じ理由（ADR-0033決定3）: 保存前にCOMPILE_ONLYでcompileし、
+            // 平坦化済みの依存フルセットをdependenciesテーブルへの書き込みに使う。
+            val createdVersion = prompt.versions.first { it.semVer == command.semVer }
+            val compiled = compositionService.compile(command.key, createdVersion, CompositionMode.COMPILE_ONLY)
             val saved = promptRepository.save(prompt, listOf(event))
             promptMetadataRepository.upsert(
                 PromptMetadata(command.key, command.name, command.category, command.description, command.tags),
             )
-            val edges = dependencyEdgesFrom(command.key, command.semVer, extends)
+            val edges = dependencyEdgesFrom(command.key, command.semVer, compiled.dependencies)
             dependencyRepository.replaceOutbound(command.key, command.semVer, edges)
             CreatePromptResult(saved.key, command.semVer)
         }
