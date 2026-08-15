@@ -122,7 +122,7 @@ Promptがアプリケーションコード内に散在すると、(a) 変更に�
 | ID | 分類 | 要件 | 目標値 |
 |---|---|---|---|
 | NFR-001 | 可用性 | 24時間365日稼働、Read系はキャッシュで縮退継続 | 99.9%（Read 99.99%） |
-| NFR-002 | 性能 | Prompt取得（キャッシュヒット） | p99 ≤ 20ms（**M1では未検証**。`PromptCache`（§16拡張ポイント#9）がM1では未実装のため測定不能。前提となるIssue #15（Template/Fragment Domain Event未実装、milestone M2）の解消後、Issue #77で実装・検証する） |
+| NFR-002 | 性能 | Prompt取得（キャッシュヒット） | p99 ≤ 20ms（M2-3で`PromptCache`（§16拡張ポイント#9、Redis実装）を実装し測定した実測値をADR-0033の実装報告に記録。測定条件はM1 P11のNFR-003測定手順を踏襲） |
 | NFR-003 | 性能 | Render（Validation含む、実行除く） | p99 ≤ 200ms |
 | NFR-004 | 拡張性 | 水平スケール（ステートレスAPI）、Plugin追加は再起動不要 | - |
 | NFR-005 | セキュリティ | CIAP連携（OIDC/OAuth2）、RBAC+スコープ、Secretは参照のみ保持しSecret Managerへ委譲、Render結果ログにSecretをマスク | - |
@@ -1671,6 +1671,14 @@ P10b時点で実装済みの購読側は5つ: `AuditEngine`（6トピック全�
 | PromptRolledBack | Prompt Aggregate | Cache Invalidator, Audit, 通知 | 障害復旧記録 |
 | PromptDeprecated / PromptArchived | Prompt Aggregate | Search Indexer, Cache Invalidator, Audit | 廃止管理（PromptDeprecatedの`reason`が`SUPERSEDED`の場合はpublishによる自動遷移、`MANUAL`の場合は手動deprecate。ADR-0005） |
 | PromptDiscarded | Prompt Aggregate | Cache Invalidator, Search Indexer, Audit | Draft破棄の記録（ADR-0004）。P10bでCache Invalidator / Search Indexerを購読先に追加（ADR-0026決定6） |
+| TemplateCreated | Template Aggregate | Audit | 新規登録の監査 |
+| TemplateVersionCreated | Template Aggregate | Audit | 新Version追加の監査 |
+| TemplatePublished | Template Aggregate | Cache Invalidator, Audit | 配信切替・キャッシュ無効化（ADR-0033） |
+| TemplateArchived | Template Aggregate | Cache Invalidator, Audit | 廃止の監査・キャッシュ無効化（ADR-0033） |
+| FragmentCreated | Fragment Aggregate | Audit | 新規登録の監査 |
+| FragmentVersionCreated | Fragment Aggregate | Audit | 新Version追加の監査 |
+| FragmentPublished | Fragment Aggregate | Cache Invalidator, Audit | 配信切替・キャッシュ無効化（ADR-0033） |
+| FragmentArchived | Fragment Aggregate | Cache Invalidator, Audit | 廃止の監査・キャッシュ無効化（ADR-0033） |
 | PromptCompiled | Compiler | Prompt Cache | Compile結果キャッシュ |
 | PromptValidated / PromptValidationFailed | Validation Engine | Monitoring, Audit | 品質傾向監視 |
 | PromptOptimized | Optimization Engine | Audit | 最適化内容の追跡 |
@@ -1683,7 +1691,8 @@ P10b時点で実装済みの購読側は5つ: `AuditEngine`（6トピック全�
 ### P10bで確定した実装上の取り決め（ADR-0026）
 
 - **`PromptExecuted`のpayload**: `{promptKey, semVer, inputTokens, outputTokens, retryCount, latencyMs, costPerToken, status}`。`semVer`は文字列`"1.0.0"`ではなく**オブジェクト`{major, minor, patch}`**としてシリアライズする（`PromptPublished`等が`SemVer`型をそのまま載せるのと同じ扱い。購読側はこれと`promptKey`から`prompt_versions.version_id`を解決する）。`status`はM1では常に`SUCCESS`（§2.12参照）。
-- **キャッシュ無効化の発火条件**: `CacheInvalidationSubscriber`は`PromptPublished`に加え`PromptRolledBack`/`PromptArchived`/`PromptDiscarded`でも`invalidateByPrompt`を呼ぶ（いずれも配信されるPromptの内容が実質的に切り替わるため）。`pe.prompt`には`domain_events`由来のイベントも流れ、その`aggregateId`は`prompts.prompt_id`（UUID文字列）で`PromptKey`として解釈できない。この場合は対象を特定できないため何もしない（例外にせずDLQを汚さない）。
+- **キャッシュ無効化の発火条件**: `CacheInvalidationSubscriber`は`PromptPublished`に加え`PromptRolledBack`/`PromptArchived`/`PromptDiscarded`、およびM2-3で追加した`TemplatePublished`/`TemplateArchived`/`FragmentPublished`/`FragmentArchived`でも無効化を行う（いずれも配信される内容が実質的に切り替わるため）。
+- **M2-3で修正: `aggregateId`ではなく`payload`からキーを復元する（ADR-0033）**: `pe.prompt`には`domain_events`由来のイベントも流れ、その`aggregateId`は`prompts.prompt_id`（`Template`/`Fragment`も同様に自身のDB採番UUID）であり、業務キー（`PromptKey`/`TemplateKey`/`FragmentKey`）としては解釈できない。P10b時点の実装は`aggregateId`を`PromptKey`として解釈しようとし、常に失敗して無音に無効化をスキップしていた（本番相当のイベント形状に対して一度も無効化が成功しない不具合）。M2-3でこれを修正し、各イベントの`payload`が持つ`promptKey`/`templateKey`/`fragmentKey`フィールド（`PromptExecutedPayloadCodec`と同じ、`payload`をJSONとして解析するコーデック経由）からキーを復元する方式に改めた。Template/Fragment publish/archiveについては、復元した`templateKey`/`fragmentKey`と`payload.semVer`を使い、`DependencyRepository`の逆引き（`to_kind`一致）とその`to_version`（`VersionRange`）が`semVer`にマッチするPromptを特定し、該当Promptのキャッシュを無効化する（多段階の依存グラフ探索は行わない。ADR-0033決定3・c参照）。
 - **Secretマスクは2層**（§12の`audit_logs.payload`「Secretマスク済」の担保手段）。第1層は型ベースで、`SensitiveValue`を常に`"***"`としてシリアライズするJacksonモジュールをアプリケーション全体の`ObjectMapper`へ登録する（Outboxへ書かれる入口でマスクされるため、下流の購読側は既にマスク済みのJSONを受け取る）。第2層は名前ベースで、保存直前にフィールド名の**後方一致**でredactする。後方一致にしているのは、部分一致だと`inputTokens`/`outputTokens`/`tokenizerId`のような正当なフィールドまでマスクされ監査記録が失われるため。
 | ExperimentStarted / ExperimentStopped | Experiment Aggregate | Audit, 通知 | 実験管理 |
 | ExperimentWinnerDeclared | Experiment Engine | PromotionService, 通知 | 勝者昇格トリガ |
@@ -1911,7 +1920,7 @@ Template/Fragmentの`validation`とはマージせず、Prompt自身の宣言の
 | 6 | Evaluation Rule | EvaluationRule | Latency/Token/Cost | LLM-as-Judge、埋め込み類似Consistency |
 | 7 | Output Formatter | OutputFormatter | JSON/XML/Markdown/Text | 独自スキーマ形式 |
 | 8 | Repository | PromptRepository等 | RDB+Event Store | Document Store実装 |
-| 9 | Cache | PromptCache | 分散Cache | ローカル2層Cache |
+| 9 | Cache | PromptCache | 分散Cache（Redis、M2-3実装、ADR-0033） | ローカル2層Cache |
 | 10 | Search | SearchEngine | 全文Index標準 | ベクトル意味検索 |
 | 11 | Execution Adapter | ExecutionAdapter | APAP Adapter | テスト用Fake、記録リプレイ |
 | 12 | Experiment Strategy | TrafficSplitStrategy | 重み付ランダム+sticky | 多腕バンディット |
