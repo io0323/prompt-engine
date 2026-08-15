@@ -9,6 +9,7 @@ import promptengine.domain.dependency.DependencyRepository
 import promptengine.domain.event.EventContext
 import promptengine.domain.fragment.Fragment
 import promptengine.domain.fragment.FragmentContent
+import promptengine.domain.fragment.FragmentDomainEvent
 import promptengine.domain.fragment.FragmentKey
 import promptengine.domain.fragment.FragmentRepository
 import promptengine.domain.fragment.NewFragmentVersion
@@ -21,6 +22,7 @@ import promptengine.domain.shared.SemVer
 import promptengine.domain.template.NewTemplateVersion
 import promptengine.domain.template.Template
 import promptengine.domain.template.TemplateContent
+import promptengine.domain.template.TemplateDomainEvent
 import promptengine.domain.template.TemplateKey
 import promptengine.domain.template.TemplateRepository
 import java.time.Instant
@@ -62,7 +64,10 @@ class PublishHandlerTest {
 
         override fun findByKey(key: TemplateKey): Template? = store[key]
 
-        override fun save(template: Template): Template {
+        override fun save(
+            template: Template,
+            events: List<TemplateDomainEvent>,
+        ): Template {
             store[template.key] = template
             return template
         }
@@ -77,7 +82,10 @@ class PublishHandlerTest {
 
         override fun findByKey(key: FragmentKey): Fragment? = store[key]
 
-        override fun save(fragment: Fragment): Fragment {
+        override fun save(
+            fragment: Fragment,
+            events: List<FragmentDomainEvent>,
+        ): Fragment {
             store[fragment.key] = fragment
             return fragment
         }
@@ -116,7 +124,13 @@ class PublishHandlerTest {
         val promptRepository = InMemoryPromptRepository().apply { seed(approvedPrompt()) }
         val templateRepository =
             InMemoryTemplateRepository().apply {
-                seed(Template.create(templateKey, NewTemplateVersion(SemVer(1, 0, 0), TemplateContent("t"))))
+                seed(
+                    Template.create(
+                        templateKey,
+                        NewTemplateVersion(SemVer(1, 0, 0), TemplateContent("t")),
+                        context,
+                    ).first,
+                )
             }
         val dependencyRepository =
             FakeDependencyRepository(
@@ -140,8 +154,13 @@ class PublishHandlerTest {
         val promptRepository = InMemoryPromptRepository().apply { seed(approvedPrompt()) }
         val templateRepository =
             InMemoryTemplateRepository().apply {
-                val template = Template.create(templateKey, NewTemplateVersion(SemVer(1, 0, 0), TemplateContent("t")))
-                seed(template.publish(SemVer(1, 0, 0)))
+                val template =
+                    Template.create(
+                        templateKey,
+                        NewTemplateVersion(SemVer(1, 0, 0), TemplateContent("t")),
+                        context,
+                    ).first
+                seed(template.publish(SemVer(1, 0, 0), context).first)
             }
         val dependencyRepository =
             FakeDependencyRepository(
@@ -181,7 +200,13 @@ class PublishHandlerTest {
         val promptRepository = InMemoryPromptRepository().apply { seed(approvedPrompt()) }
         val fragmentRepository =
             InMemoryFragmentRepository().apply {
-                seed(Fragment.create(fragmentKey, NewFragmentVersion(SemVer(1, 0, 0), FragmentContent("f"))))
+                seed(
+                    Fragment.create(
+                        fragmentKey,
+                        NewFragmentVersion(SemVer(1, 0, 0), FragmentContent("f")),
+                        context,
+                    ).first,
+                )
             }
         val dependencyRepository =
             FakeDependencyRepository(
@@ -205,8 +230,13 @@ class PublishHandlerTest {
         val promptRepository = InMemoryPromptRepository().apply { seed(approvedPrompt()) }
         val fragmentRepository =
             InMemoryFragmentRepository().apply {
-                val fragment = Fragment.create(fragmentKey, NewFragmentVersion(SemVer(1, 0, 0), FragmentContent("f")))
-                seed(fragment.publish(SemVer(1, 0, 0)))
+                val fragment =
+                    Fragment.create(
+                        fragmentKey,
+                        NewFragmentVersion(SemVer(1, 0, 0), FragmentContent("f")),
+                        context,
+                    ).first
+                seed(fragment.publish(SemVer(1, 0, 0), context).first)
             }
         val dependencyRepository =
             FakeDependencyRepository(
@@ -302,8 +332,13 @@ class PublishHandlerTest {
         val templateRepository =
             InMemoryTemplateRepository().apply {
                 // ^2（major 2系）を要求するが、実際にPublished済みなのはmajor 1系のみ。
-                val template = Template.create(templateKey, NewTemplateVersion(SemVer(1, 0, 0), TemplateContent("t")))
-                seed(template.publish(SemVer(1, 0, 0)))
+                val template =
+                    Template.create(
+                        templateKey,
+                        NewTemplateVersion(SemVer(1, 0, 0), TemplateContent("t")),
+                        context,
+                    ).first
+                seed(template.publish(SemVer(1, 0, 0), context).first)
             }
         val dependencyRepository =
             FakeDependencyRepository(

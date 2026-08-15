@@ -16,6 +16,7 @@ import org.springframework.transaction.support.TransactionTemplate
 import org.testcontainers.containers.PostgreSQLContainer
 import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
+import promptengine.domain.event.EventContext
 import promptengine.domain.shared.ExtendsRefApi
 import promptengine.domain.shared.PublicationState
 import promptengine.domain.shared.SemVer
@@ -30,15 +31,17 @@ import promptengine.domain.variable.VariableSource
 import promptengine.domain.variable.VariableType
 import promptengine.infrastructure.persistence.JdbcTemplateRepository
 import promptengine.infrastructure.persistence.TemplateVersionConflictException
+import java.time.Instant
 import java.util.UUID
 import javax.sql.DataSource
 
 /**
- * [JdbcTemplateRepository] のTestcontainers(PostgreSQL 16)統合テスト（ADR-0008）。
+ * [JdbcTemplateRepository] のTestcontainers(PostgreSQL 16)統合テスト（ADR-0008、
+ * イベント追記はADR-0033）。
  *
  * P2（[promptengine.infrastructure.persistence.EventStorePromptRepository]）の
  * 復元経路パターン（Memento + `@PersistenceApi`）が2つ目のAggregateでも通用するかを
- * 検証する。Domain Event/Outbox/Snapshotは対象外（ADR-0008）。
+ * 検証する。加えてM2-3以降は`domain_events`への追記（Issue #15）も検証する。
  */
 @OptIn(ExtendsRefApi::class)
 @Testcontainers
@@ -46,6 +49,9 @@ import javax.sql.DataSource
 class JdbcTemplateRepositoryIntegrationTest {
     private lateinit var dataSource: DataSource
     private lateinit var repository: JdbcTemplateRepository
+    private lateinit var jdbcTemplate: NamedParameterJdbcTemplate
+    private val context =
+        EventContext(actor = "tester", traceId = "trace-1", occurredAt = Instant.parse("2026-01-01T00:00:00Z"))
 
     @BeforeAll
     fun setUp() {
@@ -59,10 +65,23 @@ class JdbcTemplateRepositoryIntegrationTest {
         dataSource = HikariDataSource(hikariConfig)
         Flyway.configure().dataSource(dataSource).load().migrate()
 
-        val jdbcTemplate = NamedParameterJdbcTemplate(dataSource)
+        jdbcTemplate = NamedParameterJdbcTemplate(dataSource)
         val transactionTemplate = TransactionTemplate(DataSourceTransactionManager(dataSource))
         repository = JdbcTemplateRepository(jdbcTemplate, transactionTemplate, jacksonObjectMapper())
     }
+
+    /** [key]のTemplateについて`domain_events`へ記録された`event_type`をsequence順に返す（ADR-0033）。 */
+    private fun recordedEventTypes(key: TemplateKey): List<String> =
+        jdbcTemplate.queryForList(
+            """
+            SELECT de.event_type FROM domain_events de
+            JOIN templates t ON t.template_id = de.aggregate_id
+            WHERE t.template_key = :templateKey
+            ORDER BY de.sequence
+            """.trimIndent(),
+            mapOf("templateKey" to key.value),
+            String::class.java,
+        )
 
     @AfterAll
     fun tearDown() {
@@ -99,9 +118,13 @@ class JdbcTemplateRepositoryIntegrationTest {
             )
 
         // Draft（variables/extends（key+range）のround-tripも合わせて検証する。ADR-0009）
-        val created =
-            Template.create(key, NewTemplateVersion(v1, TemplateContent("Hello {{name}}"), variables, extendsRef))
-        repository.save(created)
+        val (created, createdEvent) =
+            Template.create(
+                key,
+                NewTemplateVersion(v1, TemplateContent("Hello {{name}}"), variables, extendsRef),
+                context,
+            )
+        repository.save(created, listOf(createdEvent))
         var reloaded = repository.findByKey(key)!!
         reloaded.versions.single().content shouldBe TemplateContent("Hello {{name}}")
         reloaded.versions.single().variables shouldBe variables
@@ -109,16 +132,21 @@ class JdbcTemplateRepositoryIntegrationTest {
         reloaded.versions.single().state shouldBe PublicationState.Draft
 
         // Published
-        repository.save(reloaded.publish(v1))
+        val (published, publishedEvent) = reloaded.publish(v1, context)
+        repository.save(published, listOf(publishedEvent))
         reloaded = repository.findByKey(key)!!
         reloaded.versions.single().state shouldBe PublicationState.Published
 
         // v2をDraftで追加し、v1はArchivedへ進める（複数Versionの共存を検証、§15.4）
-        val withV2 = reloaded.newVersion(NewTemplateVersion(v2, TemplateContent("Hello v2 {{name}}")))
-        repository.save(withV2)
+        val (withV2, versionCreatedEvent) =
+            reloaded.newVersion(
+                NewTemplateVersion(v2, TemplateContent("Hello v2 {{name}}")),
+                context,
+            )
+        repository.save(withV2, listOf(versionCreatedEvent))
         reloaded = repository.findByKey(key)!!
-        val archived = reloaded.archive(v1)
-        repository.save(archived)
+        val (archived, archivedEvent) = reloaded.archive(v1, context)
+        repository.save(archived, listOf(archivedEvent))
         reloaded = repository.findByKey(key)!!
 
         val v1Final = reloaded.versions.single { it.semVer == v1 }
@@ -127,6 +155,10 @@ class JdbcTemplateRepositoryIntegrationTest {
         v2Final.state shouldBe PublicationState.Draft
         v2Final.content shouldBe TemplateContent("Hello v2 {{name}}")
         reloaded.key shouldBe key
+
+        // Issue #15: 4操作それぞれのイベントがdomain_eventsへsequence順に記録される。
+        recordedEventTypes(key) shouldBe
+            listOf("TemplateCreated", "TemplatePublished", "TemplateVersionCreated", "TemplateArchived")
     }
 
     @Test
@@ -139,16 +171,18 @@ class JdbcTemplateRepositoryIntegrationTest {
         val key = uniqueKey()
         val v1 = SemVer(0, 1, 0)
 
-        val created = Template.create(key, NewTemplateVersion(v1, TemplateContent("body")))
-        repository.save(created)
+        val (created, createdEvent) = Template.create(key, NewTemplateVersion(v1, TemplateContent("body")), context)
+        repository.save(created, listOf(createdEvent))
 
         val readByFirstCaller = repository.findByKey(key)!!
         val readBySecondCaller = repository.findByKey(key)!!
 
-        repository.save(readByFirstCaller.publish(v1))
+        val (publishedFirst, publishedFirstEvent) = readByFirstCaller.publish(v1, context)
+        repository.save(publishedFirst, listOf(publishedFirstEvent))
 
         shouldThrow<TemplateVersionConflictException> {
-            repository.save(readBySecondCaller.publish(v1))
+            val (publishedSecond, publishedSecondEvent) = readBySecondCaller.publish(v1, context)
+            repository.save(publishedSecond, listOf(publishedSecondEvent))
         }
     }
 

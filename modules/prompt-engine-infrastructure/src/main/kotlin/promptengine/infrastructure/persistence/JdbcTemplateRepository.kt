@@ -8,6 +8,7 @@ import org.springframework.transaction.support.TransactionTemplate
 import promptengine.domain.shared.PersistenceApi
 import promptengine.domain.template.Template
 import promptengine.domain.template.TemplateContent
+import promptengine.domain.template.TemplateDomainEvent
 import promptengine.domain.template.TemplateKey
 import promptengine.domain.template.TemplateMemento
 import promptengine.domain.template.TemplateRepository
@@ -21,13 +22,12 @@ import java.time.Instant
 import java.util.UUID
 
 /**
- * [TemplateRepository] のJDBC実装（設計書§3.4・ADR-0008）。
+ * [TemplateRepository] のJDBC実装（設計書§3.4・ADR-0008、イベント追記はADR-0033）。
  *
- * P2の [EventStorePromptRepository] と異なり、Domain Event/Outbox/Snapshotへの
- * 追記は行わない ── §14にTemplate/Fragmentのイベントが定義されておらず、本フェーズの
- * スコープはP2の復元経路パターン（Memento + `@PersistenceApi`）の再検証に限定される
- * ため（ADR-0008）。actor/occurredAtを受け取る `EventContext` が存在しないため、
- * `created_by` にはPromptの無イベント経路と同じ固定値 `"system"` を書き込む。
+ * [EventStorePromptRepository.save]と同じ形（`events.firstOrNull()`からactor/occurredAtを
+ * 導出し、`created_by`/`created_at`へ使う。イベントを`domain_events`/`outbox`へ追記する）に
+ * 揃えた。Snapshot（`prompt_snapshots`相当）は本Aggregateには無い（ADR-0006のSnapshot最適化は
+ * Prompt固有のスコープ、Template/Fragmentはversions件数が少なく必要性が薄いため対象外）。
  */
 class JdbcTemplateRepository(
     private val jdbcTemplate: NamedParameterJdbcTemplate,
@@ -83,10 +83,21 @@ class JdbcTemplateRepository(
         }
 
     @OptIn(PersistenceApi::class)
-    override fun save(template: Template): Template =
+    override fun save(
+        template: Template,
+        events: List<TemplateDomainEvent>,
+    ): Template =
         transactionTemplate.execute {
-            val (templateId, newRowVersion) = upsertTemplate(template)
-            template.versions.forEach { version -> upsertVersion(templateId, version) }
+            val actor = events.firstOrNull()?.actor ?: DEFAULT_ACTOR
+            val occurredAt = events.firstOrNull()?.occurredAt ?: Instant.now()
+
+            val (templateId, newRowVersion) = upsertTemplate(template, actor, occurredAt)
+            template.versions.forEach { version -> upsertVersion(templateId, version, actor, occurredAt) }
+
+            if (events.isNotEmpty()) {
+                jdbcTemplate.appendTemplateDomainEvents(objectMapper, templateId, events)
+            }
+
             withRowVersion(template, newRowVersion)
         } ?: error("save transaction returned null")
 
@@ -143,9 +154,13 @@ class JdbcTemplateRepository(
      * インクリメントした値（`template.rowVersion + 1`）を返す（EventStorePromptRepository
      * の `upsertPrompt` と同じ理由）。
      */
-    private fun upsertTemplate(template: Template): Pair<UUID, Long> {
+    private fun upsertTemplate(
+        template: Template,
+        actor: String,
+        occurredAt: Instant,
+    ): Pair<UUID, Long> {
         val existing = findTemplateRow(template.key)
-        val now = Timestamp.from(Instant.now())
+        val now = Timestamp.from(occurredAt)
 
         if (existing == null) {
             val templateId = UUID.randomUUID()
@@ -157,7 +172,7 @@ class JdbcTemplateRepository(
                 MapSqlParameterSource()
                     .addValue("templateId", templateId)
                     .addValue("templateKey", template.key.value)
-                    .addValue("createdBy", DEFAULT_ACTOR)
+                    .addValue("createdBy", actor)
                     .addValue("createdAt", now)
                     .addValue("updatedAt", now),
             )
@@ -189,6 +204,8 @@ class JdbcTemplateRepository(
     private fun upsertVersion(
         templateId: UUID,
         version: TemplateVersion,
+        actor: String,
+        occurredAt: Instant,
     ) {
         val versionId =
             jdbcTemplate.queryForObject(
@@ -216,8 +233,8 @@ class JdbcTemplateRepository(
                     .addValue("status", version.state.toDbValue())
                     .addValue("extendsKey", version.extends.toExtendsKeyDbValue())
                     .addValue("extendsVersionRange", version.extends.toExtendsVersionRangeDbValue())
-                    .addValue("createdBy", DEFAULT_ACTOR)
-                    .addValue("createdAt", Timestamp.from(Instant.now())),
+                    .addValue("createdBy", actor)
+                    .addValue("createdAt", Timestamp.from(occurredAt)),
                 UUID::class.java,
             )!!
 

@@ -3,7 +3,8 @@ package promptengine.domain.event
 /**
  * [DomainEvent.eventType]から配信先[EventTopic]を解決する（設計書§14の表、ADR-0025決定7）。
  *
- * 設計書§14に列挙された30件のイベント名のみを扱う閉じた集合として実装する。
+ * 設計書§14に列挙された38件のイベント名のみを扱う閉じた集合として実装する
+ * （M2-3でTemplate/Fragmentの8件を追加、ADR-0033）。
  * 未知の`eventType`は設計書に存在しないイベントであるため、フォールバックせず
  * [IllegalArgumentException]で失敗させる（CLAUDE.md「設計書にない...イベントを
  * 勝手に追加しない」の裏面。中継実装側で未定義イベントを静かに握りつぶさない）。
@@ -28,6 +29,14 @@ object EventTopicResolver {
                 "PromptOptimized",
                 "PromptRendered",
                 "CacheInvalidated",
+                "TemplateCreated",
+                "TemplateVersionCreated",
+                "TemplatePublished",
+                "TemplateArchived",
+                "FragmentCreated",
+                "FragmentVersionCreated",
+                "FragmentPublished",
+                "FragmentArchived",
             )
             putAllFor(
                 EventTopic.PE_EXECUTION,

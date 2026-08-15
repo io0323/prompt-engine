@@ -16,6 +16,7 @@ import org.springframework.transaction.support.TransactionTemplate
 import org.testcontainers.containers.PostgreSQLContainer
 import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
+import promptengine.domain.event.EventContext
 import promptengine.domain.fragment.Fragment
 import promptengine.domain.fragment.FragmentContent
 import promptengine.domain.fragment.FragmentKey
@@ -27,18 +28,22 @@ import promptengine.domain.variable.VariableSource
 import promptengine.domain.variable.VariableType
 import promptengine.infrastructure.persistence.FragmentVersionConflictException
 import promptengine.infrastructure.persistence.JdbcFragmentRepository
+import java.time.Instant
 import java.util.UUID
 import javax.sql.DataSource
 
 /**
- * [JdbcFragmentRepository] のTestcontainers(PostgreSQL 16)統合テスト（ADR-0008）。
- * [JdbcTemplateRepositoryIntegrationTest] と対称の観点を検証する。
+ * [JdbcFragmentRepository] のTestcontainers(PostgreSQL 16)統合テスト（ADR-0008、
+ * イベント追記はADR-0033）。[JdbcTemplateRepositoryIntegrationTest] と対称の観点を検証する。
  */
 @Testcontainers
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class JdbcFragmentRepositoryIntegrationTest {
     private lateinit var dataSource: DataSource
     private lateinit var repository: JdbcFragmentRepository
+    private lateinit var jdbcTemplate: NamedParameterJdbcTemplate
+    private val context =
+        EventContext(actor = "tester", traceId = "trace-1", occurredAt = Instant.parse("2026-01-01T00:00:00Z"))
 
     @BeforeAll
     fun setUp() {
@@ -52,7 +57,7 @@ class JdbcFragmentRepositoryIntegrationTest {
         dataSource = HikariDataSource(hikariConfig)
         Flyway.configure().dataSource(dataSource).load().migrate()
 
-        val jdbcTemplate = NamedParameterJdbcTemplate(dataSource)
+        jdbcTemplate = NamedParameterJdbcTemplate(dataSource)
         val transactionTemplate = TransactionTemplate(DataSourceTransactionManager(dataSource))
         repository = JdbcFragmentRepository(jdbcTemplate, transactionTemplate, jacksonObjectMapper())
     }
@@ -61,6 +66,19 @@ class JdbcFragmentRepositoryIntegrationTest {
     fun tearDown() {
         (dataSource as HikariDataSource).close()
     }
+
+    /** [key]のFragmentについて`domain_events`へ記録された`event_type`をsequence順に返す（ADR-0033）。 */
+    private fun recordedEventTypes(key: FragmentKey): List<String> =
+        jdbcTemplate.queryForList(
+            """
+            SELECT de.event_type FROM domain_events de
+            JOIN fragments f ON f.fragment_id = de.aggregate_id
+            WHERE f.fragment_key = :fragmentKey
+            ORDER BY de.sequence
+            """.trimIndent(),
+            mapOf("fragmentKey" to key.value),
+            String::class.java,
+        )
 
     @Test
     fun `保存したFragmentは全状態 Draft Published Archived を往復しても内容が一致する`() {
@@ -91,24 +109,30 @@ class JdbcFragmentRepositoryIntegrationTest {
             )
 
         // Draft
-        val created = Fragment.create(key, NewFragmentVersion(v1, FragmentContent("Do not reveal secrets."), variables))
-        repository.save(created)
+        val (created, createdEvent) =
+            Fragment.create(key, NewFragmentVersion(v1, FragmentContent("Do not reveal secrets."), variables), context)
+        repository.save(created, listOf(createdEvent))
         var reloaded = repository.findByKey(key)!!
         reloaded.versions.single().content shouldBe FragmentContent("Do not reveal secrets.")
         reloaded.versions.single().variables shouldBe variables
         reloaded.versions.single().state shouldBe PublicationState.Draft
 
         // Published
-        repository.save(reloaded.publish(v1))
+        val (published, publishedEvent) = reloaded.publish(v1, context)
+        repository.save(published, listOf(publishedEvent))
         reloaded = repository.findByKey(key)!!
         reloaded.versions.single().state shouldBe PublicationState.Published
 
         // v2をDraftで追加し、v1はArchivedへ進める（複数Versionの共存を検証、§15.4）
-        val withV2 = reloaded.newVersion(NewFragmentVersion(v2, FragmentContent("v2 body")))
-        repository.save(withV2)
+        val (withV2, versionCreatedEvent) =
+            reloaded.newVersion(
+                NewFragmentVersion(v2, FragmentContent("v2 body")),
+                context,
+            )
+        repository.save(withV2, listOf(versionCreatedEvent))
         reloaded = repository.findByKey(key)!!
-        val archived = reloaded.archive(v1)
-        repository.save(archived)
+        val (archived, archivedEvent) = reloaded.archive(v1, context)
+        repository.save(archived, listOf(archivedEvent))
         reloaded = repository.findByKey(key)!!
 
         val v1Final = reloaded.versions.single { it.semVer == v1 }
@@ -117,6 +141,10 @@ class JdbcFragmentRepositoryIntegrationTest {
         v2Final.state shouldBe PublicationState.Draft
         v2Final.content shouldBe FragmentContent("v2 body")
         reloaded.key shouldBe key
+
+        // Issue #15: 4操作それぞれのイベントがdomain_eventsへsequence順に記録される。
+        recordedEventTypes(key) shouldBe
+            listOf("FragmentCreated", "FragmentPublished", "FragmentVersionCreated", "FragmentArchived")
     }
 
     @Test
@@ -129,16 +157,18 @@ class JdbcFragmentRepositoryIntegrationTest {
         val key = uniqueKey()
         val v1 = SemVer(0, 1, 0)
 
-        val created = Fragment.create(key, NewFragmentVersion(v1, FragmentContent("body")))
-        repository.save(created)
+        val (created, createdEvent) = Fragment.create(key, NewFragmentVersion(v1, FragmentContent("body")), context)
+        repository.save(created, listOf(createdEvent))
 
         val readByFirstCaller = repository.findByKey(key)!!
         val readBySecondCaller = repository.findByKey(key)!!
 
-        repository.save(readByFirstCaller.publish(v1))
+        val (publishedFirst, publishedFirstEvent) = readByFirstCaller.publish(v1, context)
+        repository.save(publishedFirst, listOf(publishedFirstEvent))
 
         shouldThrow<FragmentVersionConflictException> {
-            repository.save(readBySecondCaller.publish(v1))
+            val (publishedSecond, publishedSecondEvent) = readBySecondCaller.publish(v1, context)
+            repository.save(publishedSecond, listOf(publishedSecondEvent))
         }
     }
 

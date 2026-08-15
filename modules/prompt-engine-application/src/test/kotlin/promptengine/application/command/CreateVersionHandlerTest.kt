@@ -9,6 +9,7 @@ import promptengine.domain.dependency.DependencyRepository
 import promptengine.domain.event.EventContext
 import promptengine.domain.fragment.Fragment
 import promptengine.domain.fragment.FragmentContent
+import promptengine.domain.fragment.FragmentDomainEvent
 import promptengine.domain.fragment.FragmentKey
 import promptengine.domain.fragment.FragmentRepository
 import promptengine.domain.fragment.NewFragmentVersion
@@ -21,6 +22,7 @@ import promptengine.domain.shared.SemVer
 import promptengine.domain.template.NewTemplateVersion
 import promptengine.domain.template.Template
 import promptengine.domain.template.TemplateContent
+import promptengine.domain.template.TemplateDomainEvent
 import promptengine.domain.template.TemplateKey
 import promptengine.domain.template.TemplateRepository
 import promptengine.engine.compiler.CompositionServiceImpl
@@ -78,6 +80,8 @@ class CreateVersionHandlerTest {
 
     private class FakeTemplateRepository : TemplateRepository {
         private val templates = mutableMapOf<TemplateKey, Template>()
+        private val context =
+            EventContext(actor = "tester", traceId = "trace-1", occurredAt = Instant.parse("2026-01-01T00:00:00Z"))
 
         fun addPublished(
             key: TemplateKey,
@@ -85,13 +89,16 @@ class CreateVersionHandlerTest {
             bodyText: String,
         ) {
             val body = "---\npe: \"1\"\nkind: template\nkey: ${key.value}\n---\n$bodyText"
-            val template = Template.create(key, NewTemplateVersion(semVer, TemplateContent(body))).publish(semVer)
-            templates[key] = template
+            val created = Template.create(key, NewTemplateVersion(semVer, TemplateContent(body)), context).first
+            templates[key] = created.publish(semVer, context).first
         }
 
         override fun findByKey(key: TemplateKey): Template? = templates[key]
 
-        override fun save(template: Template): Template {
+        override fun save(
+            template: Template,
+            events: List<TemplateDomainEvent>,
+        ): Template {
             templates[template.key] = template
             return template
         }
@@ -99,6 +106,8 @@ class CreateVersionHandlerTest {
 
     private class FakeFragmentRepository : FragmentRepository {
         private val fragments = mutableMapOf<FragmentKey, Fragment>()
+        private val context =
+            EventContext(actor = "tester", traceId = "trace-1", occurredAt = Instant.parse("2026-01-01T00:00:00Z"))
 
         fun addPublished(
             key: FragmentKey,
@@ -106,13 +115,16 @@ class CreateVersionHandlerTest {
             bodyText: String,
         ) {
             val body = "---\npe: \"1\"\nkind: fragment\nkey: ${key.value}\n---\n$bodyText"
-            val fragment = Fragment.create(key, NewFragmentVersion(semVer, FragmentContent(body))).publish(semVer)
-            fragments[key] = fragment
+            val created = Fragment.create(key, NewFragmentVersion(semVer, FragmentContent(body)), context).first
+            fragments[key] = created.publish(semVer, context).first
         }
 
         override fun findByKey(key: FragmentKey): Fragment? = fragments[key]
 
-        override fun save(fragment: Fragment): Fragment {
+        override fun save(
+            fragment: Fragment,
+            events: List<FragmentDomainEvent>,
+        ): Fragment {
             fragments[fragment.key] = fragment
             return fragment
         }

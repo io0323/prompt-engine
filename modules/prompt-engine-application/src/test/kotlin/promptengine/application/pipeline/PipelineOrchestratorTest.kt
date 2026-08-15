@@ -27,6 +27,7 @@ import promptengine.domain.execution.ParseRepairPolicy
 import promptengine.domain.execution.RawResponse
 import promptengine.domain.execution.Usage
 import promptengine.domain.fragment.Fragment
+import promptengine.domain.fragment.FragmentDomainEvent
 import promptengine.domain.fragment.FragmentKey
 import promptengine.domain.fragment.FragmentRepository
 import promptengine.domain.observability.Outcome
@@ -66,6 +67,7 @@ import promptengine.domain.template.ExtendsRef
 import promptengine.domain.template.NewTemplateVersion
 import promptengine.domain.template.Template
 import promptengine.domain.template.TemplateContent
+import promptengine.domain.template.TemplateDomainEvent
 import promptengine.domain.template.TemplateKey
 import promptengine.domain.template.TemplateRepository
 import promptengine.domain.tokenizer.TokenizerPlugin
@@ -715,6 +717,8 @@ class PipelineOrchestratorTest {
 
     private class FakeTemplateRepository : TemplateRepository {
         private val templates = mutableMapOf<TemplateKey, Template>()
+        private val context =
+            EventContext(actor = "tester", traceId = "trace-1", occurredAt = Instant.EPOCH)
 
         fun addPublished(
             key: TemplateKey,
@@ -724,14 +728,19 @@ class PipelineOrchestratorTest {
         ) {
             val newVersion =
                 NewTemplateVersion(semVer, TemplateContent(wrap(key.value, "template", bodyText)), extends = extends)
-            var template = templates[key]?.newVersion(newVersion) ?: Template.create(key, newVersion)
-            template = template.publish(semVer)
+            var template =
+                templates[key]?.newVersion(newVersion, context)?.first
+                    ?: Template.create(key, newVersion, context).first
+            template = template.publish(semVer, context).first
             templates[key] = template
         }
 
         override fun findByKey(key: TemplateKey): Template? = templates[key]
 
-        override fun save(template: Template): Template {
+        override fun save(
+            template: Template,
+            events: List<TemplateDomainEvent>,
+        ): Template {
             templates[template.key] = template
             return template
         }
@@ -742,7 +751,10 @@ class PipelineOrchestratorTest {
 
         override fun findByKey(key: FragmentKey): Fragment? = fragments[key]
 
-        override fun save(fragment: Fragment): Fragment {
+        override fun save(
+            fragment: Fragment,
+            events: List<FragmentDomainEvent>,
+        ): Fragment {
             fragments[fragment.key] = fragment
             return fragment
         }
