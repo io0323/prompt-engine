@@ -22,6 +22,8 @@ updates:
       # （org.springframework.boot）と、buildSrc/build.gradle.ktsが個別に固定する
       # spring-boot-gradle-plugin（groupId:artifactId座標）の両方をカバーするため
       # （Dependabotが検出名称をどちらの形式で報告してもマッチさせる、CodeRabbitレビュー指摘）。
+      #
+      # 根本原因の解消（detektのKotlin 2.0.21固定を外す）はIssue #104で追跡する。
       - dependency-name: "org.springframework.boot*"
         update-types: ["version-update:semver-major"]
 
@@ -31,6 +33,8 @@ updates:
       # currently running with 2.4.10 で即座に失敗することをローカルで確認済み（PR #64で確認・
       # クローズ）。semver-major/minor/patchのどのレベルの更新でも同様に壊れるため、
       # update-typesで絞らずこの2依存の更新自体を丸ごと保留する。
+      #
+      # 根本原因の解消（detektのKotlin 2.0.21固定を外す）はIssue #104で追跡する。
       - dependency-name: "org.jetbrains.kotlin:kotlin-gradle-plugin"
       - dependency-name: "org.jetbrains.kotlin:kotlin-allopen"
 
@@ -42,7 +46,23 @@ updates:
       # 読めない）でprompt-engine-interfaceのcompileKotlinが失敗する（PR #97で確認・
       # クローズ）。Spring Boot 3.x系のままとどまる限り、springdocのメジャー更新を
       # 安全に取り込むことはできない。マイナー/パッチ更新（2.8.x系内）は通常通り提案してよい。
+      #
+      # 根本原因（detektのKotlin 2.0.21固定）の解消はIssue #104、springdoc 3.x /
+      # Spring Boot 4.x移行そのものの検討はIssue #105で追跡する。
       - dependency-name: "org.springdoc:springdoc-openapi-starter-webmvc-ui"
+        update-types: ["version-update:semver-major"]
+
+      # kotest（kotest-runner-junit5 / kotest-assertions-core、gradle/libs.versions.tomlの
+      # kotest = "5.9.1"を共有参照）の5.9.1→6.2.4更新は、上記と同じdetekt-gradle-plugin 1.23.8
+      # によるKotlin 2.0.21固定が原因でビルドできない。6.2.4はより新しいKotlinでコンパイルされて
+      # おり、tests:integration:compileIntegrationTestKotlinがFirIncompatibleClassExpression
+      # Checker系のコンパイラ内部クラッシュ（IllegalArgumentException: source must not be null）
+      # で失敗することを確認済み（PR #100で確認・クローズ）。detekt 1.23.8によるKotlin 2.0.21
+      # 固定が原因。Issue #104の解消後に見直すこと。
+      #
+      # dependency-nameはワイルドカードにする: kotest-runner-junit5とkotest-assertions-coreの
+      # 両方をカバーするため（org.springframework.boot*と同じ理由）。
+      - dependency-name: "io.kotest:*"
         update-types: ["version-update:semver-major"]
 
   - package-ecosystem: "github-actions"
