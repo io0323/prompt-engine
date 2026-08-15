@@ -165,6 +165,27 @@ class PipelineOrchestratorTest {
         fixture.metricsRecorder.stageDurations.map { it.stage }.toSet() shouldBe result.stageDurationsMs.keys
     }
 
+    /**
+     * ADR-0033の要件: PromptCacheを有効にしてもrenderHashの決定性
+     * （設計書§2.9、同一入力から同一renderHash）が損なわれないことを確認する。
+     * 1回目はキャッシュミス（compile実行・put）、2回目はキャッシュヒット
+     * （compile未実行、getのみ）になることも合わせて確認し、「たまたま同じ値」ではなく
+     * 実際にキャッシュ経路を通った上でrenderHashが変わらないことを固定する。
+     */
+    @Test
+    fun `PromptCacheが有効でも同一入力を2回RenderするとrenderHashが一致しキャッシュヒットする`() {
+        val fixture = Fixture()
+        val orchestrator = fixture.orchestrator()
+        val request = fixture.baseRequest()
+
+        val first = orchestrator.run(request = request, mode = PipelineMode.RENDER_ONLY, traceId = "trace-cache-1")
+        val second = orchestrator.run(request = request, mode = PipelineMode.RENDER_ONLY, traceId = "trace-cache-2")
+
+        first.rendered!!.renderHash shouldBe second.rendered!!.renderHash
+        fixture.promptCache.putCalls.size shouldBe 1
+        fixture.promptCache.getCalls.size shouldBe 2
+    }
+
     @Test
     fun `traceIdを省略した場合は自動生成されたIDが使われる`() {
         val fixture = Fixture()
