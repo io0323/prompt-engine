@@ -62,17 +62,26 @@ class RedisPromptCacheIntegrationTest {
     private lateinit var commands: RedisCommands<String, String>
     private lateinit var cache: RedisPromptCache
 
+    // 「複数インスタンス」を模す2つ目の独立したコネクション+RedisPromptCacheインスタンス
+    // （同一Redisを指すが、Java/Lettuceオブジェクトとしては別物。アプリの別Podを模す）。
+    private lateinit var secondConnection: StatefulRedisConnection<String, String>
+    private lateinit var secondInstanceCache: RedisPromptCache
+
     @BeforeAll
     fun setUp() {
         redisClient = RedisClient.create("redis://${redis.host}:${redis.getMappedPort(REDIS_PORT)}")
         connection = redisClient.connect()
         commands = connection.sync()
         cache = RedisPromptCache(commands, jacksonObjectMapper())
+
+        secondConnection = redisClient.connect()
+        secondInstanceCache = RedisPromptCache(secondConnection.sync(), jacksonObjectMapper())
     }
 
     @AfterAll
     fun tearDown() {
         connection.close()
+        secondConnection.close()
         redisClient.shutdown()
     }
 
@@ -203,6 +212,34 @@ class RedisPromptCacheIntegrationTest {
         // 無関係なPromptのエントリは中身がそのまま残っていることを内容で確認する
         // （キーが存在するかだけでなく、無効化時に誤って上書き・破損していないか）。
         cache.get(otherKey) shouldBe CachedItem(otherContent)
+    }
+
+    /**
+     * 複数インスタンス（別Pod）を想定したテスト（M2-3プロンプト要件）。`cache`と
+     * `secondInstanceCache`は同じRedisを指すが、Java/Lettuceオブジェクトとしては
+     * 独立したコネクション・インスタンスであり、プロセス内メモリを一切共有しない。
+     * これにより「あるインスタンスが書いたキャッシュを別インスタンスが読める」
+     * 「あるインスタンスが受けた無効化イベントの効果を別インスタンスも見える」という、
+     * Redis（分散Cache）を選んだ理由そのものを検証する。
+     */
+    @Test
+    fun `別インスタンスが書いたキャッシュを別インスタンスが読め 一方が受けた無効化はもう一方にも反映される`() {
+        val key = CacheKey(PromptKey("cache-it/multi-instance"), VersionRef.Fixed(SemVer(1, 0, 0)))
+        val content = richCompiledPrompt()
+
+        // インスタンスAが書き込む。
+        cache.put(key, CachedItem(content), Duration.ofSeconds(30))
+
+        // インスタンスBが同じ内容を読める（プロセス内メモリ共有ではなく、Redis経由で見えている）。
+        secondInstanceCache.get(key) shouldBe CachedItem(content)
+
+        // インスタンスBが無効化イベントを受けたとする（CacheInvalidationSubscriberが
+        // どちらのPodで動いていても、同じRedisを見ている限り無効化は共有される）。
+        secondInstanceCache.invalidateByPrompt(key.promptKey)
+
+        // インスタンスA側の参照でも、既に無効化されていることが確認できる
+        // （インスタンスA自身が無効化イベントを受け取っていなくても、である）。
+        cache.get(key) shouldBe null
     }
 
     private companion object {
