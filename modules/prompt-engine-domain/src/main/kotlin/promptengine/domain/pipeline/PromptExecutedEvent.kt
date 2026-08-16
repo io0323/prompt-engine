@@ -44,6 +44,10 @@ data class PromptExecutedEvent(
      * [costPerToken]は実行時点の[promptengine.domain.optimization.ModelProfile.costPerToken]。
      * 購読側が後からModelProfileを引き直すと単価改定後の再評価で当時と違うコストが出るため、
      * 実行時点の単価をイベント自身に載せる（ADR-0026決定3）。
+     *
+     * [variantId]はM2-4a（ADR-0034決定4）で追加。Experiment経由の実行（`PipelineContext.
+     * experimentVariantId`が非null）のみ非NULL。通常経路の実行は`null`のまま
+     * （`evaluation_records.variant_id`/`execution_logs.variant_id`の由来）。
      */
     data class Payload(
         val promptKey: String,
@@ -54,5 +58,6 @@ data class PromptExecutedEvent(
         val latencyMs: Long,
         val costPerToken: BigDecimal,
         val status: ExecutionStatus,
+        val variantId: UUID? = null,
     )
 }

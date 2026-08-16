@@ -26,6 +26,7 @@ data class EvaluationRecord(
     val method: String,
     val sampleRef: String?,
     val evaluatedAt: Instant,
+    val variantId: UUID? = null,
 ) {
     init {
         require(promptKey.isNotBlank()) { "promptKey must not be blank" }
