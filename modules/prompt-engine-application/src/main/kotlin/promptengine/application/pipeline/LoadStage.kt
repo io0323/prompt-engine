@@ -47,6 +47,12 @@ import promptengine.domain.prompt.VersionRef
  * `COMPILE_ONLY`以外では`Published`/`Deprecated`のみ許可する
  * （[PromptVersionStateNotAllowedException]、`VersionRef.Latest`は元々Publishedのみを返すため
  * 影響なし）。
+ *
+ * **Experiment経由の解決（ADR-0034決定2）**: `context.request.preResolvedVersion`が
+ * 非nullの場合、上記の状態ゲートを含む通常解決を一切行わずその値をそのまま使う。
+ * `ExperimentResolvedVersion`は`ExperimentVariantResolver`（`prompt-engine-application`）
+ * のみが構築でき、構築時点で状態が再検証済み（`Approved`/`Published`/`Deprecated`）である
+ * ため、ここで改めて`requireUsableState`を通す必要はない。
  */
 class LoadStage(
     private val promptRepository: PromptRepository,
@@ -55,6 +61,14 @@ class LoadStage(
     override val name: String = "Load"
 
     override fun execute(context: PipelineContext): PipelineContext {
+        val preResolved = context.request.preResolvedVersion
+        if (preResolved != null) {
+            return context.copy(
+                promptVersion = preResolved.promptVersion,
+                experimentVariantId = preResolved.variantId,
+            )
+        }
+
         val key = context.request.promptKey
         val prompt = promptRepository.findByKey(key) ?: throw PromptVersionNotFoundException.forKey(key)
 

@@ -1,6 +1,8 @@
 package promptengine.application.error
 
 import promptengine.application.pipeline.StageErrorMapper
+import promptengine.domain.experiment.ExperimentNotFoundException
+import promptengine.domain.experiment.NoWinnerDeclaredException
 import promptengine.domain.prompt.ArchiveRequiresForceException
 import promptengine.domain.shared.IdempotencyKeyConflictException
 import promptengine.domain.shared.IdempotencyKeyInProgressException
@@ -29,11 +31,16 @@ object ErrorCodeResolver {
     const val IDEMPOTENCY_KEY_IN_PROGRESS = "IDEMPOTENCY_KEY_IN_PROGRESS"
     const val VERSION_CONFLICT = "VERSION_CONFLICT"
 
+    /** `promptengine.interfaces.error.ErrorCodes.NOT_FOUND`と同じ文字列値（ADR-0034）。 */
+    const val NOT_FOUND = "NOT_FOUND"
+
     fun resolve(throwable: Throwable): String =
         when (throwable) {
             is promptengine.domain.prompt.InvalidStateTransitionException -> INVALID_STATE_TRANSITION
             is promptengine.domain.shared.InvalidStateTransitionException -> INVALID_STATE_TRANSITION
             is ArchiveRequiresForceException -> INVALID_STATE_TRANSITION
+            is NoWinnerDeclaredException -> INVALID_STATE_TRANSITION
+            is ExperimentNotFoundException -> NOT_FOUND
             is IdempotencyKeyConflictException -> IDEMPOTENCY_KEY_CONFLICT
             is IdempotencyKeyInProgressException -> IDEMPOTENCY_KEY_IN_PROGRESS
             is OptimisticLockConflictException -> VERSION_CONFLICT

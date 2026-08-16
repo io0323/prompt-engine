@@ -57,6 +57,8 @@ class EvaluationStage(
                             // 実行されないため、常にSUCCESS。実行失敗は設計書§14の別イベント
                             // PromptExecutionFailedの担当だが、その発火元はM1時点で存在しない。
                             status = ExecutionStatus.SUCCESS,
+                            // ADR-0034決定4。Experiment経由の実行のみ非null（LoadStage参照）。
+                            variantId = context.experimentVariantId,
                         ),
                 )
             eventBusAdapter.publish(event)

@@ -1,6 +1,7 @@
 package promptengine.application.pipeline
 
 import promptengine.application.command.sha256
+import promptengine.application.experiment.ExperimentVariantResolver
 import promptengine.domain.pipeline.PipelineMode
 import promptengine.domain.pipeline.PipelineRequest
 import promptengine.domain.shared.IdempotentCommandExecutor
@@ -46,10 +47,16 @@ data class RenderResult(
     val warnings: List<FindingSummary>,
 )
 
-/** [RenderCommand]のハンドラ。P8の[PipelineOrchestrator]をRENDER_ONLYモードで呼ぶ。 */
+/**
+ * [RenderCommand]のハンドラ。P8の[PipelineOrchestrator]をRENDER_ONLYモードで呼ぶ。
+ *
+ * [experimentVariantResolver]でPipeline実行前にExperiment割当を解決する（ADR-0034決定2）。
+ * 対象PromptKeyに`Running`中のExperimentが無ければ`command.request`をそのまま使う。
+ */
 class RenderUseCase(
     private val pipelineOrchestrator: PipelineOrchestrator,
     private val idempotentCommandExecutor: IdempotentCommandExecutor,
+    private val experimentVariantResolver: ExperimentVariantResolver,
 ) {
     fun handle(command: RenderCommand): RenderResult =
         idempotentCommandExecutor.executeInTransaction(
@@ -57,7 +64,8 @@ class RenderUseCase(
             command.fingerprintPayload().sha256(),
             RenderResult::class.java,
         ) {
-            val context = pipelineOrchestrator.run(command.request, PipelineMode.RENDER_ONLY, command.traceId)
+            val resolvedRequest = experimentVariantResolver.resolve(command.request)
+            val context = pipelineOrchestrator.run(resolvedRequest, PipelineMode.RENDER_ONLY, command.traceId)
             val rendered = context.rendered
             RenderResult(
                 promptKey = command.request.promptKey.value,
