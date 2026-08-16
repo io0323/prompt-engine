@@ -25,6 +25,21 @@ interface DependencyRepository {
     fun findInbound(promptKey: PromptKey): List<DependencyEdge>
 
     /**
+     * [kind]（TEMPLATE/FRAGMENT）の[key]をToとして参照している全Promptの依存関係の一覧
+     * （ADR-0033決定3）。`dependencies.from_version_id`はPrompt Versionにのみ外部キー制約が
+     * あり（V1__init.sql）、CompositionServiceが生成する`CompiledPrompt.dependencies`は
+     * extends祖先チェーン・Fragment include連鎖（Fragment内Fragmentを含む）を
+     * コンパイル時点で1階層（Prompt起点）に平坦化済みのフルセットであるため
+     * （`ReferenceResolver`/`FragmentResolver`、`prompt-engine-core`）、多段階のグラフ探索は
+     * 不要で本メソッド1回の検索で「このTemplate/Fragmentに直接・間接に依存している
+     * 全Prompt」が求まる。
+     */
+    fun findInboundTemplateOrFragment(
+        kind: DependencyKind,
+        key: String,
+    ): List<DependencyEdge>
+
+    /**
      * [promptKey]の[semVer]が参照する依存の一覧を[edges]で置き換える（Version作成コマンドが呼ぶ）。
      * 既存の行があれば削除してから[edges]を挿入する（再実行しても同じ結果になる）。
      */

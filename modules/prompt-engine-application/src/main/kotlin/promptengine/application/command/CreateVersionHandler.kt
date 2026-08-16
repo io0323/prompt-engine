@@ -1,5 +1,7 @@
 package promptengine.application.command
 
+import promptengine.domain.composition.CompositionMode
+import promptengine.domain.composition.CompositionService
 import promptengine.domain.context.ContextRequirement
 import promptengine.domain.dependency.DependencyRepository
 import promptengine.domain.event.EventContext
@@ -46,6 +48,7 @@ class CreateVersionHandler(
     private val promptRepository: PromptRepository,
     private val dependencyRepository: DependencyRepository,
     private val extendsFieldResolver: ExtendsFieldResolver,
+    private val compositionService: CompositionService,
     private val idempotentCommandExecutor: IdempotentCommandExecutor,
     private val clock: Clock = Clock.systemUTC(),
 ) {
@@ -73,8 +76,14 @@ class CreateVersionHandler(
             val eventContext =
                 EventContext(actor = command.actor, traceId = command.traceId, occurredAt = Instant.now(clock))
             val (updated, event) = prompt.newVersion(newVersion, eventContext)
+            // Draft状態の参照も許すCOMPILE_ONLYでcompileし、実際にcompileが使う依存
+            // （extends祖先チェーン・Fragment include連鎖を平坦化したフルセット）を
+            // dependenciesテーブルへの書き込みにそのまま使う（ADR-0033決定3）。
+            // 保存前に呼ぶことで、参照先が存在しない場合は何も永続化せず失敗する。
+            val createdVersion = updated.versions.first { it.semVer == command.semVer }
+            val compiled = compositionService.compile(command.key, createdVersion, CompositionMode.COMPILE_ONLY)
             val saved = promptRepository.save(updated, listOf(event))
-            val edges = dependencyEdgesFrom(command.key, command.semVer, extends)
+            val edges = dependencyEdgesFrom(command.key, command.semVer, compiled.dependencies)
             dependencyRepository.replaceOutbound(command.key, command.semVer, edges)
             CreateVersionResult(saved.key, command.semVer)
         }

@@ -8,6 +8,7 @@ import promptengine.domain.composition.CompositionMode
 import promptengine.domain.context.ContextBindingSet
 import promptengine.domain.event.EventContext
 import promptengine.domain.fragment.Fragment
+import promptengine.domain.fragment.FragmentDomainEvent
 import promptengine.domain.fragment.FragmentKey
 import promptengine.domain.fragment.FragmentRepository
 import promptengine.domain.parsing.OutputFormatter
@@ -21,6 +22,7 @@ import promptengine.domain.render.OutputFormat
 import promptengine.domain.shared.SemVer
 import promptengine.domain.shared.TokenCount
 import promptengine.domain.template.Template
+import promptengine.domain.template.TemplateDomainEvent
 import promptengine.domain.template.TemplateKey
 import promptengine.domain.template.TemplateRepository
 import promptengine.domain.tokenizer.TokenizerPlugin
@@ -53,13 +55,19 @@ private object BlankOutputFormatter : OutputFormatter {
 private class EmptyTemplateRepository : TemplateRepository {
     override fun findByKey(key: TemplateKey): Template? = null
 
-    override fun save(template: Template): Template = error("not used by Golden回帰テスト固定fixture")
+    override fun save(
+        template: Template,
+        events: List<TemplateDomainEvent>,
+    ): Template = error("not used by Golden回帰テスト固定fixture")
 }
 
 private class EmptyFragmentRepository : FragmentRepository {
     override fun findByKey(key: FragmentKey): Fragment? = null
 
-    override fun save(fragment: Fragment): Fragment = error("not used by Golden回帰テスト固定fixture")
+    override fun save(
+        fragment: Fragment,
+        events: List<FragmentDomainEvent>,
+    ): Fragment = error("not used by Golden回帰テスト固定fixture")
 }
 
 /**

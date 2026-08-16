@@ -4,7 +4,8 @@ import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.context.annotation.Profile
 import promptengine.domain.audit.AuditRepository
-import promptengine.domain.cache.PromptCacheInvalidator
+import promptengine.domain.cache.PromptCache
+import promptengine.domain.dependency.DependencyRepository
 import promptengine.domain.evaluation.EvaluationEngine
 import promptengine.domain.evaluation.EvaluationRepository
 import promptengine.domain.evaluation.ExecutionLogRepository
@@ -12,6 +13,7 @@ import promptengine.domain.event.EventBusAdapter
 import promptengine.domain.search.PromptSearchIndexer
 import promptengine.infrastructure.masking.SecretMaskingJsonSanitizer
 import promptengine.infrastructure.subscriber.AuditEngine
+import promptengine.infrastructure.subscriber.CacheInvalidationPayloadCodec
 import promptengine.infrastructure.subscriber.CacheInvalidationSubscriber
 import promptengine.infrastructure.subscriber.EvaluationSubscriber
 import promptengine.infrastructure.subscriber.ExecutionLogSubscriber
@@ -55,8 +57,11 @@ class EventSubscriberConfig {
         EvaluationSubscriber(evaluationEngine, evaluationRepository, eventBusAdapter, payloadCodec)
 
     @Bean
-    fun cacheInvalidationSubscriber(cacheInvalidator: PromptCacheInvalidator): CacheInvalidationSubscriber =
-        CacheInvalidationSubscriber(cacheInvalidator)
+    fun cacheInvalidationSubscriber(
+        promptCache: PromptCache,
+        dependencyRepository: DependencyRepository,
+        payloadCodec: CacheInvalidationPayloadCodec,
+    ): CacheInvalidationSubscriber = CacheInvalidationSubscriber(promptCache, dependencyRepository, payloadCodec)
 
     @Bean
     fun searchIndexSubscriber(searchIndexer: PromptSearchIndexer): SearchIndexSubscriber =

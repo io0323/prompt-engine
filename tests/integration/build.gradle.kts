@@ -159,6 +159,11 @@ val verifyIntegrationTestExecuted =
 dependencies {
     "integrationTestImplementation"(project(":modules:prompt-engine-domain"))
     "integrationTestImplementation"(project(":modules:prompt-engine-infrastructure"))
+    // M2-3: Fragment publish→キャッシュ無効化を内容で検証する統合テストが、実際の
+    // CompositionServiceImpl（prompt-engine-core）・MergeStage（prompt-engine-application）を
+    // 使うため（ADR-0033）。
+    "integrationTestImplementation"(project(":modules:prompt-engine-core"))
+    "integrationTestImplementation"(project(":modules:prompt-engine-application"))
 
     "integrationTestImplementation"(
         platform("org.springframework.boot:spring-boot-dependencies:${libs.versions.spring.boot.get()}"),
@@ -168,6 +173,9 @@ dependencies {
     "integrationTestImplementation"(libs.flyway.postgresql)
     "integrationTestImplementation"(libs.jackson.module.kotlin)
     "integrationTestRuntimeOnly"(libs.postgresql)
+
+    // M2-3: RedisPromptCache統合テスト（ADR-0033決定d）。
+    "integrationTestImplementation"(libs.lettuce.core)
 
     "integrationTestImplementation"(platform(libs.junit.bom))
     "integrationTestImplementation"(libs.junit.jupiter)

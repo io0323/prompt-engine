@@ -6,6 +6,7 @@ import io.kotest.matchers.nulls.shouldNotBeNull
 import org.junit.jupiter.api.Test
 import org.springframework.boot.WebApplicationType
 import org.springframework.boot.builder.SpringApplicationBuilder
+import org.testcontainers.containers.GenericContainer
 import org.testcontainers.containers.PostgreSQLContainer
 import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
@@ -48,6 +49,16 @@ import promptengine.bootstrap.config.ExecutionConfig
  * `provider=apap`選択時のfail-fast（ADR-0031、APAP未実装）も同じ手法（原因チェーンの明示確認）
  * で検証する。`provider`の具体値は文字列リテラルとして書かず[ExecutionConfig.APAP_PROVIDER]を
  * 参照する。
+ *
+ * **Redis Testcontainersが必要な理由**（M2-3、Issue #77、ADR-0033）: `production`プロファイルは
+ * `CacheConfig`の`PromptCache`実装（Redis接続）も有効化する。Redis未起動のままだと
+ * `redisConnection` Beanの生成自体が`RedisConnectionException`で失敗し、Spring
+ * コンテキストがそこで起動を打ち切ってしまうため、本来検証したい
+ * [ExecutionConfig][promptengine.bootstrap.config.ExecutionConfig]のガードへ到達する前に
+ * 起動が失敗する（このテスト自体の「原因チェーンにガードの例外が実在することを確認する」
+ * 設計により、Redis接続失敗を理由に必ず検出される。CI実測で確認済み）。Postgresと同様に
+ * Testcontainersで実Redisを起動し、`promptengine.cache.redis-uri`をコマンドライン引数で
+ * 上書きする。
  */
 @Testcontainers
 class ProductionProfileGuardTest {
@@ -64,6 +75,7 @@ class ProductionProfileGuardTest {
                     "--spring.datasource.url=${postgres.jdbcUrl}",
                     "--spring.datasource.username=${postgres.username}",
                     "--spring.datasource.password=${postgres.password}",
+                    "--promptengine.cache.redis-uri=redis://${redis.host}:${redis.getMappedPort(REDIS_PORT)}",
                 ).close()
             }
 
@@ -94,6 +106,7 @@ class ProductionProfileGuardTest {
                     "--spring.datasource.url=${postgres.jdbcUrl}",
                     "--spring.datasource.username=${postgres.username}",
                     "--spring.datasource.password=${postgres.password}",
+                    "--promptengine.cache.redis-uri=redis://${redis.host}:${redis.getMappedPort(REDIS_PORT)}",
                     "--promptengine.execution.provider=${ExecutionConfig.APAP_PROVIDER}",
                 ).close()
             }
@@ -113,9 +126,15 @@ class ProductionProfileGuardTest {
     }
 
     companion object {
+        private const val REDIS_PORT = 6379
+
         @Container
         @JvmStatic
         val postgres: PostgreSQLContainer<*> = PostgreSQLContainer("postgres:16")
+
+        @Container
+        @JvmStatic
+        val redis: GenericContainer<*> = GenericContainer("redis:7").withExposedPorts(REDIS_PORT)
 
         private const val GUARD_MESSAGE_FRAGMENT =
             "FakeExecutionAdapter must not be selected under the 'production' profile"

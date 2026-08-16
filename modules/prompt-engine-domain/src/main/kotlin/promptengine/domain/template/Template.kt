@@ -1,7 +1,9 @@
 package promptengine.domain.template
 
+import promptengine.domain.event.EventContext
 import promptengine.domain.shared.PersistenceApi
 import promptengine.domain.shared.SemVer
+import java.util.UUID
 
 /**
  * Prompt Authoringコンテキストの Aggregate Root（設計書§4.3）。
@@ -14,8 +16,10 @@ import promptengine.domain.shared.SemVer
  *   検出不可能なため、3c（CompositionService、DFS）に委ねる（ADR-0008）。
  *
  * Promptと異なり、ライフサイクルは簡略版3状態（[promptengine.domain.shared.PublicationState]）
- * であり、Domain Eventも本フェーズでは発行しない（§14に対応イベントが定義されていないため。
- * ADR-0008）。
+ * であり、レビューワークフローに対応するイベントは持たない。M2-3（Issue #15、ADR-0033）で
+ * `TemplateCreated`/`TemplateVersionCreated`/`TemplatePublished`/`TemplateArchived`の
+ * 4イベントを発行するようになった（ADR-0008が見送った「§14に対応イベントが定義されていない」
+ * という前提がADR-0033の設計書改訂で解消されたため）。
  *
  * プライマリコンストラクタは `internal`（[ConsistentCopyVisibility] により `copy()` も
  * 同様に `internal`）。新規作成は [create]、永続化層からの復元は [restore] を使うこと。
@@ -46,10 +50,21 @@ data class Template internal constructor(
         fun create(
             key: TemplateKey,
             version: NewTemplateVersion,
-        ): Template {
+            context: EventContext,
+        ): Pair<Template, TemplateCreated> {
             val templateVersion =
                 TemplateVersion(version.semVer, version.content, version.variables, version.extends)
-            return Template(key, listOf(templateVersion))
+            val template = Template(key, listOf(templateVersion))
+            val event =
+                TemplateCreated(
+                    eventId = UUID.randomUUID(),
+                    occurredAt = context.occurredAt,
+                    aggregateId = key.value,
+                    actor = context.actor,
+                    traceId = context.traceId,
+                    payload = TemplateCreated.Payload(key.value, version.semVer),
+                )
+            return template to event
         }
 
         /**
@@ -68,22 +83,61 @@ data class Template internal constructor(
     }
 
     /** (新規)→Draft。既存Templateに新しいDraft Versionを追加する。 */
-    fun newVersion(version: NewTemplateVersion): Template {
+    fun newVersion(
+        version: NewTemplateVersion,
+        context: EventContext,
+    ): Pair<Template, TemplateVersionCreated> {
         require(versions.none { it.semVer == version.semVer }) { "version ${version.semVer} already exists" }
         val templateVersion =
             TemplateVersion(version.semVer, version.content, version.variables, version.extends)
-        return copy(versions = versions + templateVersion)
+        val template = copy(versions = versions + templateVersion)
+        val event =
+            TemplateVersionCreated(
+                eventId = UUID.randomUUID(),
+                occurredAt = context.occurredAt,
+                aggregateId = key.value,
+                actor = context.actor,
+                traceId = context.traceId,
+                payload = TemplateVersionCreated.Payload(key.value, version.semVer),
+            )
+        return template to event
     }
 
     /** Draft→Published。 */
-    fun publish(semVer: SemVer): Template {
+    fun publish(
+        semVer: SemVer,
+        context: EventContext,
+    ): Pair<Template, TemplatePublished> {
         val newState = version(semVer).state.publish()
-        return replaceVersion(semVer) { it.copy(state = newState) }
+        val template = replaceVersion(semVer) { it.copy(state = newState) }
+        val event =
+            TemplatePublished(
+                eventId = UUID.randomUUID(),
+                occurredAt = context.occurredAt,
+                aggregateId = key.value,
+                actor = context.actor,
+                traceId = context.traceId,
+                payload = TemplatePublished.Payload(key.value, semVer),
+            )
+        return template to event
     }
 
     /** Draft/Published→Archived。 */
-    fun archive(semVer: SemVer): Template {
+    fun archive(
+        semVer: SemVer,
+        context: EventContext,
+    ): Pair<Template, TemplateArchived> {
         val newState = version(semVer).state.archive()
-        return replaceVersion(semVer) { it.copy(state = newState) }
+        val template = replaceVersion(semVer) { it.copy(state = newState) }
+        val event =
+            TemplateArchived(
+                eventId = UUID.randomUUID(),
+                occurredAt = context.occurredAt,
+                aggregateId = key.value,
+                actor = context.actor,
+                traceId = context.traceId,
+                payload = TemplateArchived.Payload(key.value, semVer),
+            )
+        return template to event
     }
 }

@@ -21,6 +21,7 @@ import promptengine.application.pipeline.ResponseParsingStage
 import promptengine.application.pipeline.ValidationStage
 import promptengine.domain.audit.AuditFailureHandler
 import promptengine.domain.audit.AuditRepository
+import promptengine.domain.cache.PromptCache
 import promptengine.domain.composition.CompositionService
 import promptengine.domain.context.ContextResolverChain
 import promptengine.domain.event.EventBusAdapter
@@ -58,6 +59,8 @@ class PipelineConfig {
         promptRepository: PromptRepository,
         promptAliasRepository: PromptAliasRepository,
         compositionService: CompositionService,
+        promptCache: PromptCache,
+        cacheProperties: CacheProperties,
         variableResolverChain: VariableResolverChain,
         contextResolverChain: ContextResolverChain,
         validationEngine: ValidationEngine,
@@ -71,7 +74,7 @@ class PipelineConfig {
     ): List<PipelineStage> =
         listOf(
             LoadStage(promptRepository, promptAliasRepository),
-            MergeStage(compositionService),
+            MergeStage(compositionService, promptCache, cacheProperties.toTtl()),
             ImportStage(),
             ResolveVariablesStage(variableResolverChain),
             ResolveContextStage(contextResolverChain),

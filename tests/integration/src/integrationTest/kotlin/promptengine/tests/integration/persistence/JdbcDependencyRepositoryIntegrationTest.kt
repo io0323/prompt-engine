@@ -145,6 +145,50 @@ class JdbcDependencyRepositoryIntegrationTest {
         edges.single().toKey shouldBe referencedKey.value
     }
 
+    @Test
+    fun `findInboundTemplateOrFragmentはkindとtoKeyが一致するPrompt起点の依存のみを返す`() {
+        val templateConsumer = uniqueKey()
+        val templateConsumerVersionId = createPublishedPrompt(templateConsumer)
+        insertDependency(templateConsumerVersionId, "template", "templates/shared-base", "^2")
+        val fragmentConsumer = uniqueKey()
+        val fragmentConsumerVersionId = createPublishedPrompt(fragmentConsumer)
+        insertDependency(fragmentConsumerVersionId, "fragment", "fragments/notice", "1.0.0")
+        // 無関係な依存（別のtoKey）が混ざっていても対象外として除外されることを確認する。
+        val unrelated = uniqueKey()
+        val unrelatedVersionId = createPublishedPrompt(unrelated)
+        insertDependency(unrelatedVersionId, "template", "templates/other", "^1")
+
+        val templateEdges =
+            dependencyRepository.findInboundTemplateOrFragment(
+                DependencyKind.TEMPLATE,
+                "templates/shared-base",
+            )
+        val fragmentEdges =
+            dependencyRepository.findInboundTemplateOrFragment(
+                DependencyKind.FRAGMENT,
+                "fragments/notice",
+            )
+
+        templateEdges.single().fromKey shouldBe templateConsumer
+        templateEdges.single().toVersion shouldBe "^2"
+        fragmentEdges.single().fromKey shouldBe fragmentConsumer
+        fragmentEdges.single().toVersion shouldBe "1.0.0"
+    }
+
+    @Test
+    fun `findInboundTemplateOrFragmentは一致する依存が無ければ空リストを返す`() {
+        val key = uniqueKey()
+        createPublishedPrompt(key)
+
+        val edges =
+            dependencyRepository.findInboundTemplateOrFragment(
+                DependencyKind.TEMPLATE,
+                "templates/never-referenced",
+            )
+
+        edges shouldBe emptyList()
+    }
+
     private fun uniqueKey(): PromptKey = PromptKey("integration-test/${UUID.randomUUID()}")
 
     private companion object {

@@ -155,10 +155,24 @@ Secretは`values.yaml`の`secret.create=false`と`secret.name`で外部Secret Ma
 
 ## 性能測定（NFR-002 / NFR-003）
 
-### NFR-002（Prompt取得キャッシュヒット p99≤20ms）: M1では未検証
+### NFR-002（Prompt取得キャッシュヒット p99≤20ms）: M2-3で部分検証 — 直接測定は未達成
 
-`PromptCache`（設計書§16拡張ポイント#9）がM1で未実装のため測定不能。詳細は
-「NFR-001〜NFR-010 検証状況」・[ADR-0028](docs/adr/0028-p11-finalize.md)・Issue #77を参照。
+M2-3（ADR-0033）で`PromptCache`（Redis、設計書§16拡張ポイント#9）を実装した。
+`tools/perf/render_load_test.sh`はM2-3以降、同一Prompt/Versionを繰り返し叩くため
+2回目以降の全リクエストで`MergeStage`が必ずキャッシュヒットする状態になる。この条件で
+NFR-003と同一の手順・条件（イメージ、CPU1/メモリ1Gi制限、ウォームアップ5,000件、
+測定2,000件）を再実行した結果を「性能測定」節下部に記録する。
+
+**正直な限界**: この測定はStage 1〜12を通したEnd-to-Endの`/render`レイテンシであり、
+NFR-002が指す「Prompt取得（キャッシュヒット）」単体を切り出した計測ではない。
+`pipeline_stage_duration_seconds{stage="Merge"}`（Micrometer `Timer`）はPrometheusの
+`histogram_quantile`で使えるヒストグラムバケットを`publishPercentileHistogram()`で
+公開していないため、本フェーズの計測からMergeステージ単体のp99を独立して算出することは
+できない。したがって「NFR-002のp99≤20msを達成した」という主張はできず、
+「キャッシュ導入後のEnd-to-End p99は目標200ms（NFR-003）を満たし、キャッシュ無しの
+ベースライン（P11、p50=5.47ms/p99=80.03ms/max=173.94ms）と比べてp50・maxが改善した」
+という間接証拠に留める。Merge単体のp99分離計測は今後の課題として記録する
+（Micrometer Timerへの`publishPercentileHistogram()`追加、または専用マイクロベンチマークが必要）。
 
 ### NFR-003（Render p99≤200ms）: 検証済 — 目標達成
 
@@ -214,6 +228,28 @@ Secretは`values.yaml`の`secret.create=false`と`secret.name`で外部Secret Ma
 
 詳細な決定の経緯は[ADR-0028](docs/adr/0028-p11-finalize.md)を参照。
 
+### PromptCache導入後の再測定（NFR-002の間接証拠）
+
+条件はNFR-003の測定と完全に同一（同じイメージビルド手順、`--cpus 1 --memory 1g`、
+`04-production-scale-support-agent.prompt`、ウォームアップ5,000件・測定2,000件・並列度10）。
+唯一の違いは`PromptCache`（Redis、`compose.yaml`の`redis`サービスを追加起動）が有効な点。
+
+**実測結果**（2000/2000がHTTP 200、失敗なし）:
+
+| 指標 | キャッシュ無し（P11、2026-08-11） | キャッシュ有り（M2-3、2026-08-15） |
+|---|---|---|
+| p50 | 5.47ms | **3.47ms** |
+| p99 | 80.03ms | **78.14ms**（目標≤200ms、達成。ただしMerge単体の分離計測ではない） |
+| max | 173.94ms | **89.64ms** |
+| ウォームアップ末尾200件平均 | 1.79ms | 1.25ms |
+| 測定先頭200件平均 | 17.16ms | 11.14ms |
+
+p50・maxが明確に改善し、p99も僅かに改善した（噛み合わない乱数的ばらつきの範囲を超えて
+maxが半分近くまで下がっている点が、CompositionService.compileの反復実行が無くなった
+効果として最も分かりやすい）。ただしp99自体はRender全体（Validation/Optimization/
+Rendering等、Merge以外の7ステージ）の変動にも左右されるため、この改善幅を
+「Mergeステージの短縮分」と一対一で対応付けることはできない（上記「正直な限界」参照）。
+
 ## FR-001〜FR-024 実装状況
 
 設計書§1.8の機能要件表と現在の実装を突き合わせた結果（コード確認済み、推測なし）。
@@ -241,17 +277,17 @@ Secretは`values.yaml`の`secret.create=false`と`secret.name`で外部Secret Ma
 | FR-019 | 部分実装 | `PromptDtos.kt`/`VersionController.kt`（単一Prompt単位のDSLテキスト入出力） | 単一Prompt単位の入出力は実装済。複数リソースをまとめた「バンドル」入出力は未実装。Issueなし |
 | FR-020 | 実装済 | `AuditRepository.kt`（append/record、update/delete非提供）、`AuditStage.kt`（Pipeline Stage12）、`V1__init.sql`（audit_logsテーブル） | 全変更・全実行の監査記録経路を確認 |
 | FR-021 | 実装済 | `MetricsRecorder.kt`、`MicrometerMetricsRecorder.kt`、`OpenTelemetryPipelineTracer.kt` | Token/Cost/Latency/成功率＋分散Tracingを確認 |
-| FR-022 | 部分実装 | `PromptCacheInvalidator.kt`（永続キャッシュ実装は存在しないと明記）、`InMemoryPromptCacheInvalidator.kt`（無効化ログのみの最小実装） | 無効化の「配線」のみ実装、実キャッシュは無い。Issue #77（Issue #15解消待ち、M2） |
-| FR-023 | 部分実装 | `PromptDomainEvent.kt`（Prompt Aggregateは発行済）、`Template.kt`/`Fragment.kt`（publish/archiveがイベント非発行） | Prompt Aggregateのみイベント化済み。Template/Fragmentは未発行。Issue #15（M2） |
+| FR-022 | 実装済 | `PromptCache.kt`/`RedisPromptCache.kt`（M2-3、ADR-0033） | Redisバックエンドの実キャッシュ・`CacheInvalidationSubscriber`によるPrompt/Template/Fragment publish系イベント無効化を確認 |
+| FR-023 | 実装済 | `PromptDomainEvent.kt`・`TemplateDomainEvent.kt`・`FragmentDomainEvent.kt`（M2-3、ADR-0033） | Prompt/Template/Fragmentの全Aggregateがイベント化済み（Issue #15解消） |
 | FR-024 | 部分実装 | 設計書§16（14拡張ポイント定義）、`PluginEngineConfig.kt`（静的Spring `@Bean`配線）、`prompt-engine-plugin-api`（実体クラス0件） | 拡張ポイントInterfaceと4種のPlugin実装は存在するが、Plugin Manifest宣言・実行時登録/活性化/障害隔離・再起動不要追加は未実装（コンパイル時静的DIのみ）。Issueなし |
 
 ## NFR-001〜NFR-010 検証状況
 
 | ID | 状態 | 検証方法・根拠 | 備考 |
 |---|---|---|---|
-| NFR-001 | 未検証 | `deploy/helm/prompt-engine/templates/hpa.yaml`（水平スケール）、`PromptCacheInvalidator.kt`（Read縮退継続の前提となるCacheが未実装） | 稼働率自体は運用開始前で測定不能。「Read系はキャッシュで縮退継続」の前提となる`PromptCache`実装が無いため縮退継続の仕組み自体が未実装。Issue #77関連（M2） |
-| NFR-002 | 未検証 | 設計書§1.9 NFR-002行に注記済み | `PromptCache`未実装のため測定不能。Issue #77（Issue #15解消待ち、M2） |
-| NFR-003 | 検証済（p99=80.03ms、目標≤200ms達成） | `tools/perf/render_load_test.sh`（実コンテナ、CPU1/メモリ1Gi制限、2000リクエスト） | 実測条件・結果は上記「性能測定」節に記録 |
+| NFR-001 | 部分実装/未検証 | `deploy/helm/prompt-engine/templates/hpa.yaml`（水平スケール）、`RedisPromptCache.kt`（M2-3、ADR-0033） | 稼働率自体は運用開始前で測定不能。「Read系はキャッシュで縮退継続」の前提となる`PromptCache`実装は入ったが、Redis障害時のフォールバック（縮退継続そのもの）は未実装・未検証 |
+| NFR-002 | 部分検証 | `tools/perf/render_load_test.sh`（PromptCache有効時の再測定、上記「性能測定」節） | End-to-End p99=78.14msは目標200ms（NFR-003）を満たすが、Merge単体（Prompt取得キャッシュヒット）を分離したp99≤20msの直接測定はできていない。詳細は上記「正直な限界」参照 |
+| NFR-003 | 検証済（p99=80.03ms→78.14ms、目標≤200ms達成） | `tools/perf/render_load_test.sh`（実コンテナ、CPU1/メモリ1Gi制限、2000リクエスト） | 実測条件・結果は上記「性能測定」節に記録 |
 | NFR-004 | 部分実装/未検証 | `deploy/helm/prompt-engine/templates/hpa.yaml`（HPA、CPU使用率ベース）、`PluginEngineConfig.kt`（静的Spring `@Bean`配線） | 水平スケール（ステートレスAPI+HPA）は実装済。「Plugin追加は再起動不要」は未達成 — Pluginは`plugins/`配下のGradleサブプロジェクトとしてコンパイル時に静的リンクされ、動的ロード機構が無いため追加には再ビルド・再起動が必須 |
 | NFR-005 | 検証済 | `SecurityConfig.kt`（OAuth2 Resource Server + JWT検証）、各Controllerの`@PreAuthorize`（RBAC+スコープ）、`SecretManagerAdapter.kt`（Secret参照のみ保持）、`SanitizingJsonEncoder.kt`（3層防御のログマスキング） | CIAP連携・RBAC・Secret参照のみ保持・ログマスキングをコードで確認 |
 | NFR-006 | 部分実装/未検証 | `AuditRepository.kt`（update/delete非提供のInterface）、`V1__init.sql`（追記専用はコメントの運用前提のみ、実GRANT/REVOKE文なし） | 追記専用制約はアプリケーション層のみで担保、DB層での強制は未実装（DBにUPDATE権限を持つ主体は監査履歴を改竄できてしまう）。保持期間設定（既定7年）に対応する設定・パージ処理も未実装。Issue #85（M2） |

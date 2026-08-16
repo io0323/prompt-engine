@@ -81,6 +81,11 @@ logback-classic = { module = "ch.qos.logback:logback-classic" }
 postgresql = { module = "org.postgresql:postgresql" }
 jackson-module-kotlin = { module = "com.fasterxml.jackson.module:jackson-module-kotlin" }
 
+# M2-3: PromptCacheの既定実装（Redis、ADR-0033決定d）。バージョンはpostgresql/
+# jackson-module-kotlinと同じくspring-boot-dependencies BOM管理下で未指定
+# （Spring Bootが既定のRedisクライアントとして管理しているバージョンをそのまま使う）。
+lettuce-core = { module = "io.lettuce:lettuce-core" }
+
 # plugins/formatter-json用。Spring BOM管理下ではない単体プロジェクトのため、
 # snakeyamlと同じ方針でバージョンを明示指定する（ADR-0014）。
 jackson-databind = { module = "com.fasterxml.jackson.core:jackson-databind", version.ref = "jackson" }

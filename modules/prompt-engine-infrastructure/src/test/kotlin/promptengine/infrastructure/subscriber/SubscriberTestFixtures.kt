@@ -6,6 +6,12 @@ import promptengine.domain.audit.AuditLogEntry
 import promptengine.domain.audit.AuditQuery
 import promptengine.domain.audit.AuditRecord
 import promptengine.domain.audit.AuditRepository
+import promptengine.domain.cache.CacheKey
+import promptengine.domain.cache.CachedItem
+import promptengine.domain.cache.PromptCache
+import promptengine.domain.dependency.DependencyEdge
+import promptengine.domain.dependency.DependencyKind
+import promptengine.domain.dependency.DependencyRepository
 import promptengine.domain.dlq.DeadLetterEntry
 import promptengine.domain.dlq.DeadLetterQueueRepository
 import promptengine.domain.evaluation.EvaluationRecord
@@ -18,6 +24,7 @@ import promptengine.domain.event.EventEnvelope
 import promptengine.domain.prompt.PromptKey
 import promptengine.domain.shared.Page
 import promptengine.domain.shared.SemVer
+import java.time.Duration
 import java.time.Instant
 import java.util.UUID
 
@@ -57,6 +64,64 @@ internal fun promptExecutedPayload(
      "inputTokens":$inputTokens,"outputTokens":$outputTokens,"retryCount":$retryCount,
      "latencyMs":$latencyMs,"costPerToken":$costPerToken,"status":"$status"}
     """.trimIndent()
+
+/** [CacheInvalidationSubscriber]向け: `PromptPublished`等の`payload`（`promptKey`+`semVer`）。 */
+@Suppress("LongParameterList")
+internal fun promptKeyedPayload(
+    field: String = "promptKey",
+    key: String = "support/faq",
+    major: Int = 1,
+    minor: Int = 0,
+    patch: Int = 0,
+): String = """{"$field":"$key","semVer":{"major":$major,"minor":$minor,"patch":$patch}}"""
+
+/** [PromptCache]のテスト用記録実装。`invalidated`で無効化されたPromptKeyの履歴を確認できる。 */
+internal class RecordingPromptCache : PromptCache {
+    private val store = mutableMapOf<CacheKey, CachedItem>()
+    val invalidated = mutableListOf<PromptKey>()
+
+    override fun get(key: CacheKey): CachedItem? = store[key]
+
+    override fun put(
+        key: CacheKey,
+        item: CachedItem,
+        ttl: Duration,
+    ) {
+        store[key] = item
+    }
+
+    override fun invalidateByPrompt(key: PromptKey) {
+        invalidated += key
+        store.keys.filter { it.promptKey == key }.forEach { store.remove(it) }
+    }
+
+    fun snapshot(key: CacheKey): CachedItem? = store[key]
+}
+
+/** [DependencyRepository]のテスト用固定実装。逆依存の一覧をそのまま返す。 */
+internal class FakeDependencyRepository(
+    private val inboundTemplateOrFragment: List<DependencyEdge> = emptyList(),
+) : DependencyRepository {
+    override fun findOutbound(promptKey: PromptKey): List<DependencyEdge> = emptyList()
+
+    override fun findOutbound(
+        promptKey: PromptKey,
+        semVer: SemVer,
+    ): List<DependencyEdge> = emptyList()
+
+    override fun findInbound(promptKey: PromptKey): List<DependencyEdge> = emptyList()
+
+    override fun findInboundTemplateOrFragment(
+        kind: DependencyKind,
+        key: String,
+    ): List<DependencyEdge> = inboundTemplateOrFragment.filter { it.toKind == kind && it.toKey == key }
+
+    override fun replaceOutbound(
+        promptKey: PromptKey,
+        semVer: SemVer,
+        edges: List<DependencyEdge>,
+    ) = Unit
+}
 
 internal class RecordingAuditRepository(private val failWith: Throwable? = null) : AuditRepository {
     val entries = mutableListOf<AuditLogEntry>()

@@ -7,6 +7,7 @@ import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
 import org.springframework.transaction.support.TransactionTemplate
 import promptengine.domain.fragment.Fragment
 import promptengine.domain.fragment.FragmentContent
+import promptengine.domain.fragment.FragmentDomainEvent
 import promptengine.domain.fragment.FragmentKey
 import promptengine.domain.fragment.FragmentMemento
 import promptengine.domain.fragment.FragmentRepository
@@ -21,8 +22,8 @@ import java.time.Instant
 import java.util.UUID
 
 /**
- * [FragmentRepository] のJDBC実装（設計書§3.4・ADR-0008）。[JdbcTemplateRepository] と
- * 対称の実装。Domain Event/Outbox/Snapshotへの追記は行わない（ADR-0008）。
+ * [FragmentRepository] のJDBC実装（設計書§3.4・ADR-0008、イベント追記はADR-0033）。
+ * [JdbcTemplateRepository] と対称の実装。
  */
 class JdbcFragmentRepository(
     private val jdbcTemplate: NamedParameterJdbcTemplate,
@@ -73,10 +74,21 @@ class JdbcFragmentRepository(
         }
 
     @OptIn(PersistenceApi::class)
-    override fun save(fragment: Fragment): Fragment =
+    override fun save(
+        fragment: Fragment,
+        events: List<FragmentDomainEvent>,
+    ): Fragment =
         transactionTemplate.execute {
-            val (fragmentId, newRowVersion) = upsertFragment(fragment)
-            fragment.versions.forEach { version -> upsertVersion(fragmentId, version) }
+            val actor = events.firstOrNull()?.actor ?: DEFAULT_ACTOR
+            val occurredAt = events.firstOrNull()?.occurredAt ?: Instant.now()
+
+            val (fragmentId, newRowVersion) = upsertFragment(fragment, actor, occurredAt)
+            fragment.versions.forEach { version -> upsertVersion(fragmentId, version, actor, occurredAt) }
+
+            if (events.isNotEmpty()) {
+                jdbcTemplate.appendFragmentDomainEvents(objectMapper, fragmentId, events)
+            }
+
             withRowVersion(fragment, newRowVersion)
         } ?: error("save transaction returned null")
 
@@ -127,9 +139,13 @@ class JdbcFragmentRepository(
             }.groupBy({ it.first }, { it.second })
         }
 
-    private fun upsertFragment(fragment: Fragment): Pair<UUID, Long> {
+    private fun upsertFragment(
+        fragment: Fragment,
+        actor: String,
+        occurredAt: Instant,
+    ): Pair<UUID, Long> {
         val existing = findFragmentRow(fragment.key)
-        val now = Timestamp.from(Instant.now())
+        val now = Timestamp.from(occurredAt)
 
         if (existing == null) {
             val fragmentId = UUID.randomUUID()
@@ -141,7 +157,7 @@ class JdbcFragmentRepository(
                 MapSqlParameterSource()
                     .addValue("fragmentId", fragmentId)
                     .addValue("fragmentKey", fragment.key.value)
-                    .addValue("createdBy", DEFAULT_ACTOR)
+                    .addValue("createdBy", actor)
                     .addValue("createdAt", now)
                     .addValue("updatedAt", now),
             )
@@ -172,6 +188,8 @@ class JdbcFragmentRepository(
     private fun upsertVersion(
         fragmentId: UUID,
         version: FragmentVersion,
+        actor: String,
+        occurredAt: Instant,
     ) {
         val versionId =
             jdbcTemplate.queryForObject(
@@ -193,8 +211,8 @@ class JdbcFragmentRepository(
                     .addValue("body", version.content.source)
                     .addValue("contentHash", version.content.contentHash)
                     .addValue("status", version.state.toDbValue())
-                    .addValue("createdBy", DEFAULT_ACTOR)
-                    .addValue("createdAt", Timestamp.from(Instant.now())),
+                    .addValue("createdBy", actor)
+                    .addValue("createdAt", Timestamp.from(occurredAt)),
                 UUID::class.java,
             )!!
 

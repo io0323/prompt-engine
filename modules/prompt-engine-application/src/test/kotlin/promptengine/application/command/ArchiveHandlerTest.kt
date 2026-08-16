@@ -4,6 +4,7 @@ import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
 import promptengine.domain.dependency.DependencyEdge
+import promptengine.domain.dependency.DependencyKind
 import promptengine.domain.dependency.DependencyRepository
 import promptengine.domain.event.EventContext
 import promptengine.domain.prompt.ArchiveEligibility
@@ -45,6 +46,11 @@ class ArchiveHandlerTest {
         ): List<DependencyEdge> = emptyList()
 
         override fun findInbound(promptKey: PromptKey): List<DependencyEdge> = emptyList()
+
+        override fun findInboundTemplateOrFragment(
+            kind: DependencyKind,
+            key: String,
+        ): List<DependencyEdge> = emptyList()
 
         override fun replaceOutbound(
             promptKey: PromptKey,

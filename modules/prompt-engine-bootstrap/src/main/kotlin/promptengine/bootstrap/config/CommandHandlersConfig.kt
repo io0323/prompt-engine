@@ -13,6 +13,7 @@ import promptengine.application.command.RollbackHandler
 import promptengine.application.command.SetAliasHandler
 import promptengine.application.command.UpdatePromptMetadataHandler
 import promptengine.domain.audit.AuditRepository
+import promptengine.domain.composition.CompositionService
 import promptengine.domain.dependency.DependencyRepository
 import promptengine.domain.fragment.FragmentRepository
 import promptengine.domain.prompt.ArchiveEligibilityRepository
@@ -31,12 +32,14 @@ import promptengine.domain.template.TemplateRepository
 @Configuration
 @EnableConfigurationProperties(ArchiveGuardProperties::class)
 class CommandHandlersConfig {
+    @Suppress("LongParameterList")
     @Bean
     fun createPromptHandler(
         promptRepository: PromptRepository,
         promptMetadataRepository: PromptMetadataRepository,
         dependencyRepository: DependencyRepository,
         extendsFieldResolver: ExtendsFieldResolver,
+        compositionService: CompositionService,
         idempotentCommandExecutor: IdempotentCommandExecutor,
     ): CreatePromptHandler =
         CreatePromptHandler(
@@ -44,6 +47,7 @@ class CommandHandlersConfig {
             promptMetadataRepository,
             dependencyRepository,
             extendsFieldResolver,
+            compositionService,
             idempotentCommandExecutor,
         )
 
@@ -58,9 +62,16 @@ class CommandHandlersConfig {
         promptRepository: PromptRepository,
         dependencyRepository: DependencyRepository,
         extendsFieldResolver: ExtendsFieldResolver,
+        compositionService: CompositionService,
         idempotentCommandExecutor: IdempotentCommandExecutor,
     ): CreateVersionHandler =
-        CreateVersionHandler(promptRepository, dependencyRepository, extendsFieldResolver, idempotentCommandExecutor)
+        CreateVersionHandler(
+            promptRepository,
+            dependencyRepository,
+            extendsFieldResolver,
+            compositionService,
+            idempotentCommandExecutor,
+        )
 
     @Bean
     fun publishHandler(
