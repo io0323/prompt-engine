@@ -17,9 +17,10 @@ import java.util.UUID
  * casing不一致対策として、読み取り側（[findOutbound]/[findInbound]）は引き続き
  * `UPPER(d.to_kind)`で大文字小文字を無視して比較する。
  *
- * P9b時点で[replaceOutbound]を呼ぶのはVersion作成コマンド（extends由来のTEMPLATE依存のみ）。
- * import/include（FRAGMENT）・Nested Prompt（PROMPT、Issue #19未実装）由来の依存は
- * まだ書き込まれない（docs/prompts/p9b.md参照）。
+ * M2-3（ADR-0033）で[replaceOutbound]の呼び出し元（`CreatePromptHandler`/`CreateVersionHandler`）が
+ * `CompositionService.compile`（COMPILE_ONLY）ベースへ変わり、extends由来のTEMPLATE依存に加え
+ * import/include（FRAGMENT）由来の依存も書き込まれるようになった。Nested Prompt
+ * （PROMPT、Issue #19未実装）由来の依存は引き続き対象外。
  */
 class JdbcDependencyRepository(
     private val jdbcTemplate: NamedParameterJdbcTemplate,
@@ -122,6 +123,31 @@ class JdbcDependencyRepository(
             WHERE UPPER(d.to_kind) = 'PROMPT' AND d.to_key = :promptKey
             """.trimIndent(),
             MapSqlParameterSource().addValue("promptKey", promptKey.value),
+        ) { rs, _ ->
+            DependencyEdge(
+                fromKey = PromptKey(rs.getString("from_key")),
+                fromVersion = parseSemVer(rs.getString("from_version")),
+                toKind = DependencyKind.valueOf(rs.getString("to_kind").uppercase()),
+                toKey = rs.getString("to_key"),
+                toVersion = rs.getString("to_version"),
+            )
+        }
+
+    override fun findInboundTemplateOrFragment(
+        kind: DependencyKind,
+        key: String,
+    ): List<DependencyEdge> =
+        jdbcTemplate.query(
+            """
+            SELECT p.prompt_key AS from_key, pv.version AS from_version, d.to_kind, d.to_key, d.to_version
+            FROM dependencies d
+            JOIN prompt_versions pv ON pv.version_id = d.from_version_id
+            JOIN prompts p ON p.prompt_id = pv.prompt_id
+            WHERE UPPER(d.to_kind) = :kind AND d.to_key = :key
+            """.trimIndent(),
+            MapSqlParameterSource()
+                .addValue("kind", kind.name)
+                .addValue("key", key),
         ) { rs, _ ->
             DependencyEdge(
                 fromKey = PromptKey(rs.getString("from_key")),

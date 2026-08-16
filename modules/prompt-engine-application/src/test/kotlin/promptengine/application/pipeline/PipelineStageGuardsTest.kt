@@ -160,7 +160,9 @@ class PipelineStageGuardsTest {
 
     @Test
     fun `MergeStage は Load未実行時 promptVersion欠如 でIllegalStateException`() {
-        shouldThrow<IllegalStateException> { MergeStage(UnreachableCompositionService).execute(context()) }
+        shouldThrow<IllegalStateException> {
+            MergeStage(UnreachableCompositionService, RecordingPromptCache()).execute(context())
+        }
     }
 
     @Test
@@ -539,7 +541,7 @@ class PipelineStageGuardsTest {
 
         val guardedInvocations: List<Pair<String, () -> Unit>> =
             listOf(
-                "Merge" to { MergeStage(UnreachableCompositionService).execute(bare) },
+                "Merge" to { MergeStage(UnreachableCompositionService, RecordingPromptCache()).execute(bare) },
                 "ResolveVariables" to { ResolveVariablesStage(UnreachableVariableResolverChain).execute(bare) },
                 "ResolveContext" to { ResolveContextStage(UnreachableContextResolverChain).execute(bare) },
                 "Validation" to {

@@ -27,6 +27,7 @@ import promptengine.domain.execution.ParseRepairPolicy
 import promptengine.domain.execution.RawResponse
 import promptengine.domain.execution.Usage
 import promptengine.domain.fragment.Fragment
+import promptengine.domain.fragment.FragmentDomainEvent
 import promptengine.domain.fragment.FragmentKey
 import promptengine.domain.fragment.FragmentRepository
 import promptengine.domain.observability.Outcome
@@ -66,6 +67,7 @@ import promptengine.domain.template.ExtendsRef
 import promptengine.domain.template.NewTemplateVersion
 import promptengine.domain.template.Template
 import promptengine.domain.template.TemplateContent
+import promptengine.domain.template.TemplateDomainEvent
 import promptengine.domain.template.TemplateKey
 import promptengine.domain.template.TemplateRepository
 import promptengine.domain.tokenizer.TokenizerPlugin
@@ -161,6 +163,27 @@ class PipelineOrchestratorTest {
         fixture.metricsRecorder.renderDurations.single().mode shouldBe PipelineMode.RENDER_ONLY
         fixture.metricsRecorder.renderDurations.single().outcome shouldBe Outcome.SUCCESS
         fixture.metricsRecorder.stageDurations.map { it.stage }.toSet() shouldBe result.stageDurationsMs.keys
+    }
+
+    /**
+     * ADR-0033の要件: PromptCacheを有効にしてもrenderHashの決定性
+     * （設計書§2.9、同一入力から同一renderHash）が損なわれないことを確認する。
+     * 1回目はキャッシュミス（compile実行・put）、2回目はキャッシュヒット
+     * （compile未実行、getのみ）になることも合わせて確認し、「たまたま同じ値」ではなく
+     * 実際にキャッシュ経路を通った上でrenderHashが変わらないことを固定する。
+     */
+    @Test
+    fun `PromptCacheが有効でも同一入力を2回RenderするとrenderHashが一致しキャッシュヒットする`() {
+        val fixture = Fixture()
+        val orchestrator = fixture.orchestrator()
+        val request = fixture.baseRequest()
+
+        val first = orchestrator.run(request = request, mode = PipelineMode.RENDER_ONLY, traceId = "trace-cache-1")
+        val second = orchestrator.run(request = request, mode = PipelineMode.RENDER_ONLY, traceId = "trace-cache-2")
+
+        first.rendered!!.renderHash shouldBe second.rendered!!.renderHash
+        fixture.promptCache.putCalls.size shouldBe 1
+        fixture.promptCache.getCalls.size shouldBe 2
     }
 
     @Test
@@ -715,6 +738,8 @@ class PipelineOrchestratorTest {
 
     private class FakeTemplateRepository : TemplateRepository {
         private val templates = mutableMapOf<TemplateKey, Template>()
+        private val context =
+            EventContext(actor = "tester", traceId = "trace-1", occurredAt = Instant.EPOCH)
 
         fun addPublished(
             key: TemplateKey,
@@ -724,14 +749,19 @@ class PipelineOrchestratorTest {
         ) {
             val newVersion =
                 NewTemplateVersion(semVer, TemplateContent(wrap(key.value, "template", bodyText)), extends = extends)
-            var template = templates[key]?.newVersion(newVersion) ?: Template.create(key, newVersion)
-            template = template.publish(semVer)
+            var template =
+                templates[key]?.newVersion(newVersion, context)?.first
+                    ?: Template.create(key, newVersion, context).first
+            template = template.publish(semVer, context).first
             templates[key] = template
         }
 
         override fun findByKey(key: TemplateKey): Template? = templates[key]
 
-        override fun save(template: Template): Template {
+        override fun save(
+            template: Template,
+            events: List<TemplateDomainEvent>,
+        ): Template {
             templates[template.key] = template
             return template
         }
@@ -742,7 +772,10 @@ class PipelineOrchestratorTest {
 
         override fun findByKey(key: FragmentKey): Fragment? = fragments[key]
 
-        override fun save(fragment: Fragment): Fragment {
+        override fun save(
+            fragment: Fragment,
+            events: List<FragmentDomainEvent>,
+        ): Fragment {
             fragments[fragment.key] = fragment
             return fragment
         }
@@ -769,6 +802,7 @@ class PipelineOrchestratorTest {
         val auditFailureHandler: RecordingAuditFailureHandler = RecordingAuditFailureHandler(),
         val tracer: RecordingPipelineTracer = RecordingPipelineTracer(),
         val metricsRecorder: RecordingMetricsRecorder = RecordingMetricsRecorder(),
+        val promptCache: RecordingPromptCache = RecordingPromptCache(),
     ) {
         private val compositionService = CompositionServiceImpl(templateRepository, fragmentRepository)
         private val variableResolverChain = VariableResolverChainImpl.standard(NoSecretsManagerAdapter)
@@ -832,7 +866,7 @@ class PipelineOrchestratorTest {
             val stages =
                 listOf(
                     LoadStage(promptRepository, FakePromptAliasRepository()),
-                    MergeStage(compositionService),
+                    MergeStage(compositionService, promptCache),
                     ImportStage(),
                     ResolveVariablesStage(variableResolverChain),
                     ResolveContextStage(contextResolverChain),

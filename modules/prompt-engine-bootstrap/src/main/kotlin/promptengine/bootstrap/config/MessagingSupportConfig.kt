@@ -5,6 +5,7 @@ import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import promptengine.infrastructure.masking.SecretMaskingJsonSanitizer
 import promptengine.infrastructure.messaging.EventEnvelopeCodec
+import promptengine.infrastructure.subscriber.CacheInvalidationPayloadCodec
 import promptengine.infrastructure.subscriber.PromptExecutedPayloadCodec
 
 /**
@@ -32,4 +33,9 @@ class MessagingSupportConfig {
     @Bean
     fun promptExecutedPayloadCodec(objectMapper: ObjectMapper): PromptExecutedPayloadCodec =
         PromptExecutedPayloadCodec(objectMapper)
+
+    /** キャッシュ無効化対象イベントのpayload → [promptengine.infrastructure.subscriber.CacheInvalidationTarget]（ADR-0033）。 */
+    @Bean
+    fun cacheInvalidationPayloadCodec(objectMapper: ObjectMapper): CacheInvalidationPayloadCodec =
+        CacheInvalidationPayloadCodec(objectMapper)
 }

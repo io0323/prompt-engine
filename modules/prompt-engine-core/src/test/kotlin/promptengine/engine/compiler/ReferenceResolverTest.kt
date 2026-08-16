@@ -11,6 +11,7 @@ import promptengine.domain.composition.CompositionSizeExceededException
 import promptengine.domain.composition.DraftReferenceNotAllowedException
 import promptengine.domain.composition.ResolvedDependency
 import promptengine.domain.composition.TemplateReferenceNotFoundException
+import promptengine.domain.event.EventContext
 import promptengine.domain.shared.ExtendsRefApi
 import promptengine.domain.shared.PublicationState
 import promptengine.domain.shared.SemVer
@@ -19,8 +20,10 @@ import promptengine.domain.template.ExtendsRef
 import promptengine.domain.template.NewTemplateVersion
 import promptengine.domain.template.Template
 import promptengine.domain.template.TemplateContent
+import promptengine.domain.template.TemplateDomainEvent
 import promptengine.domain.template.TemplateKey
 import promptengine.domain.template.TemplateRepository
+import java.time.Instant
 
 /**
  * [ReferenceResolver]のテスト（ADR-0009）。[FakeTemplateRepository]は固定の内容を持つ
@@ -284,6 +287,8 @@ class ReferenceResolverTest {
 
     private class FakeTemplateRepository : TemplateRepository {
         private val templates = mutableMapOf<TemplateKey, Template>()
+        private val context =
+            EventContext(actor = "tester", traceId = "trace-1", occurredAt = Instant.parse("2026-01-01T00:00:00Z"))
 
         fun addPublished(
             key: TemplateKey,
@@ -306,7 +311,7 @@ class ReferenceResolverTest {
             extends: ExtendsRef? = null,
         ) {
             addVersion(key, semVer, body, extends, publish = false)
-            templates[key] = templates.getValue(key).archive(semVer)
+            templates[key] = templates.getValue(key).archive(semVer, context).first
         }
 
         private fun addVersion(
@@ -317,14 +322,19 @@ class ReferenceResolverTest {
             publish: Boolean,
         ) {
             val newVersion = NewTemplateVersion(semVer, TemplateContent(body), extends = extends)
-            var template = templates[key]?.newVersion(newVersion) ?: Template.create(key, newVersion)
-            if (publish) template = template.publish(semVer)
+            var template =
+                templates[key]?.newVersion(newVersion, context)?.first
+                    ?: Template.create(key, newVersion, context).first
+            if (publish) template = template.publish(semVer, context).first
             templates[key] = template
         }
 
         override fun findByKey(key: TemplateKey): Template? = templates[key]
 
-        override fun save(template: Template): Template {
+        override fun save(
+            template: Template,
+            events: List<TemplateDomainEvent>,
+        ): Template {
             templates[template.key] = template
             return template
         }

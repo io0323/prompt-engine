@@ -10,8 +10,10 @@ import promptengine.domain.composition.DraftReferenceNotAllowedException
 import promptengine.domain.composition.FragmentReferenceNotFoundException
 import promptengine.domain.composition.IncludeRequiredVariableUnresolvedException
 import promptengine.domain.composition.ResolvedDependency
+import promptengine.domain.event.EventContext
 import promptengine.domain.fragment.Fragment
 import promptengine.domain.fragment.FragmentContent
+import promptengine.domain.fragment.FragmentDomainEvent
 import promptengine.domain.fragment.FragmentKey
 import promptengine.domain.fragment.FragmentRepository
 import promptengine.domain.fragment.NewFragmentVersion
@@ -26,6 +28,7 @@ import promptengine.domain.template.ast.StringLiteral
 import promptengine.domain.template.ast.TextNode
 import promptengine.domain.variable.VariableDefinition
 import promptengine.domain.variable.VariableType
+import java.time.Instant
 
 /** [FragmentResolver]のテスト（設計書§15.4/§15.5、ADR-0009決定4〜7、ADR-0010決定1・2・4・7）。 */
 class FragmentResolverTest {
@@ -262,6 +265,8 @@ class FragmentResolverTest {
 
     private class FakeFragmentRepository : FragmentRepository {
         private val fragments = mutableMapOf<FragmentKey, Fragment>()
+        private val context =
+            EventContext(actor = "tester", traceId = "trace-1", occurredAt = Instant.parse("2026-01-01T00:00:00Z"))
 
         fun addPublished(
             key: FragmentKey,
@@ -299,14 +304,19 @@ class FragmentResolverTest {
                 $bodyText
                 """.trimIndent()
             val newVersion = NewFragmentVersion(semVer, FragmentContent(source), variables)
-            var fragment = fragments[key]?.newVersion(newVersion) ?: Fragment.create(key, newVersion)
-            if (publish) fragment = fragment.publish(semVer)
+            var fragment =
+                fragments[key]?.newVersion(newVersion, context)?.first
+                    ?: Fragment.create(key, newVersion, context).first
+            if (publish) fragment = fragment.publish(semVer, context).first
             fragments[key] = fragment
         }
 
         override fun findByKey(key: FragmentKey): Fragment? = fragments[key]
 
-        override fun save(fragment: Fragment): Fragment {
+        override fun save(
+            fragment: Fragment,
+            events: List<FragmentDomainEvent>,
+        ): Fragment {
             fragments[fragment.key] = fragment
             return fragment
         }

@@ -25,6 +25,11 @@ class DependenciesHandlerTest {
                 DependencyEdge(PromptKey("team/other"), SemVer(1, 0, 0), DependencyKind.PROMPT, promptKey.value, null),
             )
 
+        override fun findInboundTemplateOrFragment(
+            kind: DependencyKind,
+            key: String,
+        ): List<DependencyEdge> = emptyList()
+
         override fun replaceOutbound(
             promptKey: PromptKey,
             semVer: SemVer,

@@ -1,7 +1,13 @@
 #!/usr/bin/env bash
-# P11 性能測定（NFR-003: Render p99 <= 200ms）。deploy/docker/Dockerfileでビルドした
-# イメージを、CPU/メモリ制限を付けた状態で実際に起動し、/render に対してcurl（接続再利用）で
-# 負荷をかけてp50/p99を計測する。README「性能測定」節から呼び出す想定。
+# P11 性能測定（NFR-003: Render p99 <= 200ms）。M2-3（ADR-0033）でPromptCache（Redis）が
+# 入った後は、同一Prompt/Versionを繰り返し叩くこの負荷パターン自体が「2回目以降は常に
+# MergeStageがキャッシュヒットする」状態になるため、本スクリプトの計測値はNFR-002
+# （Prompt取得キャッシュヒットp99≤20ms）の実測条件としても兼用する（README「性能測定」節参照。
+# ただしMerge単体のレイテンシを切り出した計測ではなく、Stage 1〜12を通したEnd-to-End計測で
+# ある点は限界として明記する）。
+# deploy/docker/Dockerfileでビルドしたイメージを、CPU/メモリ制限を付けた状態で実際に起動し、
+# /render に対してcurl（接続再利用）で負荷をかけてp50/p99を計測する。README「性能測定」節から
+# 呼び出す想定。
 #
 # 前提: リポジトリルートで実行すること。docker / docker compose / curl / ./gradlew が使えること。
 #
@@ -51,7 +57,7 @@ services:
     ports:
       - "${POSTGRES_HOST_PORT}:5432"
 EOF
-docker compose -f compose.yaml -f "$WORKDIR/compose.override.yml" up -d postgres
+docker compose -f compose.yaml -f "$WORKDIR/compose.override.yml" up -d postgres redis
 echo "waiting for postgres host port ${POSTGRES_HOST_PORT}..."
 for i in $(seq 1 30); do
   pg_isready -h localhost -p "$POSTGRES_HOST_PORT" -U prompt_engine >/dev/null 2>&1 && break
@@ -89,6 +95,7 @@ docker run -d --name "$APP_CONTAINER" \
   -e PE_DATASOURCE_URL=jdbc:postgresql://postgres:5432/prompt_engine \
   -e PE_DATASOURCE_USERNAME=prompt_engine \
   -e PE_DATASOURCE_PASSWORD=prompt_engine \
+  -e PE_CACHE_REDIS_URI=redis://redis:6379 \
   -e PE_CIAP_JWKS_URI="$JWKS_URI" \
   "$IMAGE_TAG"
 

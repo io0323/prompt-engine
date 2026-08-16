@@ -27,6 +27,9 @@ dependencies {
     // OutboxRelayerがBrokerへ送信するために使うProducerクライアント（ADR-0025決定9）。
     implementation(libs.kafka.clients)
 
+    // M2-3: RedisPromptCacheが使うRedisクライアント（ADR-0033決定d）。
+    implementation(libs.lettuce.core)
+
     // P10c: MicrometerMetricsRecorder / OpenTelemetryPipelineTracerの実装に使用（ADR-0027）。
     implementation(libs.micrometer.core)
     implementation(libs.opentelemetry.api)

@@ -62,6 +62,10 @@ dependencies {
     // OutboxRelayConfigがKafka Producerを構築するために必要（ADR-0025決定9）。
     implementation(libs.kafka.clients)
 
+    // M2-3: CacheConfigがRedisClient/StatefulRedisConnection/RedisCommandsを構築するために
+    // 必要（ADR-0033決定d）。
+    implementation(libs.lettuce.core)
+
     // P10c: OtelTracerConfigがSdkTracerProvider/OtlpGrpcSpanExporterを構築するために必要（ADR-0027）。
     implementation(libs.opentelemetry.api)
     implementation(libs.opentelemetry.sdk)
