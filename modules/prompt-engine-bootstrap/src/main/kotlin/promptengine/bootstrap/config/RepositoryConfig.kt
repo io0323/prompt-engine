@@ -6,6 +6,7 @@ import org.springframework.context.annotation.Configuration
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
 import org.springframework.transaction.support.TransactionTemplate
 import promptengine.domain.dependency.DependencyRepository
+import promptengine.domain.experiment.ExperimentRepository
 import promptengine.domain.fragment.FragmentRepository
 import promptengine.domain.governance.ReviewCaseRepository
 import promptengine.domain.metrics.MetricsRepository
@@ -16,6 +17,7 @@ import promptengine.domain.prompt.PromptSearchRepository
 import promptengine.domain.template.TemplateRepository
 import promptengine.infrastructure.persistence.EventStorePromptRepository
 import promptengine.infrastructure.persistence.JdbcDependencyRepository
+import promptengine.infrastructure.persistence.JdbcExperimentRepository
 import promptengine.infrastructure.persistence.JdbcFragmentRepository
 import promptengine.infrastructure.persistence.JdbcMetricsRepository
 import promptengine.infrastructure.persistence.JdbcPromptAliasRepository
@@ -57,6 +59,13 @@ class RepositoryConfig {
         transactionTemplate: TransactionTemplate,
         objectMapper: ObjectMapper,
     ): ReviewCaseRepository = JdbcReviewCaseRepository(jdbcTemplate, transactionTemplate, objectMapper)
+
+    @Bean
+    fun experimentRepository(
+        jdbcTemplate: NamedParameterJdbcTemplate,
+        transactionTemplate: TransactionTemplate,
+        objectMapper: ObjectMapper,
+    ): ExperimentRepository = JdbcExperimentRepository(jdbcTemplate, transactionTemplate, objectMapper)
 
     @Bean
     fun promptAliasRepository(jdbcTemplate: NamedParameterJdbcTemplate): PromptAliasRepository =

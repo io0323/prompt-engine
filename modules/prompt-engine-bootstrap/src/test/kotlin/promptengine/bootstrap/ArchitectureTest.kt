@@ -200,6 +200,24 @@ class ArchitectureTest {
             .check(importedClasses)
     }
 
+    /**
+     * ADR-0034: `ExperimentResolvedVersion.of`（ADR-0024の状態ゲートを迂回する経路）の呼出元を
+     * `ExperimentVariantResolver`（`promptengine.application.experiment`）のみに制限する。
+     * `PersistenceApi`/`ExtendsRefApi`と同じ、`@RequiresOptIn` + ArchUnitの二重防御。
+     */
+    @Test
+    fun `ExperimentResolutionApiへの依存は domain pipeline と application experiment に限定される`() {
+        noClasses()
+            .that().resideOutsideOfPackages(
+                "promptengine.domain.pipeline..",
+                "promptengine.application.experiment..",
+            )
+            .should().dependOnClassesThat()
+            .haveFullyQualifiedName("promptengine.domain.pipeline.ExperimentResolutionApi")
+            .allowEmptyShould(true)
+            .check(importedClasses)
+    }
+
     @Test
     fun `具象クラスのDI結線は prompt-engine-bootstrap のConfigurationクラスでのみ行う`() {
         classes()
