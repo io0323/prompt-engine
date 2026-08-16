@@ -24,6 +24,10 @@ import promptengine.domain.evaluation.ExecutionLogEntry
 import promptengine.domain.evaluation.ExecutionStatus
 import promptengine.domain.event.EventContext
 import promptengine.domain.execution.Usage
+import promptengine.domain.experiment.Experiment
+import promptengine.domain.experiment.ExperimentType
+import promptengine.domain.experiment.TrafficPolicy
+import promptengine.domain.experiment.Variant
 import promptengine.domain.prompt.NewPromptVersion
 import promptengine.domain.prompt.Prompt
 import promptengine.domain.prompt.PromptContent
@@ -36,6 +40,7 @@ import promptengine.infrastructure.persistence.EventStorePromptRepository
 import promptengine.infrastructure.persistence.JdbcDeadLetterQueueRepository
 import promptengine.infrastructure.persistence.JdbcEvaluationRepository
 import promptengine.infrastructure.persistence.JdbcExecutionLogRepository
+import promptengine.infrastructure.persistence.JdbcExperimentRepository
 import java.math.BigDecimal
 import java.time.Instant
 import java.util.UUID
@@ -44,6 +49,10 @@ import javax.sql.DataSource
 /**
  * P10bで追加した3つのRepository（`evaluation_records` / `execution_logs` / `dead_letter_queue`）の
  * SQL・冪等キーを実PostgreSQLで検証する（ADR-0026、V13マイグレーション）。
+ *
+ * M2-4a（ADR-0034）で追加した`variant_id`（`evaluation_records`は既存カラム、
+ * `execution_logs`はV15で追加）の書き込み・再現性（「どのVariantが使われたか」を
+ * 実データから追えること）も本クラスで検証する。
  *
  * Broker経由の経路全体は`EventSubscriberIntegrationTest`が見る。ここではRepository単体の
  * 契約（`ON CONFLICT`の効き方、業務キー→サロゲートUUIDの解決、DLQのUPSERT）に絞る。
@@ -57,8 +66,10 @@ class JdbcEvaluationRepositoryIntegrationTest {
     private lateinit var evaluationRepository: JdbcEvaluationRepository
     private lateinit var executionLogRepository: JdbcExecutionLogRepository
     private lateinit var deadLetterQueueRepository: JdbcDeadLetterQueueRepository
+    private lateinit var experimentRepository: JdbcExperimentRepository
 
     private val semVer = SemVer(1, 0, 0)
+    private val eventContext = EventContext(actor = "user:test", traceId = "fixture-trace", occurredAt = Instant.EPOCH)
 
     @BeforeAll
     fun setUp() {
@@ -77,6 +88,7 @@ class JdbcEvaluationRepositoryIntegrationTest {
         evaluationRepository = JdbcEvaluationRepository(jdbcTemplate)
         executionLogRepository = JdbcExecutionLogRepository(jdbcTemplate)
         deadLetterQueueRepository = JdbcDeadLetterQueueRepository(jdbcTemplate)
+        experimentRepository = JdbcExperimentRepository(jdbcTemplate, transactionTemplate, jacksonObjectMapper())
     }
 
     @AfterAll
@@ -123,6 +135,20 @@ class JdbcEvaluationRepositoryIntegrationTest {
         status = ExecutionStatus.SUCCESS,
         executedAt = Instant.parse("2026-08-09T00:00:00Z"),
     )
+
+    /** Promptを`Approved`まで進め、それを参照するVariantを持つExperimentを保存してVariantを返す（ADR-0034）。 */
+    private fun createVariant(promptKey: PromptKey): Variant {
+        var prompt = promptRepository.findByKey(promptKey)!!.submitForReview(semVer, validationPassed = true)
+        promptRepository.save(prompt)
+        prompt = promptRepository.findByKey(promptKey)!!.approve(semVer, approvalCount = 1, requiredApprovalCount = 1)
+        promptRepository.save(prompt)
+
+        val variant = Variant(UUID.randomUUID(), "control", semVer, 100)
+        val other = Variant(UUID.randomUUID(), "treatment", semVer, 0)
+        val experiment = Experiment.create(promptKey, ExperimentType.AB, listOf(variant, other), TrafficPolicy())
+        experimentRepository.save(experiment)
+        return variant
+    }
 
     private fun countEvaluations(eventId: UUID): Long =
         jdbcTemplate.queryForObject(
@@ -234,6 +260,61 @@ class JdbcEvaluationRepositoryIntegrationTest {
             )
 
         shouldThrow<IllegalStateException> { executionLogRepository.append(entry) }
+    }
+
+    @Test
+    fun `Experiment経由の実行はevaluation_recordsにvariant_idが記録されfindScoresByVariantで取得できる`() {
+        val key = createPrompt()
+        val variant = createVariant(key)
+        val eventId = UUID.randomUUID()
+
+        evaluationRepository.saveAll(
+            listOf(evaluationRecord(key, eventId, "Latency").copy(variantId = variant.variantId)),
+        )
+
+        val scores = evaluationRepository.findScoresByVariant(variant.variantId, "Latency")
+        scores shouldBe listOf(BigDecimal("250"))
+
+        val storedVariantId =
+            jdbcTemplate.queryForObject(
+                "SELECT variant_id FROM evaluation_records WHERE event_id = :eventId",
+                MapSqlParameterSource("eventId", eventId),
+                UUID::class.java,
+            )
+        storedVariantId shouldBe variant.variantId
+    }
+
+    @Test
+    fun `Experiment経由の実行はexecution_logsにもvariant_idが記録され過去の実行を再現できる`() {
+        val key = createPrompt()
+        val variant = createVariant(key)
+        val eventId = UUID.randomUUID()
+
+        executionLogRepository.append(executionLogEntry(key, eventId).copy(variantId = variant.variantId))
+
+        val storedVariantId =
+            jdbcTemplate.queryForObject(
+                "SELECT variant_id FROM execution_logs WHERE event_id = :eventId",
+                MapSqlParameterSource("eventId", eventId),
+                UUID::class.java,
+            )
+        storedVariantId shouldBe variant.variantId
+    }
+
+    @Test
+    fun `variant_idを指定しない通常経路の実行はvariant_idがNULLのまま記録される`() {
+        val key = createPrompt()
+        val eventId = UUID.randomUUID()
+
+        executionLogRepository.append(executionLogEntry(key, eventId))
+
+        val storedVariantId =
+            jdbcTemplate.queryForObject(
+                "SELECT variant_id FROM execution_logs WHERE event_id = :eventId",
+                MapSqlParameterSource("eventId", eventId),
+                UUID::class.java,
+            )
+        storedVariantId shouldBe null
     }
 
     @Test

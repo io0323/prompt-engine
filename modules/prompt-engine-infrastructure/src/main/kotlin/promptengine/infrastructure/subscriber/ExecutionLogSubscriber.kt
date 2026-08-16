@@ -53,6 +53,7 @@ class ExecutionLogSubscriber(
                 cost = Cost(execution.costPerToken.value.multiply(execution.totalTokens.toBigDecimal())),
                 status = execution.status,
                 executedAt = execution.occurredAt,
+                variantId = execution.variantId,
             ),
         )
     }
