@@ -68,6 +68,7 @@ class EvaluationEngineImpl(
                 method = rule.method,
                 sampleRef = execution.traceId,
                 evaluatedAt = evaluatedAt,
+                variantId = execution.variantId,
             )
         }
     }
