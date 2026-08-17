@@ -8,12 +8,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest
 import org.springframework.boot.test.context.TestConfiguration
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Import
-import org.springframework.core.convert.converter.Converter
 import org.springframework.http.MediaType
-import org.springframework.security.core.GrantedAuthority
-import org.springframework.security.oauth2.jwt.Jwt
-import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.JwtRequestPostProcessor
-import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.get
 import org.springframework.test.web.servlet.patch
@@ -32,7 +27,6 @@ import promptengine.application.query.ExperimentResultsView
 import promptengine.application.query.GetExperimentResultsHandler
 import promptengine.bootstrap.config.SecurityConfig
 import promptengine.interfaces.rest.ExperimentController
-import promptengine.interfaces.security.CiapAuthAdapter
 import java.util.UUID
 
 /**
@@ -58,7 +52,8 @@ import java.util.UUID
  * （`SCOPE_`接頭辞を付与する）で`GrantedAuthority`化するため、`.claim("scope", ...)`だけでは
  * `@PreAuthorize("hasAuthority('prompt:write')")`（接頭辞無し、`CiapAuthAdapter`のKDoc参照）
  * と一致しない**（実装当初はこの差異に気づかず、スコープ有りのテストが403で落ちた）。
- * [jwtWithScope]は`JwtRequestPostProcessor.authorities(Converter)`で明示的に実
+ * [jwtWithScope]（`AuthorizationTestSupport.kt`、Issue #115で他の`*AuthorizationTest`と
+ * 共有するため切り出した）は`JwtRequestPostProcessor.authorities(Converter)`で明示的に実
  * `CiapAuthAdapter.convert`を経由させ、`@PreAuthorize`の判定が実際のコードパスを
  * そのまま通るようにする。
  */
@@ -94,17 +89,6 @@ class ExperimentControllerAuthorizationTest {
             {"name":"treatment","semVer":"1.0.0","weightPct":50}]}"""
     private val trafficBody = """{"weights":[{"name":"control","weightPct":30},{"name":"treatment","weightPct":70}]}"""
     private val promoteBody = """{"winnerVariantName":"control"}"""
-
-    private val ciapAuthAdapter = CiapAuthAdapter()
-
-    /** [jwt]の既定の`SCOPE_`接頭辞コンバータを、実[CiapAuthAdapter]に差し替える（クラスKDoc参照）。 */
-    private fun jwtWithScope(scope: String): JwtRequestPostProcessor {
-        val authoritiesConverter =
-            Converter<Jwt, Collection<GrantedAuthority>> { source -> ciapAuthAdapter.convert(source).authorities }
-        return jwt()
-            .jwt { it.claim("scope", scope).subject("user:test") }
-            .authorities(authoritiesConverter)
-    }
 
     // ---- POST /experiments（prompt:write） ----
 
