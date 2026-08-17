@@ -1,6 +1,7 @@
 package promptengine.application.pipeline
 
 import promptengine.application.command.sha256
+import promptengine.application.experiment.ExperimentVariantResolver
 import promptengine.domain.pipeline.PipelineMode
 import promptengine.domain.pipeline.PipelineRequest
 import promptengine.domain.shared.IdempotentCommandExecutor
@@ -48,10 +49,15 @@ data class ExecuteResult(
     val attemptCount: Int,
 )
 
-/** [ExecuteCommand]のハンドラ。P8の[PipelineOrchestrator]をFULL_EXECUTIONモードで呼ぶ。 */
+/**
+ * [ExecuteCommand]のハンドラ。P8の[PipelineOrchestrator]をFULL_EXECUTIONモードで呼ぶ。
+ *
+ * [experimentVariantResolver]でPipeline実行前にExperiment割当を解決する（ADR-0034決定2）。
+ */
 class ExecuteUseCase(
     private val pipelineOrchestrator: PipelineOrchestrator,
     private val idempotentCommandExecutor: IdempotentCommandExecutor,
+    private val experimentVariantResolver: ExperimentVariantResolver,
 ) {
     fun handle(command: ExecuteCommand): ExecuteResult =
         idempotentCommandExecutor.executeLongRunning(
@@ -59,7 +65,8 @@ class ExecuteUseCase(
             command.fingerprintPayload().sha256(),
             ExecuteResult::class.java,
         ) {
-            val context = pipelineOrchestrator.run(command.request, PipelineMode.FULL_EXECUTION, command.traceId)
+            val resolvedRequest = experimentVariantResolver.resolve(command.request)
+            val context = pipelineOrchestrator.run(resolvedRequest, PipelineMode.FULL_EXECUTION, command.traceId)
             val outcome = context.executionOutcome
             val lastAttempt = outcome?.attempts?.lastOrNull()
             val costPerToken = command.request.modelProfile.costPerToken.value

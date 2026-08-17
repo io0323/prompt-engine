@@ -35,6 +35,7 @@ data class ExecutionLogEntry(
     val cost: Cost,
     val status: ExecutionStatus,
     val executedAt: Instant,
+    val variantId: UUID? = null,
 ) {
     init {
         require(promptKey.isNotBlank()) { "promptKey must not be blank" }

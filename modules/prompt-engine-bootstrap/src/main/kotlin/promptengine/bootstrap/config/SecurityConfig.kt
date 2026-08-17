@@ -33,10 +33,13 @@ import java.security.interfaces.RSAPublicKey
  * （どのエンドポイントがどのスコープを要求するか）はController側の`@PreAuthorize`に委ねる
  * （[EnableMethodSecurity]）。
  *
- * 401（`UNAUTHENTICATED`）・403（`PERMISSION_DENIED`、URLパターンレベルの拒否）は
+ * 401（`UNAUTHENTICATED`）とURLパターンレベル（`authorizeHttpRequests`）の403は
  * [authenticationEntryPoint]/[accessDeniedHandler]が設計書§13.3の封筒形式で書き出す
  * （Spring SecurityのExceptionTranslationFilterが`DispatcherServlet`より前段で処理するため、
- * `GlobalExceptionHandler`（`@RestControllerAdvice`）はこれらを扱えない）。
+ * `GlobalExceptionHandler`（`@RestControllerAdvice`）はこれらを扱えない）。**メソッドレベルの
+ * `@PreAuthorize`拒否（本アプリの`Controller`が実際に使う認可経路）はこの限りではなく、
+ * `GlobalExceptionHandler.handleAccessDenied`が同一の403/`PERMISSION_DENIED`封筒を返す
+ * （ADR-0034の認可テストで発見。この2経路は同じ結果になるよう意図的に揃えてある）。
  */
 @Configuration
 @EnableMethodSecurity

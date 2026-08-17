@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
 import promptengine.domain.event.DomainEvent
+import promptengine.domain.experiment.ExperimentDomainEvent
 import promptengine.domain.fragment.FragmentDomainEvent
 import promptengine.domain.governance.ReviewCaseDomainEvent
 import promptengine.domain.prompt.PromptDomainEvent
@@ -125,6 +126,21 @@ internal fun NamedParameterJdbcTemplate.appendFragmentDomainEvents(
     if (events.isEmpty()) return
     queryForObject(
         "SELECT fragment_id FROM fragments WHERE fragment_id = :aggregateId FOR UPDATE",
+        MapSqlParameterSource("aggregateId", aggregateId),
+        UUID::class.java,
+    )
+    insertDomainEventRows(objectMapper, aggregateId, events)
+}
+
+/** [appendDomainEvents]の`Experiment`向け（`experiments`行をロック対象とする、ADR-0034）。 */
+internal fun NamedParameterJdbcTemplate.appendExperimentDomainEvents(
+    objectMapper: ObjectMapper,
+    aggregateId: UUID,
+    events: List<ExperimentDomainEvent>,
+) {
+    if (events.isEmpty()) return
+    queryForObject(
+        "SELECT experiment_id FROM experiments WHERE experiment_id = :aggregateId FOR UPDATE",
         MapSqlParameterSource("aggregateId", aggregateId),
         UUID::class.java,
     )

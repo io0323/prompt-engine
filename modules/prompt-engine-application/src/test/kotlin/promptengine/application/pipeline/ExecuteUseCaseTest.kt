@@ -5,6 +5,7 @@ import io.mockk.every
 import io.mockk.mockk
 import org.junit.jupiter.api.Test
 import promptengine.application.command.PassthroughIdempotentCommandExecutor
+import promptengine.application.experiment.ExperimentVariantResolver
 import promptengine.domain.event.EventContext
 import promptengine.domain.execution.ExecutionOutcome
 import promptengine.domain.execution.RawResponse
@@ -41,6 +42,10 @@ class ExecuteUseCaseTest {
             budget = TokenCount(1_000),
         )
 
+    /** Experiment非対象（`findActiveByPrompt`が空）を模し、requestをそのまま通す。 */
+    private val experimentVariantResolver =
+        mockk<ExperimentVariantResolver>().also { every { it.resolve(request) } returns request }
+
     @Test
     fun `PipelineContextのExecutionOutcomeを結果に要約する`() {
         val orchestrator = mockk<PipelineOrchestrator>()
@@ -65,7 +70,7 @@ class ExecuteUseCaseTest {
             )
         every { orchestrator.run(request, PipelineMode.FULL_EXECUTION, "trace-1") } returns context
 
-        val useCase = ExecuteUseCase(orchestrator, PassthroughIdempotentCommandExecutor())
+        val useCase = ExecuteUseCase(orchestrator, PassthroughIdempotentCommandExecutor(), experimentVariantResolver)
         val result = useCase.handle(ExecuteCommand(request, "trace-1"))
 
         result.outputFormat shouldBe "TEXT"
@@ -84,7 +89,7 @@ class ExecuteUseCaseTest {
         val context = PipelineContext(request = request, mode = PipelineMode.FULL_EXECUTION, traceId = "trace-1")
         every { orchestrator.run(request, PipelineMode.FULL_EXECUTION, "trace-1") } returns context
 
-        val useCase = ExecuteUseCase(orchestrator, PassthroughIdempotentCommandExecutor())
+        val useCase = ExecuteUseCase(orchestrator, PassthroughIdempotentCommandExecutor(), experimentVariantResolver)
         val result = useCase.handle(ExecuteCommand(request, "trace-1"))
 
         result.outputFormat shouldBe null
@@ -112,7 +117,7 @@ class ExecuteUseCaseTest {
             )
         every { orchestrator.run(request, PipelineMode.FULL_EXECUTION, "trace-1") } returns context
 
-        val useCase = ExecuteUseCase(orchestrator, PassthroughIdempotentCommandExecutor())
+        val useCase = ExecuteUseCase(orchestrator, PassthroughIdempotentCommandExecutor(), experimentVariantResolver)
         val result = useCase.handle(ExecuteCommand(request, "trace-1"))
 
         result.version shouldBe "1.0.0"

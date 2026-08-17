@@ -5,6 +5,7 @@ import io.mockk.every
 import io.mockk.mockk
 import org.junit.jupiter.api.Test
 import promptengine.application.command.PassthroughIdempotentCommandExecutor
+import promptengine.application.experiment.ExperimentVariantResolver
 import promptengine.domain.event.EventContext
 import promptengine.domain.optimization.ModelProfile
 import promptengine.domain.pipeline.PipelineContext
@@ -42,6 +43,10 @@ class RenderUseCaseTest {
             budget = TokenCount(1_000),
         )
 
+    /** Experiment非対象（`findActiveByPrompt`が空）を模し、requestをそのまま通す。 */
+    private val experimentVariantResolver =
+        mockk<ExperimentVariantResolver>().also { every { it.resolve(request) } returns request }
+
     @Test
     fun `PipelineContextのRenderedPromptを結果に要約する`() {
         val orchestrator = mockk<PipelineOrchestrator>()
@@ -61,7 +66,7 @@ class RenderUseCaseTest {
             )
         every { orchestrator.run(request, PipelineMode.RENDER_ONLY, "trace-1") } returns context
 
-        val useCase = RenderUseCase(orchestrator, PassthroughIdempotentCommandExecutor())
+        val useCase = RenderUseCase(orchestrator, PassthroughIdempotentCommandExecutor(), experimentVariantResolver)
         val result = useCase.handle(RenderCommand(request, "trace-1"))
 
         result.outputFormat shouldBe "TEXT"
@@ -77,7 +82,7 @@ class RenderUseCaseTest {
         val context = PipelineContext(request = request, mode = PipelineMode.RENDER_ONLY, traceId = "trace-1")
         every { orchestrator.run(request, PipelineMode.RENDER_ONLY, "trace-1") } returns context
 
-        val useCase = RenderUseCase(orchestrator, PassthroughIdempotentCommandExecutor())
+        val useCase = RenderUseCase(orchestrator, PassthroughIdempotentCommandExecutor(), experimentVariantResolver)
         val result = useCase.handle(RenderCommand(request, "trace-1"))
 
         result.outputFormat shouldBe null
@@ -105,7 +110,7 @@ class RenderUseCaseTest {
             )
         every { orchestrator.run(request, PipelineMode.RENDER_ONLY, "trace-1") } returns context
 
-        val useCase = RenderUseCase(orchestrator, PassthroughIdempotentCommandExecutor())
+        val useCase = RenderUseCase(orchestrator, PassthroughIdempotentCommandExecutor(), experimentVariantResolver)
         val result = useCase.handle(RenderCommand(request, "trace-1"))
 
         result.version shouldBe "1.0.0"
@@ -124,7 +129,7 @@ class RenderUseCaseTest {
             )
         every { orchestrator.run(request, PipelineMode.RENDER_ONLY, "trace-1") } returns context
 
-        val useCase = RenderUseCase(orchestrator, PassthroughIdempotentCommandExecutor())
+        val useCase = RenderUseCase(orchestrator, PassthroughIdempotentCommandExecutor(), experimentVariantResolver)
         val result = useCase.handle(RenderCommand(request, "trace-1"))
 
         result.version shouldBe "1.0.0"
@@ -150,7 +155,7 @@ class RenderUseCaseTest {
             )
         every { orchestrator.run(request, PipelineMode.RENDER_ONLY, "trace-1") } returns context
 
-        val useCase = RenderUseCase(orchestrator, PassthroughIdempotentCommandExecutor())
+        val useCase = RenderUseCase(orchestrator, PassthroughIdempotentCommandExecutor(), experimentVariantResolver)
         val result = useCase.handle(RenderCommand(request, "trace-1"))
 
         result.warnings shouldBe listOf(FindingSummary("R2", "$.y", "WARNING", "warn"))
