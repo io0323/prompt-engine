@@ -50,7 +50,7 @@ updates:
       # 根本原因（detektのKotlin 2.0.21固定）の解消はIssue #104、springdoc 3.x /
       # Spring Boot 4.x移行そのものの検討はIssue #105で追跡する。
       #
-      # マイナー更新（2.8.6→2.9.0、PR #108）も別の理由で保留する: 2.9.0で
+      # マイナー更新（2.8.6→2.9.0、PR #108）も別の理由で保留していた: 2.9.0で
       # springdoc/swagger-coreのnullableフィールドのスキーマ表現がOpenAPI 3.1スタイル
       # （`type: [X, "null"]`・`oneOf: [$ref, {type: "null"}]`）へ変わり、これが
       # contract.ymlのoasdiff breaking-change検出（fail-on: ERR）に29件抵触することを
@@ -59,10 +59,18 @@ updates:
       # （`CommonDtos.kt`、Kotlinの`Any? = null`）のスキーマが`type: object`（2.8.6、
       # 緩いが「任意の値」であることは伝わる）から`type: "null"`のみ（2.9.0、nullしか
       # 受け付けないように見える誤ったドキュメントになる）へ後退する実質的な劣化も
-      # 見つかっている。`default`等の裸の`Any?`フィールドに明示的な`@Schema`注釈で
-      # スキーマを固定するか、springdocの後続リリースでこの退行が直るまで見直さない。
+      # 見つかっている。
+      #
+      # パッチ更新（2.8.6→2.8.17、PR #111）でも同一の退行が確認された（PR #111で確認・
+      # クローズ）。つまりこの問題はマイナー版に限らず2.8.x系のパッチリリースにも
+      # 既に混入しており、update-typesをminorまでに絞る意味が無い。semver-patchも含めて
+      # springdocの更新を丸ごと保留する（kotlin-gradle-plugin/kotlin-allopenと同じ形式）。
+      #
+      # `default`等の裸の`Any?`フィールドに明示的な`@Schema`注釈でスキーマを固定する
+      # 対応をIssue #113で追跡している。この根本対応が完了すれば、springdocのバージョン
+      # 間でスキーマ表現が揺れてもcontract.ymlが検出できるようになり、update-typesの
+      # 制限を緩められる可能性がある。
       - dependency-name: "org.springdoc:springdoc-openapi-starter-webmvc-ui"
-        update-types: ["version-update:semver-major", "version-update:semver-minor"]
 
       # kotest（kotest-runner-junit5 / kotest-assertions-core、gradle/libs.versions.tomlの
       # kotest = "5.9.1"を共有参照）の5.9.1→6.2.4更新は、上記と同じdetekt-gradle-plugin 1.23.8
