@@ -407,6 +407,10 @@ Model Profile（APAPのモデルメタデータを参照して構成）: `{ maxC
 - `status`は**常に`SUCCESS`**。`execution_logs`を書く`ExecutionLogSubscriber`が購読する`PromptExecuted`は、Stage 9が成功しStage 11まで到達した場合にしか発火しない。実行失敗を表す`PromptExecutionFailed`（§14）はイベント定義のみ存在し、M1に発火元が無い。したがって現時点の`execution_logs`は**失敗した実行を含まない**（成功実行のみの母集団である点は、この表を集計に使う際の前提となる）。
 - `caller_system`はイベントの`actor`を暫定的に写した値。呼出元クライアント識別情報をPipelineへ伝搬する経路がM1に存在しないため、真の呼出元システム名ではない。
 
+### M2実装（Benchmark、ADR-0035）
+
+Accuracy/Consistency/Determinismは`evaluation_records`/`EvaluationRule`とは別系統で実装する。`EvaluationRule.evaluate(execution: PromptExecutionSummary)`は1回の実行のメタデータのみを受け取る形であり、期待出力との比較（Accuracy）や複数回実行の比較（Consistency/Determinism）を表現できないため。新設の`Benchmark` Aggregate・`BenchmarkScoringRule`拡張点（§16-15）・`benchmark_item_results`テーブル（§12）で実装する。`Experiment`（§4.3）とは別Aggregateであり、`experiments`/`variants`/`evaluation_records`テーブルへの変更は無い。詳細はADR-0035。
+
 ## 2.13 Version管理仕様
 
 - 採番: SemVer。breaking（変数追加required化・出力Schema変更）=major、機能追加=minor、文言修正=patch。自動判定+手動上書き可。
@@ -706,6 +710,8 @@ Experiment ──(勝者昇格要求)──> Prompt Authoring
 | Template | TemplateVersion | 循環継承禁止（extends鎖に自身不可） |
 | Fragment | FragmentVersion | 循環Include禁止 |
 | Experiment | Variant(2..n), TrafficPolicy | 配分合計=100%。Running中のVariant削除禁止 |
+| GoldenDataset | GoldenDatasetItem(list) | item 1件以上。ExperimentのVariantとは無関係（ADR-0035） |
+| Benchmark | BenchmarkTarget(list) | Target 1件以上。BenchmarkTargetはweight_pctを持たない（Variantと別型、ADR-0035） |
 | ReviewCase | ReviewComment, ApprovalRecord | 承認数 ≥ ApprovalPolicy.required で承認確定 |
 | EvaluationRecord | MetricScore(list) | 対象PromptVersion固定・記録後不変 |
 | AuditRecord | - | 追記専用・改変不可 |
@@ -1413,7 +1419,7 @@ entity experiments {
   * experiment_id : UUID <<PK>>
   --
   * prompt_id : UUID <<FK>>
-  * type : VARCHAR  ' AB/CANARY/BENCHMARK
+  * type : VARCHAR  ' AB/CANARY（BENCHMARKは別Aggregate。ADR-0035で訂正）
   * status : VARCHAR
   * started_at / ended_at
   winner_variant_id : UUID
@@ -1425,6 +1431,57 @@ entity variants {
   * version_id : UUID <<FK>>
   * name : VARCHAR
   * weight_pct : INT
+}
+entity golden_datasets {
+  * dataset_id : UUID <<PK>>
+  --
+  * prompt_id : UUID <<FK>>
+  * name : VARCHAR
+  description : TEXT
+  * created_at
+}
+entity golden_dataset_items {
+  * item_id : UUID <<PK>>
+  --
+  * dataset_id : UUID <<FK>>
+  * parameters : JSONB
+  * context : JSONB
+  expected_output : TEXT  ' Accuracy算出時のみ実質必須。Consistency/Determinismは不要（ADR-0035）
+  metadata : JSONB
+  * created_at
+}
+entity benchmarks {
+  * benchmark_id : UUID <<PK>>
+  --
+  * prompt_id : UUID <<FK>>
+  * dataset_id : UUID <<FK>>
+  * n_repetitions : INT
+  * status : VARCHAR  ' Pending/Running/Cancelling/Completed/Cancelled/Failed
+  * created_at
+  started_at / completed_at / cancelled_at : TIMESTAMPTZ
+}
+entity benchmark_targets {
+  * target_id : UUID <<PK>>
+  --
+  * benchmark_id : UUID <<FK>>
+  * version_id : UUID <<FK>>  ' variantsと異なりweight_pctを持たない（ADR-0035決定1）
+}
+entity benchmark_metrics {
+  * benchmark_id : UUID <<FK>>
+  * metric_type : VARCHAR  ' Accuracy/Consistency/Determinism
+}
+entity benchmark_item_results {
+  * result_id : UUID <<PK>>
+  --
+  * target_id : UUID <<FK>>
+  * item_id : UUID <<FK>>
+  * status : VARCHAR  ' Pending/Claimed/Completed/Failed
+  claimed_at : TIMESTAMPTZ
+  claimed_by : VARCHAR  ' Claim+フェンシング（ADR-0025/ADR-0027と同一方式。ADR-0035決定3）
+  accuracy_score / consistency_score / determinism_score : DECIMAL
+  error_message : VARCHAR
+  completed_at : TIMESTAMPTZ
+  <<UQ target_id+item_id>>
 }
 entity evaluation_records {
   * evaluation_id : UUID <<PK>>
@@ -1532,6 +1589,15 @@ review_cases ||--o{ approvals
 prompts ||--o{ experiments
 experiments ||--|{ variants
 prompt_versions ||--o{ variants
+prompts ||--o{ golden_datasets
+golden_datasets ||--o{ golden_dataset_items
+prompts ||--o{ benchmarks
+golden_datasets ||--o{ benchmarks
+benchmarks ||--|{ benchmark_targets
+benchmarks ||--o{ benchmark_metrics
+prompt_versions ||--o{ benchmark_targets
+benchmark_targets ||--o{ benchmark_item_results
+golden_dataset_items ||--o{ benchmark_item_results
 prompt_versions ||--o{ evaluation_records
 variants ||--o{ evaluation_records
 prompt_versions ||--o{ execution_logs
@@ -1929,6 +1995,7 @@ Template/Fragmentの`validation`とはマージせず、Prompt自身の宣言の
 | 12 | Experiment Strategy | TrafficSplitStrategy | 重み付ランダム+sticky | 多腕バンディット |
 | 13 | Tokenizer | TokenizerPlugin | 汎用近似Tokenizer | モデル別正確Tokenizer |
 | 14 | Event Bus | EventBusAdapter | 標準Broker Adapter | 他Broker実装 |
+| 15 | Benchmark Scoring Rule | BenchmarkScoringRule | 正規化完全一致 | 構造的一致（JSONキー単位）、意味的類似（埋め込み距離） |
 
 Plugin規約: (1) Domain型のみに依存（Infrastructure直接参照禁止）、(2) ステートレス推奨（状態はPluginConfig/外部ストア）、(3) 実行時間上限（既定: Rule系100ms/呼出、超過はタイムアウト打切り+WARNING）、(4) 宣言的権限（Secretアクセス等はmanifestで要求し管理者承認）。
 
