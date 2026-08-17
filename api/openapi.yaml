@@ -465,6 +465,112 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/SetAliasResponseDto"
+  /api/v1/experiments:
+    post:
+      tags:
+      - experiment-controller
+      operationId: create_1
+      parameters:
+      - name: Idempotency-Key
+        in: header
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateExperimentRequestDto"
+        required: true
+      responses:
+        "201":
+          description: Created
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ExperimentResponseDto"
+  /api/v1/experiments/{id}/stop:
+    post:
+      tags:
+      - experiment-controller
+      operationId: stop
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: Idempotency-Key
+        in: header
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                type: object
+                additionalProperties:
+                  type: string
+  /api/v1/experiments/{id}/start:
+    post:
+      tags:
+      - experiment-controller
+      operationId: start
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: Idempotency-Key
+        in: header
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                type: object
+                additionalProperties:
+                  type: string
+  /api/v1/experiments/{id}/promote:
+    post:
+      tags:
+      - experiment-controller
+      operationId: promote
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: Idempotency-Key
+        in: header
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PromoteExperimentRequestDto"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/PromoteExperimentResponseDto"
   /api/v1/prompts/{namespace}/{name}:
     get:
       tags:
@@ -555,6 +661,38 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/KeyOnlyResponseDto"
+  /api/v1/experiments/{id}/traffic:
+    patch:
+      tags:
+      - experiment-controller
+      operationId: updateTraffic
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: Idempotency-Key
+        in: header
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateExperimentTrafficRequestDto"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                type: object
+                additionalProperties:
+                  type: string
   /api/v1/prompts/{namespace}/{name}/versions/{version}:
     get:
       tags:
@@ -681,6 +819,25 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/MetricsSummaryDto"
+  /api/v1/experiments/{id}/results:
+    get:
+      tags:
+      - experiment-controller
+      operationId: results
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ExperimentResultsResponseDto"
   /api/v1/audit-logs:
     get:
       tags:
@@ -1173,6 +1330,73 @@ components:
       - alias
       - key
       - semVer
+    CreateExperimentRequestDto:
+      type: object
+      properties:
+        promptKey:
+          type: string
+          minLength: 1
+        type:
+          type: string
+          minLength: 1
+        variants:
+          type: array
+          items:
+            $ref: "#/components/schemas/VariantInputDto"
+          minItems: 1
+        stickyKeyPath:
+          type: string
+      required:
+      - promptKey
+      - type
+      - variants
+    VariantInputDto:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+        semVer:
+          type: string
+          minLength: 1
+        weightPct:
+          type: integer
+          format: int32
+      required:
+      - name
+      - semVer
+      - weightPct
+    ExperimentResponseDto:
+      type: object
+      properties:
+        experimentId:
+          type: string
+        promptKey:
+          type: string
+      required:
+      - experimentId
+      - promptKey
+    PromoteExperimentRequestDto:
+      type: object
+      properties:
+        winnerVariantName:
+          type: string
+          minLength: 1
+      required:
+      - winnerVariantName
+    PromoteExperimentResponseDto:
+      type: object
+      properties:
+        experimentId:
+          type: string
+        promptKey:
+          type: string
+        promotedSemVer:
+          type: string
+      required:
+      - experimentId
+      - promotedSemVer
+      - promptKey
     UpdatePromptMetadataRequestDto:
       type: object
       properties:
@@ -1197,6 +1421,28 @@ components:
           type: string
       required:
       - key
+    UpdateExperimentTrafficRequestDto:
+      type: object
+      properties:
+        weights:
+          type: array
+          items:
+            $ref: "#/components/schemas/VariantWeightInputDto"
+          minItems: 1
+      required:
+      - weights
+    VariantWeightInputDto:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+        weightPct:
+          type: integer
+          format: int32
+      required:
+      - name
+      - weightPct
     PageDtoPromptSummaryDto:
       type: object
       properties:
@@ -1412,6 +1658,81 @@ components:
       - totalCost
       - totalInputTokens
       - totalOutputTokens
+    ExperimentResultsResponseDto:
+      type: object
+      properties:
+        experimentId:
+          type: string
+        promptKey:
+          type: string
+        status:
+          type: string
+        controlVariantName:
+          type: string
+        variants:
+          type: array
+          items:
+            $ref: "#/components/schemas/VariantResultDto"
+        judgments:
+          type: array
+          items:
+            $ref: "#/components/schemas/MetricJudgmentDto"
+      required:
+      - controlVariantName
+      - experimentId
+      - judgments
+      - promptKey
+      - status
+      - variants
+    MetricJudgmentDto:
+      type: object
+      properties:
+        metricType:
+          type: string
+        challengerVariantName:
+          type: string
+        controlSampleSize:
+          type: integer
+          format: int32
+        challengerSampleSize:
+          type: integer
+          format: int32
+        controlMean:
+          type: string
+        challengerMean:
+          type: string
+        pValue:
+          type: number
+          format: double
+          writeOnly: true
+        sufficientSample:
+          type: boolean
+        significant:
+          type: boolean
+        pvalue:
+          type: number
+          format: double
+      required:
+      - challengerSampleSize
+      - challengerVariantName
+      - controlSampleSize
+      - metricType
+      - significant
+      - sufficientSample
+    VariantResultDto:
+      type: object
+      properties:
+        variantName:
+          type: string
+        weightPct:
+          type: integer
+          format: int32
+        isControl:
+          type: boolean
+      required:
+      - isControl
+      - variantName
+      - weightPct
     AuditLogEntryDto:
       type: object
       properties:

@@ -11,6 +11,7 @@ import promptengine.domain.shared.LatencyMs
 import promptengine.domain.shared.SemVer
 import promptengine.domain.shared.TokenCount
 import java.math.BigDecimal
+import java.util.UUID
 
 /**
  * `PromptExecuted`（設計書§14）の`payload`を[PromptExecutionSummary]へ復元する
@@ -50,8 +51,23 @@ class PromptExecutedPayloadCodec(
             callerSystem = envelope.actor,
             traceId = envelope.traceId,
             occurredAt = envelope.occurredAt,
+            variantId = optionalUuid(node, "variantId"),
         )
     }
+
+    /**
+     * `variantId`（ADR-0034決定4）はP10b時点の既存イベントに存在しないフィールドであり、
+     * 古いイベントを再処理する場合にも壊れず`null`を返す必要がある（他の必須フィールドとは
+     * 異なり[requiredText]相当にしない）。
+     */
+    private fun optionalUuid(
+        node: JsonNode,
+        field: String,
+    ): UUID? =
+        node.get(field)?.takeIf { it.isTextual }?.asText()?.let {
+            runCatching { UUID.fromString(it) }.getOrNull()
+                ?: throw MalformedPromptExecutedPayloadException("field '$field' is not a valid UUID: '$it'")
+        }
 
     private fun readSemVer(node: JsonNode): SemVer {
         val semVerNode =

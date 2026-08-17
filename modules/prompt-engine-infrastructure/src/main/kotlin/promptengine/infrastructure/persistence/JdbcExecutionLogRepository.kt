@@ -27,16 +27,17 @@ class JdbcExecutionLogRepository(
             jdbcTemplate.update(
                 """
                 INSERT INTO execution_logs
-                    (execution_id, version_id, caller_system, trace_id, latency_ms,
+                    (execution_id, version_id, variant_id, caller_system, trace_id, latency_ms,
                      input_tokens, output_tokens, cost, status, executed_at, event_id)
                 VALUES
-                    (:executionId, :versionId, :callerSystem, :traceId, :latencyMs,
+                    (:executionId, :versionId, :variantId, :callerSystem, :traceId, :latencyMs,
                      :inputTokens, :outputTokens, :cost, :status, :executedAt, :eventId)
                 ON CONFLICT (event_id) DO NOTHING
                 """.trimIndent(),
                 MapSqlParameterSource()
                     .addValue("executionId", UUID.randomUUID())
                     .addValue("versionId", versionId)
+                    .addValue("variantId", entry.variantId)
                     .addValue("callerSystem", entry.callerSystem)
                     .addValue("traceId", entry.traceId)
                     .addValue("latencyMs", entry.latency.value)

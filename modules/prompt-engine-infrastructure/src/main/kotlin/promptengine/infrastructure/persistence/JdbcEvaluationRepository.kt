@@ -4,6 +4,7 @@ import org.springframework.jdbc.core.namedparam.MapSqlParameterSource
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
 import promptengine.domain.evaluation.EvaluationRecord
 import promptengine.domain.evaluation.EvaluationRepository
+import java.math.BigDecimal
 import java.sql.Timestamp
 import java.util.UUID
 
@@ -13,8 +14,8 @@ import java.util.UUID
  * 冪等キーは`(event_id, metric_type)`（V13）。1つの`PromptExecuted`から複数の評価器が
  * 行を書くため`event_id`単独ではない（ADR-0025決定8をこのテーブルの粒度へ適用）。
  *
- * `variant_id`（Experiment、設計書§12）はM1では常に`NULL`。Experiment機能自体が未実装で、
- * 評価の起点である`PromptExecuted`もVariantを運ばないため。
+ * `variant_id`（Experiment、設計書§12）はM2-4a（ADR-0034）でExperiment経由の実行のみ
+ * 非NULLになる。通常経路は`EvaluationRecord.variantId`自体が`null`のため引き続きNULL。
  */
 class JdbcEvaluationRepository(
     private val jdbcTemplate: NamedParameterJdbcTemplate,
@@ -35,13 +36,14 @@ class JdbcEvaluationRepository(
                     (evaluation_id, version_id, variant_id, metric_type, score, method, sample_ref,
                      evaluated_at, event_id)
                 VALUES
-                    (:evaluationId, :versionId, NULL, :metricType, :score, :method, :sampleRef,
+                    (:evaluationId, :versionId, :variantId, :metricType, :score, :method, :sampleRef,
                      :evaluatedAt, :eventId)
                 ON CONFLICT (event_id, metric_type) DO NOTHING
                 """.trimIndent(),
                 MapSqlParameterSource()
                     .addValue("evaluationId", UUID.randomUUID())
                     .addValue("versionId", versionIdByVersion.getValue(record.promptKey to record.semVer))
+                    .addValue("variantId", record.variantId)
                     .addValue("metricType", record.metricType)
                     .addValue("score", record.score)
                     .addValue("method", record.method)
@@ -51,4 +53,13 @@ class JdbcEvaluationRepository(
             )
         }
     }
+
+    override fun findScoresByVariant(
+        variantId: UUID,
+        metricType: String,
+    ): List<BigDecimal> =
+        jdbcTemplate.query(
+            "SELECT score FROM evaluation_records WHERE variant_id = :variantId AND metric_type = :metricType",
+            MapSqlParameterSource().addValue("variantId", variantId).addValue("metricType", metricType),
+        ) { rs, _ -> rs.getBigDecimal("score") }
 }

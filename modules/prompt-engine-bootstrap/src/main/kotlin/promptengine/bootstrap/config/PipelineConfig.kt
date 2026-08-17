@@ -2,6 +2,7 @@ package promptengine.bootstrap.config
 
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
+import promptengine.application.experiment.ExperimentVariantResolver
 import promptengine.application.pipeline.AuditStage
 import promptengine.application.pipeline.CompileUseCase
 import promptengine.application.pipeline.EvaluationStage
@@ -26,6 +27,8 @@ import promptengine.domain.composition.CompositionService
 import promptengine.domain.context.ContextResolverChain
 import promptengine.domain.event.EventBusAdapter
 import promptengine.domain.execution.ExecutionEngine
+import promptengine.domain.experiment.ExperimentRepository
+import promptengine.domain.experiment.TrafficSplitStrategy
 import promptengine.domain.observability.MetricsRecorder
 import promptengine.domain.optimization.OptimizationEngine
 import promptengine.domain.pipeline.PipelineStage
@@ -111,14 +114,28 @@ class PipelineConfig {
     ): CompileUseCase = CompileUseCase(pipelineOrchestrator, idempotentCommandExecutor)
 
     @Bean
+    fun experimentVariantResolver(
+        experimentRepository: ExperimentRepository,
+        promptRepository: PromptRepository,
+        trafficSplitStrategy: TrafficSplitStrategy,
+    ): ExperimentVariantResolver =
+        ExperimentVariantResolver(
+            experimentRepository,
+            promptRepository,
+            trafficSplitStrategy,
+        )
+
+    @Bean
     fun renderUseCase(
         pipelineOrchestrator: PipelineOrchestrator,
         idempotentCommandExecutor: IdempotentCommandExecutor,
-    ): RenderUseCase = RenderUseCase(pipelineOrchestrator, idempotentCommandExecutor)
+        experimentVariantResolver: ExperimentVariantResolver,
+    ): RenderUseCase = RenderUseCase(pipelineOrchestrator, idempotentCommandExecutor, experimentVariantResolver)
 
     @Bean
     fun executeUseCase(
         pipelineOrchestrator: PipelineOrchestrator,
         idempotentCommandExecutor: IdempotentCommandExecutor,
-    ): ExecuteUseCase = ExecuteUseCase(pipelineOrchestrator, idempotentCommandExecutor)
+        experimentVariantResolver: ExperimentVariantResolver,
+    ): ExecuteUseCase = ExecuteUseCase(pipelineOrchestrator, idempotentCommandExecutor, experimentVariantResolver)
 }

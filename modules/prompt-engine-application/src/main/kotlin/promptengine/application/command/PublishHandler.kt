@@ -1,20 +1,13 @@
 package promptengine.application.command
 
-import promptengine.domain.dependency.DependencyEdge
-import promptengine.domain.dependency.DependencyKind
 import promptengine.domain.dependency.DependencyRepository
 import promptengine.domain.event.EventContext
-import promptengine.domain.fragment.FragmentKey
 import promptengine.domain.fragment.FragmentRepository
-import promptengine.domain.prompt.LifecycleState
 import promptengine.domain.prompt.PromptKey
 import promptengine.domain.prompt.PromptRepository
 import promptengine.domain.prompt.PromptVersionNotFoundException
 import promptengine.domain.shared.IdempotentCommandExecutor
-import promptengine.domain.shared.PublicationState
 import promptengine.domain.shared.SemVer
-import promptengine.domain.shared.VersionRange
-import promptengine.domain.template.TemplateKey
 import promptengine.domain.template.TemplateRepository
 import java.time.Clock
 import java.time.Instant
@@ -42,12 +35,15 @@ data class PublishResult(val key: PromptKey, val semVer: SemVer)
  */
 class PublishHandler(
     private val promptRepository: PromptRepository,
-    private val templateRepository: TemplateRepository,
-    private val fragmentRepository: FragmentRepository,
-    private val dependencyRepository: DependencyRepository,
+    templateRepository: TemplateRepository,
+    fragmentRepository: FragmentRepository,
+    dependencyRepository: DependencyRepository,
     private val idempotentCommandExecutor: IdempotentCommandExecutor,
     private val clock: Clock = Clock.systemUTC(),
 ) {
+    private val dependencyPublicationChecker =
+        DependencyPublicationChecker(promptRepository, templateRepository, fragmentRepository, dependencyRepository)
+
     fun handle(command: PublishCommand): PublishResult =
         idempotentCommandExecutor.executeInTransaction(
             command.idempotencyKey,
@@ -57,27 +53,14 @@ class PublishHandler(
             val prompt =
                 promptRepository.findByKey(command.key)
                     ?: throw PromptVersionNotFoundException.forKey(command.key)
-            val edges = dependencyRepository.findOutbound(command.key, command.semVer)
-            val allDependenciesPublished = edges.all { isPublished(it) }
+            val version =
+                prompt.versions.find { it.semVer == command.semVer }
+                    ?: throw PromptVersionNotFoundException(command.semVer)
+            val allDependenciesPublished = dependencyPublicationChecker.allDependenciesPublished(command.key, version)
             val eventContext =
                 EventContext(actor = command.actor, traceId = command.traceId, occurredAt = Instant.now(clock))
             val (updated, events) = prompt.publish(command.semVer, allDependenciesPublished, eventContext)
             val saved = promptRepository.save(updated, events)
             PublishResult(saved.key, command.semVer)
         }
-
-    private fun isPublished(edge: DependencyEdge): Boolean {
-        val range = VersionRange.parse(edge.toVersion)
-        return when (edge.toKind) {
-            DependencyKind.TEMPLATE ->
-                templateRepository.findByKey(TemplateKey(edge.toKey))?.versions
-                    ?.any { range.matches(it.semVer) && it.state == PublicationState.Published } ?: false
-            DependencyKind.FRAGMENT ->
-                fragmentRepository.findByKey(FragmentKey(edge.toKey))?.versions
-                    ?.any { range.matches(it.semVer) && it.state == PublicationState.Published } ?: false
-            DependencyKind.PROMPT ->
-                promptRepository.findByKey(PromptKey(edge.toKey))?.versions
-                    ?.any { range.matches(it.semVer) && it.state == LifecycleState.Published } ?: false
-        }
-    }
 }

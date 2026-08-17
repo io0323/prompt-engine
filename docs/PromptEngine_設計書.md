@@ -399,7 +399,7 @@ Model Profile（APAPのモデルメタデータを参照して構成）: `{ maxC
 - **単価は実行時点の値をイベントに載せて使う。** 購読側が評価時に`ModelProfile`を引き直すと、単価改定後に過去の実行を再評価した際に当時と異なるコストが算出されてしまうため。
 - `ModelProfile.costPerToken`は入力・出力を区別しない単一のブレンド単価であり、プロバイダの入出力別レートは表現できない（本節の記述「usage × Model Profile単価」自体が単価を単数で書いているため矛盾はしないが、実課金との差異は残る）。
 - **Latencyの取得元**は`PipelineContext.stageDurationsMs["Execution"]`。`PipelineOrchestrator`以外の経路で未計測の場合に限り、各試行の`RawResponse.latency`の合算へフォールバックする（Adapter実測の合計であり、Stage全体のdurationよりわずかに小さい）。
-- `variant_id`はM1では常に`NULL`（Experiment未実装のため、`PromptExecuted`がVariantを運ばない）。
+- `variant_id`はM2-4a（ADR-0034）でExperiment経由の実行のみ非NULLになる。通常経路（Experiment非対象）の実行では引き続き`NULL`。
 - 同一イベントの再配信では`(event_id, metric_type)`の一意制約により行が二重にならず、その場合は`PromptEvaluationCompleted`を**再発行しない**（下流へ完了イベントが増殖するのを避けるため）。
 
 `execution_logs`（§12）についてもM1固有の制約がある。
@@ -1442,6 +1442,7 @@ entity execution_logs {
   * execution_id : UUID <<PK>>
   --
   * version_id : UUID <<FK>>
+  variant_id : UUID <<FK>>  ' M2-4aで追加（V15、ADR-0034）。Experiment実行時のみ非NULL
   * caller_system : VARCHAR
   * trace_id : VARCHAR
   * latency_ms : INT
@@ -1534,6 +1535,7 @@ prompt_versions ||--o{ variants
 prompt_versions ||--o{ evaluation_records
 variants ||--o{ evaluation_records
 prompt_versions ||--o{ execution_logs
+variants ||--o{ execution_logs
 prompt_aliases }o--|| prompt_versions
 prompt_snapshots }o--|| prompts : aggregate_id
 outbox }o--|| domain_events : event_id
@@ -1576,6 +1578,7 @@ outbox }o--|| domain_events : event_id
 | GET | /prompts/{namespace}/{name}/evaluations?version= | 評価履歴 | read | 200 |
 | POST | /experiments | Experiment作成 | write | 201 |
 | POST | /experiments/{id}/start / stop | 開始/停止 | publish | 200 |
+| PATCH | /experiments/{id}/traffic | Running中のVariant重み更新（Canary運用、ADR-0034） | publish | 200 |
 | GET | /experiments/{id}/results | Variant別スコア・統計判定 | read | 200 |
 | POST | /experiments/{id}/promote | 勝者Publish | publish | 200 |
 | POST | /prompts/import / GET /prompts/{namespace}/{name}/export | DSLバンドル入出力 | write / read | 200 |
@@ -1690,7 +1693,7 @@ P10b時点で実装済みの購読側は5つ: `AuditEngine`（6トピック全�
 
 ### P10bで確定した実装上の取り決め（ADR-0026）
 
-- **`PromptExecuted`のpayload**: `{promptKey, semVer, inputTokens, outputTokens, retryCount, latencyMs, costPerToken, status}`。`semVer`は文字列`"1.0.0"`ではなく**オブジェクト`{major, minor, patch}`**としてシリアライズする（`PromptPublished`等が`SemVer`型をそのまま載せるのと同じ扱い。購読側はこれと`promptKey`から`prompt_versions.version_id`を解決する）。`status`はM1では常に`SUCCESS`（§2.12参照）。
+- **`PromptExecuted`のpayload**: `{promptKey, semVer, inputTokens, outputTokens, retryCount, latencyMs, costPerToken, status, variantId}`。`semVer`は文字列`"1.0.0"`ではなく**オブジェクト`{major, minor, patch}`**としてシリアライズする（`PromptPublished`等が`SemVer`型をそのまま載せるのと同じ扱い。購読側はこれと`promptKey`から`prompt_versions.version_id`を解決する）。`status`はM1では常に`SUCCESS`（§2.12参照）。`variantId`はM2-4a（ADR-0034）で追加したnullableフィールドで、Experiment経由の実行のみ非NULL（通常経路の実行は`null`）。
 - **キャッシュ無効化の発火条件**: `CacheInvalidationSubscriber`は`PromptPublished`に加え`PromptRolledBack`/`PromptArchived`/`PromptDiscarded`、およびM2-3で追加した`TemplatePublished`/`TemplateArchived`/`FragmentPublished`/`FragmentArchived`でも無効化を行う（いずれも配信される内容が実質的に切り替わるため）。
 - **M2-3で修正: `aggregateId`ではなく`payload`からキーを復元する（ADR-0033）**: `pe.prompt`には`domain_events`由来のイベントも流れ、その`aggregateId`は`prompts.prompt_id`（`Template`/`Fragment`も同様に自身のDB採番UUID）であり、業務キー（`PromptKey`/`TemplateKey`/`FragmentKey`）としては解釈できない。P10b時点の実装は`aggregateId`を`PromptKey`として解釈しようとし、常に失敗して無音に無効化をスキップしていた（本番相当のイベント形状に対して一度も無効化が成功しない不具合）。M2-3でこれを修正し、各イベントの`payload`が持つ`promptKey`/`templateKey`/`fragmentKey`フィールド（`PromptExecutedPayloadCodec`と同じ、`payload`をJSONとして解析するコーデック経由）からキーを復元する方式に改めた。Template/Fragment publish/archiveについては、復元した`templateKey`/`fragmentKey`と`payload.semVer`を使い、`DependencyRepository`の逆引き（`to_kind`一致）とその`to_version`（`VersionRange`）が`semVer`にマッチするPromptを特定し、該当Promptのキャッシュを無効化する（多段階の依存グラフ探索は行わない。ADR-0033決定3・c参照）。
 - **Secretマスクは2層**（§12の`audit_logs.payload`「Secretマスク済」の担保手段）。第1層は型ベースで、`SensitiveValue`を常に`"***"`としてシリアライズするJacksonモジュールをアプリケーション全体の`ObjectMapper`へ登録する（Outboxへ書かれる入口でマスクされるため、下流の購読側は既にマスク済みのJSONを受け取る）。第2層は名前ベースで、保存直前にフィールド名の**後方一致**でredactする。後方一致にしているのは、部分一致だと`inputTokens`/`outputTokens`/`tokenizerId`のような正当なフィールドまでマスクされ監査記録が失われるため。

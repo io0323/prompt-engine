@@ -35,6 +35,7 @@ data class PromptExecutionSummary(
     val callerSystem: String,
     val traceId: String,
     val occurredAt: Instant,
+    val variantId: UUID? = null,
 ) {
     init {
         require(promptKey.isNotBlank()) { "promptKey must not be blank" }

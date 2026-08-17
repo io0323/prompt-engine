@@ -7,6 +7,7 @@ import org.springframework.dao.DuplicateKeyException
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.http.converter.HttpMessageNotReadableException
+import org.springframework.security.access.AccessDeniedException
 import org.springframework.web.bind.MethodArgumentNotValidException
 import org.springframework.web.bind.MissingServletRequestParameterException
 import org.springframework.web.bind.annotation.ExceptionHandler
@@ -28,10 +29,13 @@ import promptengine.interfaces.support.TraceIdFilter
  * 経由でコード文字列のみを受け取る。個別の`@ExceptionHandler`を宣言するのは、Spring/Java
  * 標準の例外型（Bean Validation・リクエストバインド・DB一意制約違反）のみ。
  *
- * 401（`UNAUTHENTICATED`）・403（`PERMISSION_DENIED`、URLパターンレベルの拒否）は
+ * 401（`UNAUTHENTICATED`）とURLパターンレベル（`authorizeHttpRequests`）の403は
  * `SecurityConfig`の`AuthenticationEntryPoint`/`AccessDeniedHandler`が担い、本クラスの
  * 対象外（Spring SecurityのExceptionTranslationFilterがDispatcherServletより前段で
- * 処理するため、`@RestControllerAdvice`まで到達しない）。
+ * 処理するため、`@RestControllerAdvice`まで到達しない）。**ただしメソッドレベルの
+ * `@PreAuthorize`拒否はこの限りではない**（AOPインターセプタがDispatcherServletの
+ * ハンドラ呼び出しの内側で例外を投げるため、`ExceptionTranslationFilter`より先に
+ * 本クラスへ到達する）。この経路は[handleAccessDenied]が担う。
  */
 @RestControllerAdvice
 class GlobalExceptionHandler {
@@ -114,6 +118,26 @@ class GlobalExceptionHandler {
         ex: NoResourceFoundException,
         request: HttpServletRequest,
     ): ResponseEntity<ErrorResponseDto> = respond(HttpStatus.NOT_FOUND, ErrorCodes.NOT_FOUND, ex.message, request)
+
+    /**
+     * `@PreAuthorize`（メソッドレベル、`AuthorizationManagerBeforeMethodInterceptor`経由）の
+     * 拒否。`org.springframework.security.authorization.AuthorizationDeniedException`は
+     * この[AccessDeniedException]のサブ型（Spring Security 6.x）。メソッドレベルの拒否は
+     * `DispatcherServlet`のハンドラ呼び出しの内側（AOP）で発生するため、
+     * `ExceptionTranslationFilter`（`SecurityConfig`の`accessDeniedHandler`、フィルタレベル
+     * ＝URLパターン拒否のみを処理）より先に本クラスの`@RestControllerAdvice`へ到達する
+     * （ADR-0034の実装で新設した`ExperimentController`の認可テストを書いて発覚した実バグ。
+     * この`@ExceptionHandler`が無いと`handleUnclassified`のcatch-allに落ちて500になっていた）。
+     * ここで`SecurityConfig`の`accessDeniedHandler`と同一の403/`PERMISSION_DENIED`封筒を返し、
+     * フィルタレベル・メソッドレベルどちらの拒否経路でも同じレスポンスに揃える。
+     */
+    @Suppress("UnusedParameter")
+    @ExceptionHandler(AccessDeniedException::class)
+    fun handleAccessDenied(
+        ex: AccessDeniedException,
+        request: HttpServletRequest,
+    ): ResponseEntity<ErrorResponseDto> =
+        respond(HttpStatus.FORBIDDEN, ErrorCodes.PERMISSION_DENIED, "insufficient scope", request)
 
     /**
      * 上記いずれにも該当しない例外の最終フォールバック。[ErrorCodeResolver]がCRUD系例外・

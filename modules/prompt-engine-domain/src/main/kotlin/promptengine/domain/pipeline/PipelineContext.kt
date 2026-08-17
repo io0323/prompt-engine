@@ -8,6 +8,7 @@ import promptengine.domain.prompt.PromptVersion
 import promptengine.domain.render.RenderedPrompt
 import promptengine.domain.validation.ValidationReport
 import promptengine.domain.variable.BindingSet
+import java.util.UUID
 
 /**
  * Pipeline全ステージが受け渡す累積状態（設計書§3.4疑似コード`PipelineContext`、
@@ -35,6 +36,12 @@ import promptengine.domain.variable.BindingSet
  *
  * 不変更新（各Stageは新しい`PipelineContext`を`copy()`で返す。設計書§2.6冒頭
  * 「`PipelineContext`（累積状態）を受け渡す」）。
+ *
+ * [experimentVariantId]は[LoadStage][promptengine.application.pipeline.LoadStage]が
+ * `request.preResolvedVersion`（[ExperimentResolvedVersion]）経由で解決した場合のみ設定される
+ * （ADR-0034決定4）。`EvaluationStage`（ステージ11）が`PromptExecuted`イベントの
+ * `variantId`へ転記し、`execution_logs`/`evaluation_records`の`variant_id`列（設計書§12）
+ * まで伝搬する。通常経路の実行では`null`のまま。
  */
 data class PipelineContext(
     val request: PipelineRequest,
@@ -49,4 +56,5 @@ data class PipelineContext(
     val executionOutcome: ExecutionOutcome? = null,
     val parsedOutput: ParsedOutput? = null,
     val stageDurationsMs: Map<String, Long> = emptyMap(),
+    val experimentVariantId: UUID? = null,
 )

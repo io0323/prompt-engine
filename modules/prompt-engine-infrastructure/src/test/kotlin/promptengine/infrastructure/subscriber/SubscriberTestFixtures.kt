@@ -24,6 +24,7 @@ import promptengine.domain.event.EventEnvelope
 import promptengine.domain.prompt.PromptKey
 import promptengine.domain.shared.Page
 import promptengine.domain.shared.SemVer
+import java.math.BigDecimal
 import java.time.Duration
 import java.time.Instant
 import java.util.UUID
@@ -169,6 +170,11 @@ internal class RecordingEvaluationRepository(private val insertedCount: Int? = n
         saved += records
         return insertedCount ?: records.size
     }
+
+    override fun findScoresByVariant(
+        variantId: UUID,
+        metricType: String,
+    ): List<BigDecimal> = saved.filter { it.variantId == variantId && it.metricType == metricType }.map { it.score }
 }
 
 internal class RecordingEventBusAdapter : EventBusAdapter {
