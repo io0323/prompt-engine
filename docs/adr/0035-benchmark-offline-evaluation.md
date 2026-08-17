@@ -179,6 +179,13 @@ interface BenchmarkScoringRule {
     受け渡し）はフェーズ(c)（Consistency/Determinism実装）で行う。フェーズ(a)では
     決定のみ記録し、コードは変更しない（使われない箇所に先回りしてフィールドを
     追加しない）。
+  - **実行時のtemperatureは実行記録側（`execution_logs`または`PromptExecuted`のpayload）に
+    残す。** `renderHash`から除外する以上、後からその実行が実際にどのtemperatureで
+    行われたかを知る手段が無いと、Determinism（「temperature=0でのバイト一致率」）の
+    測定結果を事後に検証できなくなる。フェーズ(c)で`temperature`を実装する際、
+    `execution_logs`へのカラム追加（またはevent payloadへのフィールド追加）を
+    スキーマ変更として扱い、これまでと同じくADRと設計書§12の両方を更新すること
+    （フェーズ(a)/(b)のスキーマ追加と同じ手順を踏む）。
 - **Fakeアダプタ前提でよいか**: 単体テスト・統合テストは`FakeExecutionAdapter`で行う。
   ただし現状の`FakeExecutionAdapter`は呼出ごとに固定の1レスポンスしか返せず
   （`FakeExecutionScenario`はシナリオ単位で1つの応答を持つ）、Consistencyが「一致率が

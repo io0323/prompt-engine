@@ -21,6 +21,20 @@ class GoldenDatasetTest {
         )
 
     @Test
+    fun `GoldenDatasetItem はmetadataを明示的に指定できる`() {
+        val item =
+            GoldenDatasetItem(
+                itemId = UUID.randomUUID(),
+                parameters = emptyMap(),
+                context = emptyMap(),
+                expectedOutput = null,
+                metadata = mapOf("difficulty" to "hard"),
+            )
+
+        item.metadata shouldBe mapOf("difficulty" to "hard")
+    }
+
+    @Test
     fun `create はitemが1件以上ならGoldenDatasetを生成する`() {
         val dataset = GoldenDataset.create(promptKey, "smoke-test", "説明", listOf(item()))
 
