@@ -233,7 +233,11 @@ private fun NamedParameterJdbcTemplate.findPromptKeyForBenchmark(benchmarkId: UU
         String::class.java,
     )?.let { PromptKey(it) } ?: error("Benchmark not found: '$benchmarkId'")
 
-private fun BenchmarkStatus.toDbValue(): String =
+/**
+ * `internal`: `JdbcBenchmarkRepositoryDbValueTest`（同モジュール）が直接検証するため
+ * （`LifecycleState.toDbValue`と同じ規約、`PromptRowCodec.kt`参照）。
+ */
+internal fun BenchmarkStatus.toDbValue(): String =
     when (this) {
         BenchmarkStatus.Pending -> "Pending"
         BenchmarkStatus.Running -> "Running"
@@ -243,7 +247,7 @@ private fun BenchmarkStatus.toDbValue(): String =
         BenchmarkStatus.Failed -> "Failed"
     }
 
-private fun benchmarkStatusFromDbValue(value: String): BenchmarkStatus =
+internal fun benchmarkStatusFromDbValue(value: String): BenchmarkStatus =
     when (value) {
         "Pending" -> BenchmarkStatus.Pending
         "Running" -> BenchmarkStatus.Running

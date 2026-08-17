@@ -3,6 +3,7 @@ package promptengine.tests.integration.persistence
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
@@ -175,6 +176,53 @@ class JdbcBenchmarkRepositoryIntegrationTest {
                 Timestamp::class.java,
             )
         startedAt.shouldBeNull()
+    }
+
+    @Test
+    fun `Cancelling Completed Cancelled Failed も保存後に同じ状態として復元できる`() {
+        val promptKey = createApprovedPrompt()
+        val datasetId = createDataset(promptKey)
+
+        val cancelling =
+            Benchmark.create(promptKey, datasetId, listOf(target()), setOf(BenchmarkMetricType.Accuracy), 3)
+                .start()
+                .requestCancellation()
+        benchmarkRepository.save(cancelling)
+        benchmarkRepository.findById(cancelling.benchmarkId)!!.status shouldBe BenchmarkStatus.Cancelling
+
+        val cancelled = cancelling.cancel()
+        benchmarkRepository.save(cancelled)
+        benchmarkRepository.findById(cancelling.benchmarkId)!!.status shouldBe BenchmarkStatus.Cancelled
+
+        val completed =
+            Benchmark.create(promptKey, datasetId, listOf(target()), setOf(BenchmarkMetricType.Accuracy), 3)
+                .start()
+                .complete()
+        benchmarkRepository.save(completed)
+        benchmarkRepository.findById(completed.benchmarkId)!!.status shouldBe BenchmarkStatus.Completed
+
+        val failed =
+            Benchmark.create(promptKey, datasetId, listOf(target()), setOf(BenchmarkMetricType.Accuracy), 3)
+                .start()
+                .fail()
+        benchmarkRepository.save(failed)
+        benchmarkRepository.findById(failed.benchmarkId)!!.status shouldBe BenchmarkStatus.Failed
+    }
+
+    @Test
+    fun `存在しないVersionを参照するTargetを保存するとエラーになる`() {
+        val promptKey = createApprovedPrompt()
+        val datasetId = createDataset(promptKey)
+        val benchmark =
+            Benchmark.create(
+                promptKey,
+                datasetId,
+                listOf(target(SemVer(9, 9, 9))),
+                setOf(BenchmarkMetricType.Accuracy),
+                3,
+            )
+
+        shouldThrow<IllegalStateException> { benchmarkRepository.save(benchmark) }
     }
 
     @Test
