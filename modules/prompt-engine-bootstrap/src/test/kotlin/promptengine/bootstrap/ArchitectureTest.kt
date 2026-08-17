@@ -2,14 +2,22 @@ package promptengine.bootstrap
 
 import com.tngtech.archunit.base.DescribedPredicate
 import com.tngtech.archunit.core.domain.JavaClass
+import com.tngtech.archunit.core.domain.JavaMethod
 import com.tngtech.archunit.core.importer.ClassFileImporter
 import com.tngtech.archunit.core.importer.ImportOption
+import com.tngtech.archunit.lang.ArchCondition
+import com.tngtech.archunit.lang.ConditionEvents
+import com.tngtech.archunit.lang.SimpleConditionEvent
 import com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes
+import com.tngtech.archunit.lang.syntax.ArchRuleDefinition.methods
 import com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses
 import io.kotest.matchers.collections.shouldNotBeEmpty
 import org.junit.jupiter.api.Test
 import org.springframework.context.annotation.Configuration
+import org.springframework.core.annotation.AnnotatedElementUtils
+import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.stereotype.Component
+import org.springframework.web.bind.annotation.RequestMapping
 import java.io.File
 
 /**
@@ -288,6 +296,35 @@ class ArchitectureTest {
     }
 
     /**
+     * Issue #115: `@PreAuthorize`の付け忘れを機械的に検知する。
+     *
+     * PR #114で発覚した`AuthorizationDeniedException`の500問題は、認可テストを書いて
+     * 初めて見つかった。しかしControllerごとの200/403/401テスト（`*AuthorizationTest`）は
+     * 「今あるエンドポイント」しか守らない。次に追加されるエンドポイントが
+     * `@PreAuthorize`無しでマージされても、既存のテストはどれも落ちない。
+     *
+     * `promptengine.interfaces.rest`配下の全メソッドのうち、Spring MVCのマッピング
+     * アノテーション（`@GetMapping`等）を持つものは、`@PreAuthorize`も併せ持つことを
+     * 強制する。`@GetMapping`/`@PostMapping`/`@PatchMapping`/`@DeleteMapping`/`@PutMapping`を
+     * 個別に列挙せず、`AnnotatedElementUtils.hasAnnotation(method, RequestMapping::class.java)`
+     * （Springのメタアノテーション解決）で判定する。これらのアノテーションはいずれも
+     * `@RequestMapping`をメタ注釈として持つため、将来別のマッピングアノテーションが
+     * 増えても列挙し直さずに追随できる。
+     *
+     * 意図的に認可不要なハンドラがある場合は[explicitlyPublicHandlers]へ理由付きで
+     * 追加すること。現時点では該当なし（actuatorのヘルスチェック等はこのパッケージの外＝
+     * Spring Bootの自動設定エンドポイントであり、そもそも対象に含まれない）。
+     */
+    @Test
+    fun `interfaces rest の全ハンドラメソッドはPreAuthorizeを持つ`() {
+        methods()
+            .that(IS_REST_MAPPING_HANDLER)
+            .should(HAVE_PRE_AUTHORIZE)
+            .allowEmptyShould(true)
+            .check(importedClasses)
+    }
+
+    /**
      * 上記「Plugin実装は...」テストは importedClasses（bootstrapのtestランタイムクラスパス）
      * を対象にしており、これは plugins/ 配下のサブプロジェクトが bootstrap の build.gradle.kts に
      * testImplementation 等で配線されて初めて promptengine.plugin.. を含む。配線を忘れると
@@ -322,5 +359,35 @@ class ArchitectureTest {
         return pluginsDir.listFiles { file -> file.isDirectory }
             ?.filter { File(it, "build.gradle.kts").exists() || File(it, "build.gradle").exists() }
             ?: emptyList()
+    }
+
+    private companion object {
+        /** 意図的に認可不要と判断したハンドラの許可リスト（"ClassName#methodName"）。現時点では空。 */
+        val explicitlyPublicHandlers: Set<String> = emptySet()
+
+        val IS_REST_MAPPING_HANDLER =
+            object : DescribedPredicate<JavaMethod>(
+                "promptengine.interfaces.rest配下でSpring MVCのマッピングアノテーションを持つ",
+            ) {
+                override fun test(method: JavaMethod): Boolean =
+                    method.owner.packageName.startsWith("promptengine.interfaces.rest") &&
+                        AnnotatedElementUtils.hasAnnotation(method.reflect(), RequestMapping::class.java)
+            }
+
+        val HAVE_PRE_AUTHORIZE =
+            object : ArchCondition<JavaMethod>("@PreAuthorizeを持つ（許可リストの場合を除く）") {
+                override fun check(
+                    method: JavaMethod,
+                    events: ConditionEvents,
+                ) {
+                    val handlerId = "${method.owner.simpleName}#${method.name}"
+                    if (handlerId in explicitlyPublicHandlers) return
+                    val satisfied = method.reflect().isAnnotationPresent(PreAuthorize::class.java)
+                    val message =
+                        "${method.fullName} は@PreAuthorizeを持たない" +
+                            "（意図的に認可不要ならexplicitlyPublicHandlersへ理由付きで追加すること）"
+                    events.add(SimpleConditionEvent(method, satisfied, message))
+                }
+            }
     }
 }
