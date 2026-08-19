@@ -101,6 +101,14 @@ docker compose up -d   # PostgreSQL 16 / Redis 7 / Redpanda（Kafka互換） / O
 のみはDocker不要（Domain/Core/tests:prompt-regressionはモック無しの純粋な単体テスト、
 Testcontainersを使うのは`tests/integration`と一部のbootstrap統合テストのみ）。
 
+**DBロールが2つに分かれている**（Issue #85、ADR-0036、`audit_logs`/`domain_events`の
+追記専用性をDB層で強制するため）。`docker compose up -d`は`prompt_engine_migrator`
+（テーブル所有者、Flyway専用）を起動時ロールとし、`prompt_engine`（アプリ実行時、restricted）は
+Flyway migration（`V20__audit_append_only_enforcement.sql`）が冪等に作成する。**既存の
+`postgres-data`ボリュームを使い回している場合は`prompt_engine_migrator`への切り替えが反映
+されない**（`POSTGRES_USER`/`PASSWORD`はinitdb時のみ有効なため）ため、この変更を取り込んだ後は
+`docker compose down -v && docker compose up -d`でボリュームごと作り直すこと。
+
 ```bash
 ./gradlew build                 # 全モジュールビルド
 ./gradlew test                  # 単体テスト（Docker不要な範囲）

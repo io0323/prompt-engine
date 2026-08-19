@@ -64,6 +64,13 @@ class PromptEngineApplicationContextLoadTest {
             registry.add("spring.datasource.url", postgres::getJdbcUrl)
             registry.add("spring.datasource.username", postgres::getUsername)
             registry.add("spring.datasource.password", postgres::getPassword)
+            // このコンテナはロール分離（Issue #85、ADR-0036）を再現しない単一ロールの
+            // Testcontainersインスタンスのため、application.ymlのspring.flyway.user/password
+            // 既定値（prompt_engine_migrator）を明示的に上書きし、Flywayもこのコンテナの
+            // 唯一のロールで接続させる。
+            registry.add("spring.flyway.url", postgres::getJdbcUrl)
+            registry.add("spring.flyway.user", postgres::getUsername)
+            registry.add("spring.flyway.password", postgres::getPassword)
         }
     }
 }

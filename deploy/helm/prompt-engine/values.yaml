@@ -19,6 +19,11 @@ secret:
   name: prompt-engine-secrets
   datasourceUsername: prompt_engine
   datasourcePassword: prompt_engine
+  # Flyway専用の資格情報（Issue #85、ADR-0036）。テーブル所有者であるprompt_engine_migrator
+  # ロールで接続する。datasourceUsername/datasourcePasswordのrestrictedなprompt_engineとは
+  # 意図的に別ロールであり、同じ値にしないこと（同じ値だとDB層の追記専用強制が無効化される）。
+  flywayDatasourceUsername: prompt_engine_migrator
+  flywayDatasourcePassword: prompt_engine_migrator
 
 config:
   datasourceUrl: jdbc:postgresql://postgres:5432/prompt_engine

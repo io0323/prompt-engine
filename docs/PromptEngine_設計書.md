@@ -126,7 +126,7 @@ Promptがアプリケーションコード内に散在すると、(a) 変更に�
 | NFR-003 | 性能 | Render（Validation含む、実行除く） | p99 ≤ 200ms |
 | NFR-004 | 拡張性 | 水平スケール（ステートレスAPI）、Plugin追加は再起動不要 | - |
 | NFR-005 | セキュリティ | CIAP連携（OIDC/OAuth2）、RBAC+スコープ、Secretは参照のみ保持しSecret Managerへ委譲、Render結果ログにSecretをマスク | - |
-| NFR-006 | 監査 | Audit Logは追記専用・保持期間設定可（既定7年）（**M1では追記専用性をアプリケーション層のRepository Interfaceでのみ担保し、DB層でのGRANT/REVOKE等の強制は未実装。保持期間設定も未実装**。Issue #85） | - |
+| NFR-006 | 監査 | Audit Logは追記専用・保持期間設定可（既定7年）（`audit_logs`/`domain_events`の追記専用性は、アプリ実行時ロールとテーブル所有ロール（Flyway専用）を分離しDB層のGRANT/REVOKEで強制する（ADR-0036、Issue #85）。**保持期間の自動削除は本Issueのスコープ外、未実装のまま**。将来実装する場合は時系列パーティショニング＋パーティション単位のDROP（DDL、テーブル所有ロールのみ実行可）を第一候補とし、追記専用ロールにDELETE権限を与えない方針を維持する） | - |
 | NFR-007 | 保守性 | Clean Architecture、モジュール間はInterface依存のみ | - |
 | NFR-008 | 可観測性 | OpenTelemetry互換のTrace/Metrics/Log出力 | - |
 | NFR-009 | データ整合 | Command系は強整合、Read Model/検索Indexは結果整合（遅延≤5s） | - |
