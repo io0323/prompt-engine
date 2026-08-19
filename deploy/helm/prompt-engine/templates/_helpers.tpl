@@ -35,6 +35,18 @@ CLAUDE.md「モジュール構成」・Chart.yaml参照）。
         secretKeyRef:
           name: {{ .root.Values.secret.name }}
           key: datasource-password
+    # Flyway専用の資格情報（Issue #85、ADR-0036）。datasourceの資格情報とは別ロール
+    # （prompt_engine_migrator）を指す。secret.yamlのKDoc参照。
+    - name: PE_FLYWAY_DATASOURCE_USERNAME
+      valueFrom:
+        secretKeyRef:
+          name: {{ .root.Values.secret.name }}
+          key: flyway-datasource-username
+    - name: PE_FLYWAY_DATASOURCE_PASSWORD
+      valueFrom:
+        secretKeyRef:
+          name: {{ .root.Values.secret.name }}
+          key: flyway-datasource-password
     - name: PE_CIAP_JWKS_URI
       valueFrom:
         configMapKeyRef:
