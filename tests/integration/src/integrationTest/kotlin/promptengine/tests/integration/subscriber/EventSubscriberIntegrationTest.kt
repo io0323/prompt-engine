@@ -235,12 +235,14 @@ class EventSubscriberIntegrationTest {
     private fun promptExecutedPayload(
         promptKey: String,
         secret: String? = null,
+        temperature: Double? = null,
     ): String {
         val secretField = secret?.let { ""","apiSecret":"$it"""" } ?: ""
+        val temperatureField = temperature?.let { ""","temperature":$it""" } ?: ""
         return """
             {"promptKey":"$promptKey","semVer":{"major":1,"minor":0,"patch":0},
              "inputTokens":800,"outputTokens":200,"retryCount":0,
-             "latencyMs":250,"costPerToken":0.0004,"status":"SUCCESS"$secretField}
+             "latencyMs":250,"costPerToken":0.0004,"status":"SUCCESS"$secretField$temperatureField}
             """.trimIndent()
     }
 
@@ -287,6 +289,40 @@ class EventSubscriberIntegrationTest {
         withClue("ON CONFLICT (event_id) DO NOTHING により2回目の書き込みは捨てられる") {
             countWhereEventId("execution_logs", eventId) shouldBe 1L
         }
+    }
+
+    // ---- temperature（ADR-0035決定5）: renderHashから除外する分、実行記録側に残す ----
+
+    @Test
+    fun `PromptExecutedのpayloadにtemperatureがあればexecution_logsのtemperature列へ実際に永続化される`() {
+        val key = createPrompt()
+        val eventId = UUID.randomUUID()
+        val source = envelope(eventId, "PromptExecuted", key.value, promptExecutedPayload(key.value, temperature = 0.0))
+
+        send(EventTopic.PE_EXECUTION, source)
+
+        val subscriber =
+            DeliveryCountingSubscriber(
+                ExecutionLogSubscriber(
+                    JdbcExecutionLogRepository(jdbcTemplate),
+                    PromptExecutedPayloadCodec(objectMapper),
+                ),
+                eventId,
+            )
+        val runner = runnerFor(subscriber)
+        try {
+            pollUntil(runner) { subscriber.deliveries >= 1 } shouldBe true
+        } finally {
+            runner.close()
+        }
+
+        val temperature =
+            jdbcTemplate.queryForObject(
+                "SELECT temperature FROM execution_logs WHERE event_id = :eventId",
+                MapSqlParameterSource("eventId", eventId),
+                Double::class.java,
+            )
+        temperature shouldBe 0.0
     }
 
     @Test
