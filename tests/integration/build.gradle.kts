@@ -177,8 +177,10 @@ dependencies {
     "integrationTestImplementation"(libs.jackson.module.kotlin)
     "integrationTestRuntimeOnly"(libs.postgresql)
 
-    // M2-3: RedisPromptCache統合テスト（ADR-0033決定d）。
+    // M2-3: RedisPromptCache統合テスト（ADR-0033決定d）。縮退テスト（追加決定e）が
+    // MicrometerMetricsRecorder(SimpleMeterRegistry())を直接構成するためmicrometer-coreも必要。
     "integrationTestImplementation"(libs.lettuce.core)
+    "integrationTestImplementation"(libs.micrometer.core)
 
     "integrationTestImplementation"(platform(libs.junit.bom))
     "integrationTestImplementation"(libs.junit.jupiter)

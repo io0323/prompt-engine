@@ -7,6 +7,7 @@ import io.kotest.matchers.shouldBe
 import io.lettuce.core.RedisClient
 import io.lettuce.core.api.StatefulRedisConnection
 import io.lettuce.core.api.sync.RedisCommands
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import org.flywaydb.core.Flyway
 import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.BeforeAll
@@ -50,6 +51,7 @@ import promptengine.domain.template.TemplateKey
 import promptengine.domain.template.TemplateRepository
 import promptengine.engine.compiler.CompositionServiceImpl
 import promptengine.infrastructure.cache.RedisPromptCache
+import promptengine.infrastructure.observability.MicrometerMetricsRecorder
 import promptengine.infrastructure.persistence.JdbcFragmentRepository
 import java.math.BigDecimal
 import java.time.Instant
@@ -123,7 +125,8 @@ class CacheContentInvalidationIntegrationTest {
         redisClient = RedisClient.create("redis://${redis.host}:${redis.getMappedPort(REDIS_PORT)}")
         redisConnection = redisClient.connect()
         val commands: RedisCommands<String, String> = redisConnection.sync()
-        promptCache = RedisPromptCache(commands, jacksonObjectMapper())
+        promptCache =
+            RedisPromptCache(commands, jacksonObjectMapper(), MicrometerMetricsRecorder(SimpleMeterRegistry()))
 
         countingCompositionService =
             CountingCompositionService(CompositionServiceImpl(EmptyTemplateRepository, fragmentRepository))
