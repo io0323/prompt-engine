@@ -387,6 +387,54 @@ class JdbcBenchmarkItemResultRepositoryIntegrationTest {
         (claimedByInstance1.size + claimedByInstance2.size) shouldBe itemCount
     }
 
+    /**
+     * `GET /benchmarks/{id}`（進捗集計）・`GET /benchmarks/{id}/results`（設計書§13.1、
+     * ADR-0035フェーズ(d)）が使う新規クエリ。`benchmark_targets`とのJOIN経由で
+     * `benchmarkId`配下の全行（Target跨ぎ含む）が返ることを検証する。
+     */
+    @Test
+    fun `findByBenchmarkIdはbenchmarkId配下の全行をstatus・スコア込みで返す`() {
+        val promptKey = createApprovedPrompt()
+        val (datasetId, itemIds) = createDatasetWithItems(promptKey, itemCount = 2)
+        val target = BenchmarkTarget(UUID.randomUUID(), SemVer(1, 0, 0))
+        val benchmark =
+            Benchmark.create(promptKey, datasetId, listOf(target), setOf(BenchmarkMetricType.Accuracy), 1)
+        benchmarkRepository.save(benchmark)
+        benchmarkRepository.save(benchmark.start())
+        itemResultRepository.materialize(itemIds.map { BenchmarkItemKey(target.targetId, it) })
+        val claimed = itemResultRepository.claimBatch("instance-1", Duration.ofSeconds(30), 10)
+        val completedResultId = claimed.first { it.itemId == itemIds[0] }.resultId
+        val failedResultId = claimed.first { it.itemId == itemIds[1] }.resultId
+        itemResultRepository.markCompleted(
+            completedResultId,
+            "instance-1",
+            BenchmarkItemScores(accuracyScore = BigDecimal("0.8000")),
+        )
+        itemResultRepository.markFailed(failedResultId, "instance-1", "provider timeout")
+
+        val records = itemResultRepository.findByBenchmarkId(benchmark.benchmarkId)
+
+        records.map { it.resultId }.toSet() shouldBe setOf(completedResultId, failedResultId)
+        val completedRecord = records.single { it.resultId == completedResultId }
+        completedRecord.status shouldBe "Completed"
+        completedRecord.accuracyScore!!.compareTo(BigDecimal("0.8")) shouldBe 0
+        val failedRecord = records.single { it.resultId == failedResultId }
+        failedRecord.status shouldBe "Failed"
+        failedRecord.errorMessage shouldBe "provider timeout"
+    }
+
+    @Test
+    fun `findByBenchmarkIdはmaterialize前のPendingなBenchmarkに対して空リストを返す`() {
+        val promptKey = createApprovedPrompt()
+        val (datasetId, _) = createDatasetWithItems(promptKey)
+        val target = BenchmarkTarget(UUID.randomUUID(), SemVer(1, 0, 0))
+        val benchmark =
+            Benchmark.create(promptKey, datasetId, listOf(target), setOf(BenchmarkMetricType.Accuracy), 3)
+        benchmarkRepository.save(benchmark)
+
+        itemResultRepository.findByBenchmarkId(benchmark.benchmarkId) shouldBe emptyList()
+    }
+
     @Test
     fun `hasIncompleteはPendingまたはClaimedの項目が残っていればtrue`() {
         val promptKey = createApprovedPrompt()
