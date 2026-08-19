@@ -42,6 +42,7 @@ class FakeExecutionAdapter(
             is FakeExecutionScenario.Error -> throw ExecutionFailedException(s.errorType, retryCount = 0)
             is FakeExecutionScenario.InvalidStructuredOutput ->
                 RawResponse(SensitiveValue.of(s.rawContent), s.usage, s.latency)
+            is FakeExecutionScenario.Cycling -> RawResponse(SensitiveValue.of(s.next()), s.usage, s.latency)
         }
 
     companion object {

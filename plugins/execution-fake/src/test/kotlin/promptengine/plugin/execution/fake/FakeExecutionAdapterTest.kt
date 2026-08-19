@@ -74,4 +74,50 @@ class FakeExecutionAdapterTest {
 
         first shouldBe second
     }
+
+    // ---- Cyclingシナリオ（ADR-0035決定5、Consistency/Determinismが「出力が一致する場合」と
+    // 「ばらつく場合」を区別できることをテストするために必要） ----
+
+    @Test
+    fun `Cyclingシナリオは呼出順にresponsesを巡回して返す`() {
+        val adapter = FakeExecutionAdapter(FakeExecutionScenario.Cycling(listOf("a", "b", "c"), usage, LatencyMs(10)))
+
+        adapter.execute(prompt, policy).content.expose() shouldBe "a"
+        adapter.execute(prompt, policy).content.expose() shouldBe "b"
+        adapter.execute(prompt, policy).content.expose() shouldBe "c"
+    }
+
+    @Test
+    fun `Cyclingシナリオはresponsesの末尾まで進むと先頭へ戻る`() {
+        val adapter = FakeExecutionAdapter(FakeExecutionScenario.Cycling(listOf("a", "b"), usage, LatencyMs(10)))
+
+        adapter.execute(prompt, policy).content.expose() shouldBe "a"
+        adapter.execute(prompt, policy).content.expose() shouldBe "b"
+        adapter.execute(prompt, policy).content.expose() shouldBe "a"
+    }
+
+    @Test
+    fun `Cyclingシナリオは全responsesが同一なら常に一致する出力を返す`() {
+        val adapter = FakeExecutionAdapter(FakeExecutionScenario.Cycling(listOf("same"), usage, LatencyMs(10)))
+
+        adapter.execute(prompt, policy).content.expose() shouldBe "same"
+        adapter.execute(prompt, policy).content.expose() shouldBe "same"
+    }
+
+    @Test
+    fun `CyclingシナリオのinvocationCountは呼出回数を返す`() {
+        val scenario = FakeExecutionScenario.Cycling(listOf("a", "b"), usage, LatencyMs(10))
+        val adapter = FakeExecutionAdapter(scenario)
+
+        adapter.execute(prompt, policy)
+        adapter.execute(prompt, policy)
+        adapter.execute(prompt, policy)
+
+        scenario.invocationCount() shouldBe 3
+    }
+
+    @Test
+    fun `Cyclingシナリオはresponsesが空だとIllegalArgumentExceptionを投げる`() {
+        shouldThrow<IllegalArgumentException> { FakeExecutionScenario.Cycling(emptyList(), usage, LatencyMs(10)) }
+    }
 }
