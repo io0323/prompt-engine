@@ -54,7 +54,35 @@ class OpenApiContractTest {
             "/api/v1/prompts/{namespace}/{name}/dependencies",
             "/api/v1/audit-logs",
             "/api/v1/metrics/prompts/{namespace}/{name}",
+            "/api/v1/benchmarks",
+            "/api/v1/benchmarks/{id}",
+            "/api/v1/benchmarks/{id}/cancel",
+            "/api/v1/benchmarks/{id}/results",
+            "/api/v1/datasets",
+            "/api/v1/datasets/{id}",
         ).forEach { path -> paths.keys shouldContain path }
+    }
+
+    /**
+     * Issue #113（`Any?`のDTOフィールドがspringdocのバージョン間で`type: object`と
+     * `type: "null"`の間を非決定的に揺れ、SDK生成を壊す）の実例を踏まえ、ADR-0035
+     * フェーズ(d)で`GoldenDatasetItemInputDto`/`GoldenDatasetItemDto`の`parameters`/
+     * `context`に付けた`@Schema(type = "object")`（`docs/prompts/m2-4b-d.md`注意点1）が
+     * 実際に安定した`type: object`を生成していることを固定する回帰テスト。
+     */
+    @Suppress("UNCHECKED_CAST")
+    @Test
+    fun `GoldenDatasetItemのparametersとcontextはtype_objectとして安定して生成される`() {
+        val document = Yaml().load<Map<String, Any?>>(openApiFile.readText())
+        val schemas = (document["components"] as Map<String, Any?>)["schemas"] as Map<String, Any?>
+
+        listOf("GoldenDatasetItemInputDto", "GoldenDatasetItemDto").forEach { schemaName ->
+            val properties = (schemas.getValue(schemaName) as Map<String, Any?>)["properties"] as Map<String, Any?>
+            val parameters = properties.getValue("parameters") as Map<String, Any?>
+            val context = properties.getValue("context") as Map<String, Any?>
+            parameters["type"] shouldBe "object"
+            context["type"] shouldBe "object"
+        }
     }
 
     /**
