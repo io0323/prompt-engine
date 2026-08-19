@@ -4,6 +4,7 @@ import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import org.junit.jupiter.api.Test
 import promptengine.domain.render.MessageRole
+import promptengine.domain.render.ModelHints
 import promptengine.domain.render.OutputFormat
 import promptengine.domain.render.RenderedMessage
 import promptengine.domain.shared.TokenCount
@@ -70,5 +71,43 @@ class RenderHashCalculatorTest {
         val result = RenderHashCalculator.build(trailingWhitespace, OutputFormat.TEXT, "pe-tmpl/1", tokenizer)
 
         result.tokenEstimate shouldBe TokenCount(2)
+    }
+
+    // ---- modelHints（ADR-0035決定5）: renderHashの算出には影響しないが、結果のRenderedPromptには渡した値がそのまま乗る ----
+
+    @Test
+    fun `modelHintsが異なってもrenderHashは変わらない`() {
+        val withoutHints = RenderHashCalculator.build(messages, OutputFormat.TEXT, "pe-tmpl/1", tokenizer)
+        val withHints =
+            RenderHashCalculator.build(
+                messages,
+                OutputFormat.TEXT,
+                "pe-tmpl/1",
+                tokenizer,
+                modelHints = ModelHints(temperature = 0.9),
+            )
+
+        withHints.renderHash shouldBe withoutHints.renderHash
+    }
+
+    @Test
+    fun `渡したmodelHintsは結果のRenderedPromptにそのまま乗る`() {
+        val result =
+            RenderHashCalculator.build(
+                messages,
+                OutputFormat.TEXT,
+                "pe-tmpl/1",
+                tokenizer,
+                modelHints = ModelHints(temperature = 0.0),
+            )
+
+        result.modelHints shouldBe ModelHints(temperature = 0.0)
+    }
+
+    @Test
+    fun `modelHintsを省略するとnullになる`() {
+        val result = RenderHashCalculator.build(messages, OutputFormat.TEXT, "pe-tmpl/1", tokenizer)
+
+        result.modelHints shouldBe null
     }
 }

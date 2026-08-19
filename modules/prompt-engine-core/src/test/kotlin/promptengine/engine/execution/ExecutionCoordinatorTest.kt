@@ -15,6 +15,7 @@ import promptengine.domain.parsing.OutputSchema
 import promptengine.domain.parsing.ParseFailedException
 import promptengine.domain.parsing.ParsedOutput
 import promptengine.domain.render.MessageRole
+import promptengine.domain.render.ModelHints
 import promptengine.domain.render.OutputFormat
 import promptengine.domain.render.RenderedMessage
 import promptengine.domain.render.RenderedPrompt
@@ -109,6 +110,30 @@ class ExecutionCoordinatorTest {
         repairPrompt.messages[1].role shouldBe MessageRole.ASSISTANT
         repairPrompt.messages[1].content shouldBe "broken"
         repairPrompt.messages[2].role shouldBe MessageRole.USER
+    }
+
+    @Test
+    fun `修復用の再実行messagesは元のmodelHintsを引き継ぐ`() {
+        // ADR-0035決定5: temperatureは初回実行だけでなく修復ラウンドの再実行にも同じ値で
+        // 適用されるべき（実プロバイダに送るtemperatureが試行ごとに変わると、Determinism
+        // 計測の前提が崩れる）。
+        val renderedWithHints =
+            RenderedPrompt(
+                listOf(RenderedMessage(MessageRole.SYSTEM, "answer in json")),
+                OutputFormat.JSON,
+                TokenCount(3),
+                "hash",
+                ModelHints(temperature = 0.0),
+            )
+        val adapter = ScriptedContentExecutionAdapter(listOf("broken", "valid"))
+        val formatter = ValidatingJsonFormatter(setOf("valid"))
+        val coordinator = ExecutionCoordinator(adapter, mapOf(OutputFormat.JSON to formatter), tokenizer)
+        val policy = ExecutionPolicy(timeoutMs = 1000, parseRepair = ParseRepairPolicy(enabled = true, maxAttempts = 2))
+
+        coordinator.run(renderedWithHints, policy, schema = null, budget = generousBudget)
+
+        adapter.executedPrompts[0].modelHints shouldBe ModelHints(temperature = 0.0)
+        adapter.executedPrompts[1].modelHints shouldBe ModelHints(temperature = 0.0)
     }
 
     @Test
