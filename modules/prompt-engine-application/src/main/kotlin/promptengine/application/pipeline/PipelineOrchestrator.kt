@@ -8,8 +8,8 @@ import promptengine.domain.pipeline.InvalidPipelineRequestException
 import promptengine.domain.pipeline.PipelineContext
 import promptengine.domain.pipeline.PipelineMode
 import promptengine.domain.pipeline.PipelineRequest
+import promptengine.domain.pipeline.PipelineRunner
 import promptengine.domain.pipeline.PipelineTracer
-import java.util.UUID
 
 /**
  * Pipeline全体の実行制御（設計書§2.6冒頭、§10アクティビティ図、実装ガイド§6.9）。
@@ -36,18 +36,22 @@ import java.util.UUID
  * traceIdは全Stage・[promptengine.domain.pipeline.PromptExecutedEvent]・
  * [promptengine.domain.audit.AuditRecord]へ同一値が伝播する（`PipelineContext.traceId`は
  * 生成後、Stageの`copy()`更新でも変更されないため）。
+ *
+ * [PipelineRunner]を実装する（ADR-0035フェーズ(c)）。`prompt-engine-application`に
+ * 依存できない`prompt-engine-infrastructure`のBenchmark非同期ワーカーが、依存を逆転させた
+ * このInterface経由でPipeline実行を呼べるようにするため（[PipelineRunner]のKDoc参照）。
  */
 class PipelineOrchestrator(
     private val pipelineFactory: PipelineFactory,
     private val auditStage: AuditStage,
     private val pipelineTracer: PipelineTracer,
     private val metricsRecorder: MetricsRecorder,
-) {
+) : PipelineRunner {
     @Suppress("TooGenericExceptionCaught")
-    fun run(
+    override fun run(
         request: PipelineRequest,
         mode: PipelineMode,
-        traceId: String = UUID.randomUUID().toString(),
+        traceId: String,
     ): PipelineContext {
         // どのStageがどのdomain例外を投げるかは§13.3の表ごとに異なる（StageErrorMapper参照）ため、
         // 1箇所でAudit記録を行うにはStage横断で共通のException型を捕まえる必要がある。

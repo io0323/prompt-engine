@@ -59,6 +59,8 @@ class EvaluationStage(
                             status = ExecutionStatus.SUCCESS,
                             // ADR-0034決定4。Experiment経由の実行のみ非null（LoadStage参照）。
                             variantId = context.experimentVariantId,
+                            // ADR-0035決定5。renderHashには含まないため、実行記録側に残す。
+                            temperature = context.rendered?.modelHints?.temperature,
                         ),
                 )
             eventBusAdapter.publish(event)

@@ -23,7 +23,11 @@ import promptengine.domain.prompt.PromptContent
 import promptengine.domain.prompt.PromptKey
 import promptengine.domain.prompt.PromptVersion
 import promptengine.domain.prompt.VersionRef
+import promptengine.domain.render.MessageRole
+import promptengine.domain.render.ModelHints
 import promptengine.domain.render.OutputFormat
+import promptengine.domain.render.RenderedMessage
+import promptengine.domain.render.RenderedPrompt
 import promptengine.domain.shared.Cost
 import promptengine.domain.shared.LatencyMs
 import promptengine.domain.shared.PromptRequest
@@ -83,6 +87,7 @@ class EvaluationStageTest {
         stageDurationsMs: Map<String, Long> = mapOf("Execution" to 250L),
         costPerToken: String = "0.0004",
         withPromptVersion: Boolean = true,
+        rendered: RenderedPrompt? = null,
     ): PipelineContext =
         PipelineContext(
             request =
@@ -97,12 +102,22 @@ class EvaluationStageTest {
             mode = PipelineMode.FULL_EXECUTION,
             traceId = "trace-eval",
             promptVersion = if (withPromptVersion) promptVersion() else null,
+            rendered = rendered,
             executionOutcome =
                 ExecutionOutcome(
                     parsedOutput = ParsedOutput(format = OutputFormat.TEXT, raw = "response body"),
                     attempts = attempts,
                 ),
             stageDurationsMs = stageDurationsMs,
+        )
+
+    private fun renderedPrompt(modelHints: ModelHints? = null) =
+        RenderedPrompt(
+            messages = listOf(RenderedMessage(MessageRole.USER, "hi")),
+            outputFormat = OutputFormat.TEXT,
+            tokenEstimate = TokenCount(2),
+            renderHash = "hash",
+            modelHints = modelHints,
         )
 
     private fun publishedPayload(adapter: CapturingEventBusAdapter): PromptExecutedEvent.Payload =
@@ -161,6 +176,35 @@ class EvaluationStageTest {
         EvaluationStage(adapter).execute(context())
 
         publishedPayload(adapter).status shouldBe ExecutionStatus.SUCCESS
+    }
+
+    // ---- temperature（ADR-0035決定5）: renderHashから除外する分、実行記録側に残す ----
+
+    @Test
+    fun `renderedのmodelHintsが持つtemperatureをpayloadへ載せる`() {
+        val adapter = CapturingEventBusAdapter()
+
+        EvaluationStage(adapter).execute(context(rendered = renderedPrompt(ModelHints(temperature = 0.0))))
+
+        publishedPayload(adapter).temperature shouldBe 0.0
+    }
+
+    @Test
+    fun `renderedが持たない または modelHintsがnullならtemperatureはnull`() {
+        val adapter = CapturingEventBusAdapter()
+
+        EvaluationStage(adapter).execute(context(rendered = renderedPrompt(modelHints = null)))
+
+        publishedPayload(adapter).temperature shouldBe null
+    }
+
+    @Test
+    fun `renderedがnullでも本流を失敗させずtemperatureはnullになる`() {
+        val adapter = CapturingEventBusAdapter()
+
+        EvaluationStage(adapter).execute(context(rendered = null))
+
+        publishedPayload(adapter).temperature shouldBe null
     }
 
     @Test

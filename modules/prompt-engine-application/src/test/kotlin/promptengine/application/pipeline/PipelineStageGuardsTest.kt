@@ -146,6 +146,7 @@ class PipelineStageGuardsTest {
             contextBindings: ContextBindingSet,
             outputFormat: promptengine.domain.render.OutputFormat,
             outputSchema: OutputSchema?,
+            modelHints: promptengine.domain.render.ModelHints?,
         ): RenderedPrompt = throw AssertionError("must not be called: RenderingStage guard should fire first")
     }
 
