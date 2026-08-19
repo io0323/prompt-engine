@@ -571,6 +571,78 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/PromoteExperimentResponseDto"
+  /api/v1/datasets:
+    post:
+      tags:
+      - golden-dataset-controller
+      operationId: create_2
+      parameters:
+      - name: Idempotency-Key
+        in: header
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateGoldenDatasetRequestDto"
+        required: true
+      responses:
+        "201":
+          description: Created
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/CreateGoldenDatasetResponseDto"
+  /api/v1/benchmarks:
+    post:
+      tags:
+      - benchmark-controller
+      operationId: create_3
+      parameters:
+      - name: Idempotency-Key
+        in: header
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateBenchmarkRequestDto"
+        required: true
+      responses:
+        "201":
+          description: Created
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/CreateBenchmarkResponseDto"
+  /api/v1/benchmarks/{id}/cancel:
+    post:
+      tags:
+      - benchmark-controller
+      operationId: cancel
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: Idempotency-Key
+        in: header
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/CancelBenchmarkResponseDto"
   /api/v1/prompts/{namespace}/{name}:
     get:
       tags:
@@ -838,6 +910,63 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ExperimentResultsResponseDto"
+  /api/v1/datasets/{id}:
+    get:
+      tags:
+      - golden-dataset-controller
+      operationId: get_1
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/GoldenDatasetResponseDto"
+  /api/v1/benchmarks/{id}:
+    get:
+      tags:
+      - benchmark-controller
+      operationId: get_2
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/BenchmarkResponseDto"
+  /api/v1/benchmarks/{id}/results:
+    get:
+      tags:
+      - benchmark-controller
+      operationId: results_1
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/BenchmarkResultsResponseDto"
   /api/v1/audit-logs:
     get:
       tags:
@@ -1397,6 +1526,139 @@ components:
       - experimentId
       - promotedSemVer
       - promptKey
+    CreateGoldenDatasetRequestDto:
+      type: object
+      properties:
+        promptKey:
+          type: string
+          minLength: 1
+        name:
+          type: string
+          minLength: 1
+        description:
+          type: string
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/GoldenDatasetItemInputDto"
+          minItems: 1
+      required:
+      - items
+      - name
+      - promptKey
+    GoldenDatasetItemInputDto:
+      type: object
+      properties:
+        parameters:
+          type: object
+          additionalProperties:
+            type: object
+            description: 任意のキー・値（JSONB、値の型は制約しない）
+          description: 任意のキー・値（JSONB、値の型は制約しない）
+        context:
+          type: object
+          additionalProperties:
+            type: object
+            additionalProperties:
+              type: object
+              description: スコープ名→任意のキー・値（JSONB、値の型は制約しない）
+            description: スコープ名→任意のキー・値（JSONB、値の型は制約しない）
+          description: スコープ名→任意のキー・値（JSONB、値の型は制約しない）
+        expectedOutput:
+          type: string
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+      required:
+      - context
+      - metadata
+      - parameters
+    CreateGoldenDatasetResponseDto:
+      type: object
+      properties:
+        datasetId:
+          type: string
+        promptKey:
+          type: string
+        itemCount:
+          type: integer
+          format: int32
+      required:
+      - datasetId
+      - itemCount
+      - promptKey
+    CreateBenchmarkRequestDto:
+      type: object
+      properties:
+        promptKey:
+          type: string
+          minLength: 1
+        datasetId:
+          type: string
+          minLength: 1
+        targets:
+          type: array
+          items:
+            $ref: "#/components/schemas/CreateBenchmarkTargetInputDto"
+          minItems: 1
+        metrics:
+          type: array
+          items:
+            type: string
+          minItems: 1
+          uniqueItems: true
+        nRepetitions:
+          type: integer
+          format: int32
+          writeOnly: true
+        temperature:
+          type: number
+          format: double
+        nrepetitions:
+          type: integer
+          format: int32
+      required:
+      - datasetId
+      - metrics
+      - nrepetitions
+      - promptKey
+      - targets
+    CreateBenchmarkTargetInputDto:
+      type: object
+      properties:
+        semVer:
+          type: string
+          minLength: 1
+      required:
+      - semVer
+    CreateBenchmarkResponseDto:
+      type: object
+      properties:
+        benchmarkId:
+          type: string
+        promptKey:
+          type: string
+        status:
+          type: string
+        estimatedExecutionCount:
+          type: integer
+          format: int32
+      required:
+      - benchmarkId
+      - estimatedExecutionCount
+      - promptKey
+      - status
+    CancelBenchmarkResponseDto:
+      type: object
+      properties:
+        benchmarkId:
+          type: string
+        status:
+          type: string
+      required:
+      - benchmarkId
+      - status
     UpdatePromptMetadataRequestDto:
       type: object
       properties:
@@ -1733,6 +1995,168 @@ components:
       - isControl
       - variantName
       - weightPct
+    GoldenDatasetItemDto:
+      type: object
+      properties:
+        itemId:
+          type: string
+        parameters:
+          type: object
+          additionalProperties:
+            type: object
+            description: 任意のキー・値（JSONB、値の型は制約しない）
+          description: 任意のキー・値（JSONB、値の型は制約しない）
+        context:
+          type: object
+          additionalProperties:
+            type: object
+            additionalProperties:
+              type: object
+              description: スコープ名→任意のキー・値（JSONB、値の型は制約しない）
+            description: スコープ名→任意のキー・値（JSONB、値の型は制約しない）
+          description: スコープ名→任意のキー・値（JSONB、値の型は制約しない）
+        expectedOutput:
+          type: string
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+      required:
+      - context
+      - itemId
+      - metadata
+      - parameters
+    GoldenDatasetResponseDto:
+      type: object
+      properties:
+        datasetId:
+          type: string
+        promptKey:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/GoldenDatasetItemDto"
+      required:
+      - datasetId
+      - items
+      - name
+      - promptKey
+    BenchmarkProgressDto:
+      type: object
+      properties:
+        totalItems:
+          type: integer
+          format: int32
+        completedItems:
+          type: integer
+          format: int32
+        failedItems:
+          type: integer
+          format: int32
+        pendingItems:
+          type: integer
+          format: int32
+      required:
+      - completedItems
+      - failedItems
+      - pendingItems
+      - totalItems
+    BenchmarkResponseDto:
+      type: object
+      properties:
+        benchmarkId:
+          type: string
+        promptKey:
+          type: string
+        datasetId:
+          type: string
+        targets:
+          type: array
+          items:
+            $ref: "#/components/schemas/BenchmarkTargetDto"
+        metrics:
+          type: array
+          items:
+            type: string
+          uniqueItems: true
+        nRepetitions:
+          type: integer
+          format: int32
+          writeOnly: true
+        temperature:
+          type: number
+          format: double
+        status:
+          type: string
+        estimatedExecutionCount:
+          type: integer
+          format: int32
+        progress:
+          $ref: "#/components/schemas/BenchmarkProgressDto"
+        nrepetitions:
+          type: integer
+          format: int32
+      required:
+      - benchmarkId
+      - datasetId
+      - estimatedExecutionCount
+      - metrics
+      - nrepetitions
+      - progress
+      - promptKey
+      - status
+      - targets
+    BenchmarkTargetDto:
+      type: object
+      properties:
+        targetId:
+          type: string
+        semVer:
+          type: string
+      required:
+      - semVer
+      - targetId
+    BenchmarkItemResultDto:
+      type: object
+      properties:
+        targetId:
+          type: string
+        itemId:
+          type: string
+        status:
+          type: string
+        accuracyScore:
+          type: string
+        consistencyScore:
+          type: string
+        determinismScore:
+          type: string
+        errorMessage:
+          type: string
+      required:
+      - itemId
+      - status
+      - targetId
+    BenchmarkResultsResponseDto:
+      type: object
+      properties:
+        benchmarkId:
+          type: string
+        status:
+          type: string
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/BenchmarkItemResultDto"
+      required:
+      - benchmarkId
+      - items
+      - status
     AuditLogEntryDto:
       type: object
       properties:

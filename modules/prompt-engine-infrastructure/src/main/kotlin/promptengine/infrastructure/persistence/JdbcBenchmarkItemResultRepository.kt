@@ -5,9 +5,11 @@ import org.springframework.jdbc.core.namedparam.MapSqlParameterSource
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
 import org.springframework.transaction.support.TransactionTemplate
 import promptengine.domain.benchmark.BenchmarkItemKey
+import promptengine.domain.benchmark.BenchmarkItemResultRecord
 import promptengine.domain.benchmark.BenchmarkItemResultRepository
 import promptengine.domain.benchmark.BenchmarkItemScores
 import promptengine.domain.benchmark.ClaimedBenchmarkItem
+import java.math.BigDecimal
 import java.sql.Timestamp
 import java.time.Duration
 import java.time.Instant
@@ -156,6 +158,29 @@ class JdbcBenchmarkItemResultRepository(
             MapSqlParameterSource("benchmarkId", benchmarkId),
             Boolean::class.java,
         ) ?: false
+
+    override fun findByBenchmarkId(benchmarkId: UUID): List<BenchmarkItemResultRecord> =
+        jdbcTemplate.query(
+            """
+            SELECT r.result_id, r.target_id, r.item_id, r.status,
+                   r.accuracy_score, r.consistency_score, r.determinism_score, r.error_message
+            FROM benchmark_item_results r
+            JOIN benchmark_targets t ON t.target_id = r.target_id
+            WHERE t.benchmark_id = :benchmarkId
+            """.trimIndent(),
+            MapSqlParameterSource("benchmarkId", benchmarkId),
+        ) { rs, _ ->
+            BenchmarkItemResultRecord(
+                resultId = rs.getObject("result_id", UUID::class.java),
+                targetId = rs.getObject("target_id", UUID::class.java),
+                itemId = rs.getObject("item_id", UUID::class.java),
+                status = rs.getString("status"),
+                accuracyScore = rs.getObject("accuracy_score") as BigDecimal?,
+                consistencyScore = rs.getObject("consistency_score") as BigDecimal?,
+                determinismScore = rs.getObject("determinism_score") as BigDecimal?,
+                errorMessage = rs.getString("error_message"),
+            )
+        }
 
     /**
      * claim_timeoutを超えて別インスタンスに再Claimされた行は、元の所有者が確定してはならない

@@ -57,6 +57,13 @@ interface BenchmarkItemResultRepository {
 
     /** [benchmarkId]配下に`Pending`/`Claimed`（未終端）の行が1件でも残っているか。 */
     fun hasIncomplete(benchmarkId: UUID): Boolean
+
+    /**
+     * [benchmarkId]配下の全行を返す（`GET /benchmarks/{id}`の進捗集計・
+     * `GET /benchmarks/{id}/results`の結果一覧、ADR-0035フェーズ(d)）。materialize前
+     * （Benchmarkが`Pending`のまま）は空リストを返す。順序は保証しない。
+     */
+    fun findByBenchmarkId(benchmarkId: UUID): List<BenchmarkItemResultRecord>
 }
 
 /** [BenchmarkItemResultRepository.materialize]の入力（Target×Datasetの組）。 */
@@ -75,4 +82,21 @@ data class BenchmarkItemScores(
     val accuracyScore: BigDecimal? = null,
     val consistencyScore: BigDecimal? = null,
     val determinismScore: BigDecimal? = null,
+)
+
+/**
+ * [BenchmarkItemResultRepository.findByBenchmarkId]が返す1行（ADR-0035フェーズ(d)）。
+ * [status]は`"Pending"`/`"Claimed"`/`"Completed"`/`"Failed"`のいずれか
+ * （`JdbcBenchmarkItemResultRepository`のDB値と同じ文字列、専用enumは設けない。
+ * `Benchmark.status::class.simpleName`と同じ「文字列で十分」という既存判断に揃える）。
+ */
+data class BenchmarkItemResultRecord(
+    val resultId: UUID,
+    val targetId: UUID,
+    val itemId: UUID,
+    val status: String,
+    val accuracyScore: BigDecimal?,
+    val consistencyScore: BigDecimal?,
+    val determinismScore: BigDecimal?,
+    val errorMessage: String?,
 )

@@ -1649,6 +1649,12 @@ outbox }o--|| domain_events : event_id
 | PATCH | /experiments/{id}/traffic | Running中のVariant重み更新（Canary運用、ADR-0034） | publish | 200 |
 | GET | /experiments/{id}/results | Variant別スコア・統計判定 | read | 200 |
 | POST | /experiments/{id}/promote | 勝者Publish | publish | 200 |
+| POST | /benchmarks | Benchmark作成（ADR-0035） | write | 201 |
+| GET | /benchmarks/{id} | 詳細+進捗（Target/Metric/推定実行数） | read | 200 |
+| POST | /benchmarks/{id}/cancel | 中断依頼（Running→Cancelling） | publish | 200 |
+| GET | /benchmarks/{id}/results | 項目別スコア・ステータス一覧 | read | 200 |
+| POST | /datasets | Golden Dataset作成（ADR-0035） | write | 201 |
+| GET | /datasets/{id} | Golden Dataset取得 | read | 200 |
 | POST | /prompts/import / GET /prompts/{namespace}/{name}/export | DSLバンドル入出力 | write / read | 200 |
 | GET | /audit-logs?aggregateId=&actor=&from=&to= | 監査検索 | audit:read | 200 |
 | GET | /metrics/prompts/{namespace}/{name}?from=&to= | Token/Cost/Latency/成功率集計 | read | 200 |
@@ -1688,6 +1694,28 @@ outbox }o--|| domain_events : event_id
 ```
 
 `POST /prompts/{namespace}/{name}/execute` は上記+`executionPolicy {timeoutMs, maxRetries, parseRepair}` を受け、`{ parsedOutput, rawContent, usage {inputTokens, outputTokens, cost}, latencyMs, evaluationId }` を返す。
+
+`POST /benchmarks`（ADR-0035決定3・決定5。201レスポンスに`estimatedExecutionCount`
+= targets数 × datasetサイズ × nRepetitionsを含める）
+
+```json
+// Request
+{
+  "promptKey": "support/faq-answer",
+  "datasetId": "b7e2...-uuid",
+  "targets": [ { "semVer": "1.2.0" }, { "semVer": "1.3.0" } ],
+  "metrics": ["Accuracy", "Consistency"],
+  "nRepetitions": 3,
+  "temperature": 0.0
+}
+// Response 201
+{
+  "benchmarkId": "3f9a...-uuid",
+  "promptKey": "support/faq-answer",
+  "status": "Pending",
+  "estimatedExecutionCount": 60
+}
+```
 
 ## 13.3 Error仕様
 
