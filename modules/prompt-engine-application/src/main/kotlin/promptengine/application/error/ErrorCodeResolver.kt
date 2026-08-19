@@ -1,6 +1,8 @@
 package promptengine.application.error
 
 import promptengine.application.pipeline.StageErrorMapper
+import promptengine.domain.benchmark.BenchmarkNotFoundException
+import promptengine.domain.benchmark.GoldenDatasetNotFoundException
 import promptengine.domain.experiment.ExperimentNotFoundException
 import promptengine.domain.experiment.NoWinnerDeclaredException
 import promptengine.domain.prompt.ArchiveRequiresForceException
@@ -41,6 +43,8 @@ object ErrorCodeResolver {
             is ArchiveRequiresForceException -> INVALID_STATE_TRANSITION
             is NoWinnerDeclaredException -> INVALID_STATE_TRANSITION
             is ExperimentNotFoundException -> NOT_FOUND
+            is BenchmarkNotFoundException -> NOT_FOUND
+            is GoldenDatasetNotFoundException -> NOT_FOUND
             is IdempotencyKeyConflictException -> IDEMPOTENCY_KEY_CONFLICT
             is IdempotencyKeyInProgressException -> IDEMPOTENCY_KEY_IN_PROGRESS
             is OptimisticLockConflictException -> VERSION_CONFLICT

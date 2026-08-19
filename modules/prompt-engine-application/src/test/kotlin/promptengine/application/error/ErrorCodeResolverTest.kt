@@ -3,6 +3,8 @@ package promptengine.application.error
 import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
 import promptengine.application.pipeline.StageErrorMapper
+import promptengine.domain.benchmark.BenchmarkNotFoundException
+import promptengine.domain.benchmark.GoldenDatasetNotFoundException
 import promptengine.domain.prompt.ArchiveRequiresForceException
 import promptengine.domain.prompt.PromptKey
 import promptengine.domain.shared.IdempotencyKeyConflictException
@@ -48,6 +50,20 @@ class ErrorCodeResolverTest {
         val ex = IdempotencyKeyInProgressException("idem-1")
 
         ErrorCodeResolver.resolve(ex) shouldBe ErrorCodeResolver.IDEMPOTENCY_KEY_IN_PROGRESS
+    }
+
+    @Test
+    fun `resolve はBenchmarkNotFoundExceptionをNOT_FOUNDへ変換する`() {
+        val ex = BenchmarkNotFoundException(java.util.UUID.randomUUID())
+
+        ErrorCodeResolver.resolve(ex) shouldBe ErrorCodeResolver.NOT_FOUND
+    }
+
+    @Test
+    fun `resolve はGoldenDatasetNotFoundExceptionをNOT_FOUNDへ変換する`() {
+        val ex = GoldenDatasetNotFoundException(java.util.UUID.randomUUID())
+
+        ErrorCodeResolver.resolve(ex) shouldBe ErrorCodeResolver.NOT_FOUND
     }
 
     @Test
