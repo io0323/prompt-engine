@@ -9,6 +9,7 @@ import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.context.annotation.Profile
 import promptengine.domain.cache.PromptCache
+import promptengine.domain.observability.MetricsRecorder
 import promptengine.infrastructure.cache.NoopPromptCache
 import promptengine.infrastructure.cache.RedisPromptCache
 
@@ -46,7 +47,8 @@ class CacheConfig {
     fun promptCacheProduction(
         commands: RedisCommands<String, String>,
         objectMapper: ObjectMapper,
-    ): PromptCache = RedisPromptCache(commands, objectMapper)
+        metricsRecorder: MetricsRecorder,
+    ): PromptCache = RedisPromptCache(commands, objectMapper, metricsRecorder)
 
     /**
      * ローカル開発・テスト用の既定（[NoopPromptCache]のクラスKDoc参照）。`production`
