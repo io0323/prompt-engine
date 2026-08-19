@@ -57,7 +57,8 @@ Plugin                plugins/*                   ExecutionAdapter/OutputFormatt
 | `modules/prompt-engine-plugin-api` | Plugin実装が参照する公開型（現状インターフェースのみ、実体はdomain側） |
 | `modules/prompt-engine-bootstrap` | Spring Boot Composition Root。具象クラスのDI配線・`application.yml`・起動クラス |
 | `modules/prompt-engine-testkit` | テスト共通ユーティリティ |
-| `plugins/execution-fake` | `ExecutionAdapter`のFake実装（実APAP接続はM2） |
+| `plugins/execution-fake` | `ExecutionAdapter`のFake実装（production起動時は`ProductionProfileGuardTest.kt`のガードで選択不可） |
+| `plugins/execution-openai` | `ExecutionAdapter`の実OpenAI接続実装（M2-1） |
 | `plugins/formatter-json` | JSON `OutputFormatter` |
 | `plugins/tokenizer-approx` | 近似トークナイザ |
 | `plugins/validator-policy` | ポリシー系`ValidationRule`の実装例 |
@@ -269,36 +270,36 @@ Rendering等、Merge以外の7ステージ）の変動にも左右されるた�
 | FR-003 | 実装済 | `LifecycleState.kt`（Draft/InReview/Approved/Published/Deprecated/Archivedの6状態、State継承） | 遷移制約込みで確認 |
 | FR-004 | 実装済 | `Template.kt`、`TemplateVersion.kt`、`ExtendsRef.kt`、`VariableDefinition.kt` | パラメータ定義・extends継承・デフォルト値を確認 |
 | FR-005 | 実装済 | `Fragment.kt`、`FragmentResolver.kt`、`IncludeTargetResolver.kt`（`{{> alias\|fragmentKey }}`構文） | Include/Import参照を確認 |
-| FR-006 | 部分実装 | `ReferenceResolver.kt`（循環検出）、`MacroExpander.kt`、`IncludeTargetResolver.kt`（`NestedPromptNotSupportedException`を明示的にthrow） | Include/Import/Macro/Inheritance/循環検出は実装済。Nested Prompt（`{{> prompt:key }}`）は明示的に未対応。Issue #19（M2） |
+| FR-006 | 部分実装 | `ReferenceResolver.kt`（循環検出）、`MacroExpander.kt`、`IncludeTargetResolver.kt`（`NestedPromptNotSupportedException`を明示的にthrow） | Include/Import/Macro/Inheritance/循環検出は実装済。Nested Prompt（`{{> prompt:key }}`）は明示的に未対応。Issue #19（M3） |
 | FR-007 | 実装済 | `VariableSource.kt`（6種enum）、`engine/resolver/`配下の各Resolver（Explicit/Static/User/Workflow/Environment/Secret） | 6種すべて確認 |
 | FR-008 | 実装済 | `ContextResolverImpl.kt`（`MERGE_ORDER`に7 scope）、`StandardContextResolver.kt` | environment/system/application/workflow/user/memory/conversationの7 scopeを確認 |
 | FR-009 | 実装済 | `engine/validation/`配下の5 Rule、`plugins/validator-policy`（Rule Plugin追加の実例） | 標準ルール＋Plugin拡張を確認 |
-| FR-010 | 部分実装 | `CompressionRule.kt`、`TokenOptimizationRule.kt`、`ExpansionRule.kt`、`ModelProfile.kt` | Token最適化/Compression/Model Profile別最適化は実装。設計書§2.11のFew-shot例注入は未実装（`ExpansionRule.kt`のKDocで明記）。Issue #29（M2） |
+| FR-010 | 部分実装 | `CompressionRule.kt`、`TokenOptimizationRule.kt`、`ExpansionRule.kt`、`ModelProfile.kt` | Token最適化/Compression/Model Profile別最適化は実装。設計書§2.11のFew-shot例注入は未実装（`ExpansionRule.kt`のKDocで明記）。Issue #29（M3） |
 | FR-011 | 実装済 | `TemplateEngine.kt`（差替可能Interface）、`DefaultTemplateEngine.kt` | Template Engine差替・決定的Render契約を確認 |
 | FR-012 | 部分実装 | `OutputFormatter.kt`（対応`OutputFormat`はJSON/XML/MARKDOWN/TEXT）、`TextOutputFormatter.kt`、`plugins/formatter-json` | 実装済Formatterは TEXT/JSON の2種のみ。XML/Markdown/Structured Output実装クラスは無し。Issueなし |
-| FR-013 | 部分実装 | `ExecutionAdapter.kt`（実APAP接続はM2と明記）、`RetryingExecutionAdapter.kt`、`plugins/execution-fake`、`ProductionProfileGuardTest.kt`（production起動時Fakeガード） | Provider非依存Interface＋リトライ＋Fakeは実装済。実APAP Adapterは未実装。Issue #31（M2） |
-| FR-014 | 部分実装 | `EvaluationRule.kt`（M1は実行系3種のみと明記）、`LatencyEvaluationRule.kt`/`TokenUsageEvaluationRule.kt`/`CostEvaluationRule.kt` | Latency/Token/Costのみ実装。Quality/Consistency/Determinismは拡張点定義のみ。Issueなし（Plugin追加前提の設計） |
-| FR-015 | 未実装 | （該当実装なし） | README「M1の非対象」の通り。M2milestoneで対応予定 |
-| FR-016 | 部分実装 | `Prompt.kt`（submitForReview/reject/withdraw/approveは生メソッドとして存在）、`docs/adr/0016-review-endpoints-deferred-to-m2.md` | 状態遷移メソッド自体はAggregate内にあるが、対応HTTPエンドポイントは意図的に非公開。ReviewCase Aggregate（4-eyes原則・監査発行の主体）が未実装のため、この経路の遷移は監査ログに記録されない。Issue #9（M2） |
-| FR-017 | 部分実装 | `JdbcPromptSearchRepository.kt`（Tag/Category/Status絞り込みは構造化SQL、全文検索は`ILIKE`部分一致のみ） | Fallbackのみ（README記載通り）。実FTS（tsvector/GIN等）は未実装。Issue #84（M2） |
+| FR-013 | 実装済 | `plugins/execution-openai/`（`OpenAiExecutionAdapter.kt`、実API接続）、`RetryingExecutionAdapter.kt`、`plugins/execution-fake`（`ProductionProfileGuardTest.kt`でproduction起動時Fakeガード） | Provider非依存Interface・リトライ・実OpenAI Adapter・契約/認証秘匿/実測テストを確認（`OpenAiExecutionAdapterContractTest`等）。Adapter側とリトライ層の責務重複解消は残作業（Issue #31、M3） |
+| FR-014 | 部分実装 | `LatencyEvaluationRule.kt`/`TokenUsageEvaluationRule.kt`/`CostEvaluationRule.kt`（`EvaluationRule`拡張点）、`ConsistencyScoringRule.kt`/`DeterminismScoringRule.kt`（`BenchmarkScoringRule`、ADR-0035） | Latency/Token/Costは`EvaluationRule`拡張点で実装済。Consistency/Determinismは実装されたが`EvaluationRule`ではなくBenchmark専用の別系統（`BenchmarkScoringRule`）としてのみ存在する（設計書§1.8参照）。Prompt/Response Qualityは未実装のまま。Issue #80（M3） |
+| FR-015 | 実装済 | `ExperimentController.kt`（`/api/v1/experiments`、start/stop/promote/results）、`BenchmarkController.kt`（`/api/v1/benchmarks`）、`GoldenDatasetController.kt`（`/api/v1/datasets`）、`TrafficSplitStrategyImpl.kt`、`BenchmarkWorker.kt`（非同期ワーカー）、ADR-0034/ADR-0035 | A/B Test・Canary・トラフィック分割・Benchmark・GoldenDatasetをM2-4a/4bで実装（設計書§1.8: FR-015はBenchmarkを含む定義） |
+| FR-016 | 実装済 | `ReviewCase.kt`（Aggregate）、`ReviewCaseStatus.kt`、`ReviewCaseDomainEvent.kt`、`JdbcReviewCaseRepository.kt`、`ReviewController.kt`（`/versions/{version}/submit-review`・`/approve`） | ReviewCase Aggregate（4-eyes原則・監査発行の主体）とREST APIを実装し、レビュー系イベントの監査欠落を解消（Issue #9解消） |
+| FR-017 | 部分実装 | `JdbcPromptSearchRepository.kt`（Tag/Category/Status絞り込みは構造化SQL、全文検索は`ILIKE`部分一致のみ） | Fallbackのみ（README記載通り）。実FTS（tsvector/GIN等）は未実装。Issue #84（M3） |
 | FR-018 | 実装済 | `DependencyRepository.kt`（findOutbound/findInbound）、`DependencyController.kt`、`ReferenceResolver.kt`（循環検出） | 依存グラフ・影響分析・循環検出を確認 |
 | FR-019 | 部分実装 | `PromptDtos.kt`/`VersionController.kt`（単一Prompt単位のDSLテキスト入出力） | 単一Prompt単位の入出力は実装済。複数リソースをまとめた「バンドル」入出力は未実装。Issueなし |
 | FR-020 | 実装済 | `AuditRepository.kt`（append/record、update/delete非提供）、`AuditStage.kt`（Pipeline Stage12）、`V1__init.sql`（audit_logsテーブル） | 全変更・全実行の監査記録経路を確認 |
 | FR-021 | 実装済 | `MetricsRecorder.kt`、`MicrometerMetricsRecorder.kt`、`OpenTelemetryPipelineTracer.kt` | Token/Cost/Latency/成功率＋分散Tracingを確認 |
 | FR-022 | 実装済 | `PromptCache.kt`/`RedisPromptCache.kt`（M2-3、ADR-0033） | Redisバックエンドの実キャッシュ・`CacheInvalidationSubscriber`によるPrompt/Template/Fragment publish系イベント無効化を確認 |
 | FR-023 | 実装済 | `PromptDomainEvent.kt`・`TemplateDomainEvent.kt`・`FragmentDomainEvent.kt`（M2-3、ADR-0033） | Prompt/Template/Fragmentの全Aggregateがイベント化済み（Issue #15解消） |
-| FR-024 | 部分実装 | 設計書§16（14拡張ポイント定義）、`PluginEngineConfig.kt`（静的Spring `@Bean`配線）、`prompt-engine-plugin-api`（実体クラス0件） | 拡張ポイントInterfaceと4種のPlugin実装は存在するが、Plugin Manifest宣言・実行時登録/活性化/障害隔離・再起動不要追加は未実装（コンパイル時静的DIのみ）。Issueなし |
+| FR-024 | 部分実装 | 設計書§16（14拡張ポイント定義）、`PluginEngineConfig.kt`（静的Spring `@Bean`配線）、`prompt-engine-plugin-api`（実体クラス0件） | 拡張ポイントInterfaceと5種のPlugin実装は存在するが、Plugin Manifest宣言・実行時登録/活性化/障害隔離・再起動不要追加は未実装（コンパイル時静的DIのみ）。Issue #82（M3） |
 
 ## NFR-001〜NFR-010 検証状況
 
 | ID | 状態 | 検証方法・根拠 | 備考 |
 |---|---|---|---|
-| NFR-001 | 部分実装/未検証 | `deploy/helm/prompt-engine/templates/hpa.yaml`（水平スケール）、`RedisPromptCache.kt`（M2-3、ADR-0033） | 稼働率自体は運用開始前で測定不能。「Read系はキャッシュで縮退継続」の前提となる`PromptCache`実装は入ったが、Redis障害時のフォールバック（縮退継続そのもの）は未実装・未検証 |
+| NFR-001 | 部分実装（縮退動作は検証済） | `deploy/helm/prompt-engine/templates/hpa.yaml`（水平スケール）、`RedisPromptCache.kt`（`get`/`put`/`invalidateByPrompt`を`runCatching`で包み例外を伝播させない、ADR-0033追加決定e）、`RedisPromptCacheDegradationIntegrationTest.kt`（Redis停止状態でPrompt取得が成功することを検証） | 稼働率自体は運用開始前で測定不能なため「部分実装」のまま。ただし「Read系はキャッシュで縮退継続」の実効性そのもの（Redis到達不能時に例外を投げずキャッシュミス相当で処理継続すること）は統合テストで実測・検証済み |
 | NFR-002 | 部分検証 | `tools/perf/render_load_test.sh`（PromptCache有効時の再測定、上記「性能測定」節） | End-to-End p99=78.14msは目標200ms（NFR-003）を満たすが、Merge単体（Prompt取得キャッシュヒット）を分離したp99≤20msの直接測定はできていない。詳細は上記「正直な限界」参照 |
 | NFR-003 | 検証済（p99=80.03ms→78.14ms、目標≤200ms達成） | `tools/perf/render_load_test.sh`（実コンテナ、CPU1/メモリ1Gi制限、2000リクエスト） | 実測条件・結果は上記「性能測定」節に記録 |
 | NFR-004 | 部分実装/未検証 | `deploy/helm/prompt-engine/templates/hpa.yaml`（HPA、CPU使用率ベース）、`PluginEngineConfig.kt`（静的Spring `@Bean`配線） | 水平スケール（ステートレスAPI+HPA）は実装済。「Plugin追加は再起動不要」は未達成 — Pluginは`plugins/`配下のGradleサブプロジェクトとしてコンパイル時に静的リンクされ、動的ロード機構が無いため追加には再ビルド・再起動が必須 |
 | NFR-005 | 検証済 | `SecurityConfig.kt`（OAuth2 Resource Server + JWT検証）、各Controllerの`@PreAuthorize`（RBAC+スコープ）、`SecretManagerAdapter.kt`（Secret参照のみ保持）、`SanitizingJsonEncoder.kt`（3層防御のログマスキング） | CIAP連携・RBAC・Secret参照のみ保持・ログマスキングをコードで確認 |
-| NFR-006 | 部分実装/未検証 | `AuditRepository.kt`（update/delete非提供のInterface）、`V1__init.sql`（追記専用はコメントの運用前提のみ、実GRANT/REVOKE文なし） | 追記専用制約はアプリケーション層のみで担保、DB層での強制は未実装（DBにUPDATE権限を持つ主体は監査履歴を改竄できてしまう）。保持期間設定（既定7年）に対応する設定・パージ処理も未実装。Issue #85（M2） |
+| NFR-006 | 部分実装（追記専用強制は検証済、保持期間は未実装） | `AuditRepository.kt`（update/delete非提供のInterface）、`V20__audit_append_only_enforcement.sql`（`prompt_engine`ロールから`audit_logs`/`domain_events`のUPDATE/DELETEをREVOKE）、`AuditAppendOnlyEnforcementIntegrationTest.kt`（`prompt_engine`ロールで実際にUPDATE/DELETEがSQLSTATE 42501で失敗しINSERT/SELECTは成功することを実接続で検証）、ADR-0036 | 追記専用制約はDB層でロール分離（`prompt_engine_migrator`＝テーブル所有者／`prompt_engine`＝restricted）により実効的に強制され、実SQL例外で検証済み（アプリ層のみだった状態を解消、Issue #85解消）。保持期間（既定7年）の自動削除・パージは本Issueのスコープ外として意図的に未実装のまま。Issue #125（M3、時系列パーティショニング+パーティションDROPを第一候補として設計済み） |
 | NFR-007 | 検証済 | `ArchitectureTest.kt`（ArchUnitルール一式: domain非依存、application→domainのみ、core/infrastructure→application禁止、interfaces→application限定、Plugin実装の参照制限） | CIの`arch-test`ジョブで常時検証 |
 | NFR-008 | 検証済 | `OpenTelemetryPipelineTracer.kt`（実Trace実装）、`MicrometerMetricsRecorder.kt`（Metrics、`/actuator/prometheus`）、`SanitizingJsonEncoder.kt`（構造化JSON Log） | OTel互換のTrace/Metrics/構造化Logの3系統を確認 |
 | NFR-009 | 未検証 | `OutboxRelayScheduler.kt`/`SubscriberScheduler.kt`（既定750ms/500msポーリング、目標の5s以内と整合する短周期） | ポーリング間隔の設計値は目標と整合するが、エンドツーエンドの反映遅延を実測・アサートするテストは無い |
@@ -312,30 +313,41 @@ JaCoCo上は「テスト不足」に見えるだけの計測ミスである（`p
 P10bに発生し`jacocoAggregatedReport`で解決した問題と同種）。`prompt-engine-bootstrap`自体にも
 カバレッジゲートが未設定。Issue #86（M1完了後）で追跡する。
 
-## M1完了後に持ち越す既知の未実装・未検証（Issue対応表）
+## M2で完了した項目
 
-P11時点でOpenのIssue一覧（すべてM2またはM1完了後milestoneに紐づけ済み。裸の"M1"milestoneで
-Openのままの項目は無い）。
+M2milestoneの完了条件（3点、milestone説明参照）はすべて満たされ、milestone「M2」にOpenの
+Issueは0件です（2026-08-20）。
+
+- RedisPromptCacheの縮退動作（Redis到達不能時もPrompt取得が継続する）を実装・実測検証 → NFR-001
+- Issue #85: 監査ログ・Event StoreのDB層追記専用強制（ロール分離、ADR-0036） → NFR-006
+- Issue #15: Template/FragmentのDomain Event追加 → FR-023（クローズ済）
+- Issue #9: ReviewCase Aggregateの実装、レビュー系イベントの監査欠落解消 → FR-016（クローズ済）
+- Issue #77: PromptCache実装（NFR-002検証可能化、実測検証自体はIssue #107へ切り出し済み） → FR-022（クローズ済）
+- （milestone外だが同時期に実装）Experiment Engine・Benchmark・GoldenDataset（M2-4a/4b） → FR-015
+- （milestone外だが同時期に実装）実APAP接続（OpenAI Adapter） → FR-013
+
+## M3へ持ち越す既知の未実装・未検証（Issue対応表）
+
+M2milestoneに含まれていたが完了条件外だったIssueは、すべてmilestone「M3」（機能拡充、
+動作をブロックしない）または「M2完了後」（技術的負債・未検証項目）へ移動済みです。
 
 | Issue | Milestone | 内容 | 関連FR/NFR |
 |---|---|---|---|
-| [#9](https://github.com/io0323/prompt-engine/issues/9) | M2 | ReviewCase Aggregateの実装、レビュー系イベントの監査欠落解消 | FR-016 |
-| [#15](https://github.com/io0323/prompt-engine/issues/15) | M2 | Template/Fragmentの Domain Event追加 | FR-023 |
 | [#18](https://github.com/io0323/prompt-engine/issues/18) | M1完了後 | Repository.save()の全Version毎回rewrite問題 | — |
-| [#19](https://github.com/io0323/prompt-engine/issues/19) | M2 | Nested Prompt（`{{> prompt:key }}`）の実装 | FR-006 |
-| [#29](https://github.com/io0323/prompt-engine/issues/29) | M2 | ExpansionRuleへのFew-shot例注入 | FR-010 |
-| [#31](https://github.com/io0323/prompt-engine/issues/31) | M2 | APAP統合時のリトライ責務重複解消 | FR-013 |
-| [#52](https://github.com/io0323/prompt-engine/issues/52) | M2 | SchemaRepository新設・outputSchemaRef解決 | — |
+| [#19](https://github.com/io0323/prompt-engine/issues/19) | M3 | Nested Prompt（`{{> prompt:key }}`）の実装 | FR-006 |
+| [#29](https://github.com/io0323/prompt-engine/issues/29) | M3 | ExpansionRuleへのFew-shot例注入 | FR-010 |
+| [#31](https://github.com/io0323/prompt-engine/issues/31) | M3 | APAP統合時のリトライ責務重複解消 | FR-013 |
+| [#52](https://github.com/io0323/prompt-engine/issues/52) | M3 | SchemaRepository新設・outputSchemaRef解決 | — |
 | [#75](https://github.com/io0323/prompt-engine/issues/75) | M1完了後 | ログ相関IDへpromptKey/version追加 | — |
-| [#77](https://github.com/io0323/prompt-engine/issues/77) | M2 | PromptCache実装（NFR-002検証可能化） | FR-022 / NFR-001 / NFR-002 |
-| [#78](https://github.com/io0323/prompt-engine/issues/78) | M2 | Promptの複製（duplicate/clone） | FR-001 |
-| [#79](https://github.com/io0323/prompt-engine/issues/79) | M2 | XML/Markdown/Structured Output Formatter | FR-012 |
-| [#80](https://github.com/io0323/prompt-engine/issues/80) | M2 | Prompt/Response Quality・Consistency・Determinism評価Rule | FR-014 |
-| [#81](https://github.com/io0323/prompt-engine/issues/81) | M2 | バンドルのImport/Export | FR-019 |
-| [#82](https://github.com/io0323/prompt-engine/issues/82) | M2 | Plugin Manager（実行時登録・再起動不要） | FR-024 / NFR-004 |
-| [#84](https://github.com/io0323/prompt-engine/issues/84) | M2 | Prompt検索を全文検索に対応させる | FR-017 |
-| [#85](https://github.com/io0323/prompt-engine/issues/85) | M2 | 監査ログの追記専用性をDB層で強制し、保持期間設定を実装する | NFR-006 |
+| [#78](https://github.com/io0323/prompt-engine/issues/78) | M3 | Promptの複製（duplicate/clone） | FR-001 |
+| [#79](https://github.com/io0323/prompt-engine/issues/79) | M3 | XML/Markdown/Structured Output Formatter | FR-012 |
+| [#80](https://github.com/io0323/prompt-engine/issues/80) | M3 | Prompt/Response Quality・Consistency・Determinism評価Rule（`EvaluationRule`拡張点として） | FR-014 |
+| [#81](https://github.com/io0323/prompt-engine/issues/81) | M3 | バンドルのImport/Export | FR-019 |
+| [#82](https://github.com/io0323/prompt-engine/issues/82) | M3 | Plugin Manager（実行時登録・再起動不要） | FR-024 / NFR-004 |
+| [#84](https://github.com/io0323/prompt-engine/issues/84) | M3 | Prompt検索を全文検索に対応させる | FR-017 |
 | [#86](https://github.com/io0323/prompt-engine/issues/86) | M1完了後 | interface/bootstrapモジュールをカバレッジ集約とゲートの対象にする | — |
+| [#107](https://github.com/io0323/prompt-engine/issues/107) | M2完了後 | NFR-002をMergeステージ単体で計測できるようにする | NFR-002 |
+| [#125](https://github.com/io0323/prompt-engine/issues/125) | M3 | 監査ログ・Event Storeの保持期間を時系列パーティショニングで実装する（Issue #85のfollow-up） | NFR-006 |
 
 （Issue #11・#35・#37・#38・#48・#50はP10a/b/cで実装済みだったがクローズ漏れていたため、
 P11の棚卸しでクローズ済み。）
@@ -372,7 +384,27 @@ git diff tests/prompt-regression/golden/   # 意図した変更かを確認し�
 | P10 | Evaluation + Audit + Monitoring | 非同期評価Subscriber、Audit追記、Metrics/Trace |
 | P11 | 仕上げ | Helm/Dockerfile、README、prompt-regression、負荷確認 |
 
-**M1の非対象**（M2で対応）: Experiment Engine（FR-015）、Search Engine本実装（FR-017、現状Fallbackのみ）、
-Review/Approvalワークフロー（FR-016、ReviewCase Aggregate、Issue #9）、実APAP接続（FR-013、Issue #31）、
-Template/Fragment Domain Event（FR-023、Issue #15）、PromptCache（FR-022/NFR-001/NFR-002、Issue #77）、
-Nested Prompt（FR-006、Issue #19）。
+**M1の非対象**（M2で対応、下記「M2、完了」参照）: Experiment Engine（FR-015）、
+Search Engine本実装（FR-017、現状Fallbackのみ）、Review/Approvalワークフロー（FR-016、
+ReviewCase Aggregate、Issue #9）、実APAP接続（FR-013、Issue #31）、Template/Fragment Domain Event
+（FR-023、Issue #15）、PromptCache（FR-022/NFR-001/NFR-002、Issue #77）、Nested Prompt
+（FR-006、Issue #19）。
+
+## 実装フェーズ一覧（M2、完了）
+
+M1と異なり厳密なPhase定義は無いまま進んだが、実質的な区切りは以下の通り。
+
+| 区切り | 内容 | 主要成果物 |
+|---|---|---|
+| M2-1 | 実APAP接続 | `plugins/execution-openai`（`OpenAiExecutionAdapter`）、契約/認証秘匿/実測テスト |
+| M2-2 | ReviewCase Aggregate | `ReviewCase.kt`、`JdbcReviewCaseRepository.kt`、レビュー系イベントの監査記録 |
+| M2-3 | Template/Fragment Domain Event + PromptCache | `TemplateDomainEvent`/`FragmentDomainEvent`（ADR-0033）、`RedisPromptCache`（Version公開イベント連動の無効化） |
+| M2-4a/4b | Experiment Engine + Benchmark/GoldenDataset | `ExperimentController`（A/B・Canary・トラフィック分割）、`BenchmarkController`/`GoldenDatasetController`（非同期ワーカー、Consistency/Determinism採点、ADR-0034/0035） |
+| M2棚卸し〜締め | 可用性・監査ガバナンスの穴を塞ぐ | RedisPromptCache縮退動作の実測検証（NFR-001）、監査ログ・Event StoreのDB層追記専用強制（NFR-006、ADR-0036、ロール分離） |
+
+**M2の非対象**（M3または「M2完了後」milestoneへ、上記「M3へ持ち越す既知の未実装・未検証」参照）:
+Prompt Quality評価Rule（FR-014、Issue #80）、全文検索本実装（FR-017、Issue #84）、
+Plugin Manager実行時登録（FR-024/NFR-004、Issue #82）、Nested Prompt（FR-006、Issue #19）、
+バンドルImport/Export（FR-019、Issue #81）、Structured Output Formatter（FR-012、Issue #79）、
+Promptの複製（FR-001、Issue #78）、NFR-002実測検証（Issue #107）、監査ログ保持期間の
+自動削除（NFR-006、Issue #125）。
