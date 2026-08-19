@@ -1,16 +1,22 @@
 services:
   postgres:
     image: postgres:16
+    # ロール分離（Issue #85、ADR-0036）: コンテナのブートストラップロール（実質superuser）は
+    # prompt_engine_migrator とする。アプリ実行時ロール prompt_engine（restricted、追記専用
+    # テーブルへはINSERT/SELECTのみ）はFlyway migration V20が冪等に作成する
+    # （application.ymlのspring.flyway.*参照）。既存のpostgres-dataボリュームを使い回すと
+    # このロール分離が反映されない（POSTGRES_USER/PASSWORDはinitdb時のみ有効なため）。
+    # 既存ボリュームがある場合は `docker compose down -v` 等でボリュームごと作り直すこと。
     environment:
       POSTGRES_DB: prompt_engine
-      POSTGRES_USER: prompt_engine
-      POSTGRES_PASSWORD: prompt_engine
+      POSTGRES_USER: prompt_engine_migrator
+      POSTGRES_PASSWORD: prompt_engine_migrator
     ports:
       - "5432:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U prompt_engine -d prompt_engine"]
+      test: ["CMD-SHELL", "pg_isready -U prompt_engine_migrator -d prompt_engine"]
       interval: 5s
       timeout: 5s
       retries: 10

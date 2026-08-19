@@ -5,8 +5,14 @@ spring:
     url: ${PE_DATASOURCE_URL:jdbc:postgresql://localhost:5432/prompt_engine}
     username: ${PE_DATASOURCE_USERNAME:prompt_engine}
     password: ${PE_DATASOURCE_PASSWORD:prompt_engine}
+  # FlywayはアプリのDataSource（restrictedなprompt_engineロール）とは別に、
+  # テーブル所有者であるprompt_engine_migratorロールで接続する（Issue #85、ADR-0036）。
+  # url未指定時はspring.datasource.urlを流用する（Spring Bootの既定挙動）ため、
+  # user/passwordのみ上書きすればよい。
   flyway:
     enabled: true
+    user: ${PE_FLYWAY_DATASOURCE_USERNAME:prompt_engine_migrator}
+    password: ${PE_FLYWAY_DATASOURCE_PASSWORD:prompt_engine_migrator}
 
 management:
   endpoints:
