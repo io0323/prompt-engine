@@ -4,6 +4,7 @@ import io.kotest.matchers.shouldBe
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import org.junit.jupiter.api.Test
 import promptengine.domain.execution.ExecutionErrorType
+import promptengine.domain.observability.CacheOperation
 import promptengine.domain.observability.Outcome
 import promptengine.domain.observability.TokenDirection
 import promptengine.domain.pipeline.PipelineMode
@@ -120,5 +121,18 @@ class MicrometerMetricsRecorderTest {
             .tag("errorType", "READ_TIMEOUT")
             .counter()
             .count() shouldBe 1.0
+    }
+
+    @Test
+    fun `incrementCacheDegradationはoperationタグ付きでcache_degradation_totalを加算する`() {
+        val registry = SimpleMeterRegistry()
+        val recorder = MicrometerMetricsRecorder(registry)
+
+        recorder.incrementCacheDegradation(CacheOperation.GET)
+        recorder.incrementCacheDegradation(CacheOperation.GET)
+        recorder.incrementCacheDegradation(CacheOperation.INVALIDATE)
+
+        registry.get("cache_degradation_total").tag("operation", "GET").counter().count() shouldBe 2.0
+        registry.get("cache_degradation_total").tag("operation", "INVALIDATE").counter().count() shouldBe 1.0
     }
 }

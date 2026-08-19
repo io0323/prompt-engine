@@ -4,6 +4,7 @@ import io.kotest.matchers.shouldBe
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import org.junit.jupiter.api.Test
 import promptengine.domain.execution.ExecutionErrorType
+import promptengine.domain.observability.CacheOperation
 import promptengine.domain.observability.Outcome
 import promptengine.domain.observability.TokenDirection
 import promptengine.domain.pipeline.PipelineMode
@@ -34,6 +35,7 @@ class MicrometerMetricsRecorderCardinalityTest {
         recorder.recordTokenUsage(TokenDirection.INPUT, 1)
         recorder.recordCost(BigDecimal.ONE)
         recorder.incrementExecutionAttempt(Outcome.FAILURE, ExecutionErrorType.RATE_LIMITED)
+        recorder.incrementCacheDegradation(CacheOperation.GET)
 
         val actualTagKeys = registry.meters.flatMap { meter -> meter.id.tags.map { it.key } }.toSet()
 
@@ -47,7 +49,7 @@ class MicrometerMetricsRecorderCardinalityTest {
 
     private companion object {
         val ALLOWED_TAG_KEYS =
-            setOf("stage", "mode", "outcome", "ruleId", "severity", "direction", "errorType")
+            setOf("stage", "mode", "outcome", "ruleId", "severity", "direction", "errorType", "operation")
         val HIGH_CARDINALITY_TAG_KEYS = setOf("promptKey", "version", "traceId")
     }
 }
