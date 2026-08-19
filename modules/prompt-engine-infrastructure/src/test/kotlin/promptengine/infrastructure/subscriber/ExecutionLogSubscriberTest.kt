@@ -98,4 +98,24 @@ class ExecutionLogSubscriberTest {
 
         shouldThrow<IllegalStateException> { subscriber(repository).handle(envelope()) }
     }
+
+    // ---- temperature（ADR-0035決定5）: renderHashから除外する分、実行記録側に残す ----
+
+    @Test
+    fun `temperatureを含むpayloadはexecution_logsの1行へそのまま写す`() {
+        val repository = RecordingExecutionLogRepository()
+
+        subscriber(repository).handle(envelope(payload = promptExecutedPayload(temperature = 0.0)))
+
+        repository.appended.single().temperature shouldBe 0.0
+    }
+
+    @Test
+    fun `temperatureを含まないpayloadはnullのまま写す`() {
+        val repository = RecordingExecutionLogRepository()
+
+        subscriber(repository).handle(envelope(payload = promptExecutedPayload(temperature = null)))
+
+        repository.appended.single().temperature shouldBe null
+    }
 }

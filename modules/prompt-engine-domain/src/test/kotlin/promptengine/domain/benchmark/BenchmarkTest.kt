@@ -21,7 +21,8 @@ class BenchmarkTest {
         targets: List<BenchmarkTarget> = listOf(target()),
         metrics: Set<BenchmarkMetricType> = setOf(BenchmarkMetricType.Accuracy),
         nRepetitions: Int = 3,
-    ) = Benchmark.create(promptKey, datasetId, targets, metrics, nRepetitions)
+        temperature: Double? = null,
+    ) = Benchmark.create(promptKey, datasetId, targets, metrics, nRepetitions, temperature)
 
     @Test
     fun `create はTargetが1件以上ならPending状態のBenchmarkを生成する`() {
@@ -61,6 +62,49 @@ class BenchmarkTest {
         val benchmark = createBenchmark(targets = listOf(target(SemVer(1, 0, 0)), target(SemVer(1, 1, 0))))
 
         benchmark.targets.size shouldBe 2
+    }
+
+    // ---- temperature（ADR-0035決定5）: Determinismを要求する場合、null/0.0以外は拒否する ----
+
+    @Test
+    fun `create はDeterminism要求時にtemperatureがnullなら許容する`() {
+        val benchmark = createBenchmark(metrics = setOf(BenchmarkMetricType.Determinism), temperature = null)
+
+        benchmark.temperature shouldBe null
+    }
+
+    @Test
+    fun `create はDeterminism要求時にtemperatureが0_0なら許容する`() {
+        val benchmark = createBenchmark(metrics = setOf(BenchmarkMetricType.Determinism), temperature = 0.0)
+
+        benchmark.temperature shouldBe 0.0
+    }
+
+    @Test
+    fun `create はDeterminism要求時にtemperatureが0_0以外ならIllegalArgumentExceptionを投げる`() {
+        shouldThrow<IllegalArgumentException> {
+            createBenchmark(metrics = setOf(BenchmarkMetricType.Determinism), temperature = 0.7)
+        }
+    }
+
+    @Test
+    fun `create はDeterminismを要求しなければ任意のtemperatureを許容する`() {
+        val benchmark = createBenchmark(metrics = setOf(BenchmarkMetricType.Accuracy), temperature = 0.7)
+
+        benchmark.temperature shouldBe 0.7
+    }
+
+    // ---- estimatedExecutionCount（ADR-0035決定5「事前コスト見積り」） ----
+
+    @Test
+    fun `estimatedExecutionCount はtargetCount times datasetSize times nRepetitions`() {
+        val benchmark =
+            createBenchmark(
+                targets = listOf(target(SemVer(1, 0, 0)), target(SemVer(1, 1, 0))),
+                nRepetitions = 3,
+            )
+
+        benchmark.estimatedExecutionCount(datasetSize = 5) shouldBe 2 * 5 * 3
     }
 
     @Test
@@ -143,6 +187,7 @@ class BenchmarkTest {
                 metrics = setOf(BenchmarkMetricType.Accuracy, BenchmarkMetricType.Consistency),
                 nRepetitions = 5,
                 status = BenchmarkStatus.Running,
+                temperature = 0.3,
             )
 
         @OptIn(promptengine.domain.shared.PersistenceApi::class)
@@ -150,6 +195,7 @@ class BenchmarkTest {
 
         benchmark.benchmarkId shouldBe memento.benchmarkId
         benchmark.status shouldBe BenchmarkStatus.Running
+        benchmark.temperature shouldBe 0.3
         benchmark.metrics shouldBe memento.metrics
         benchmark.nRepetitions shouldBe 5
     }

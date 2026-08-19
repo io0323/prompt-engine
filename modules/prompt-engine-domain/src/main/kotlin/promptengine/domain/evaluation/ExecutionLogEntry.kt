@@ -36,6 +36,7 @@ data class ExecutionLogEntry(
     val status: ExecutionStatus,
     val executedAt: Instant,
     val variantId: UUID? = null,
+    val temperature: Double? = null,
 ) {
     init {
         require(promptKey.isNotBlank()) { "promptKey must not be blank" }

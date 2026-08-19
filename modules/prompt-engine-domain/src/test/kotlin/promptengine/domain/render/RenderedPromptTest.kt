@@ -55,4 +55,31 @@ class RenderedPromptTest {
 
         prompt.messages shouldBe listOf(RenderedMessage(MessageRole.USER, "hello"))
     }
+
+    @Test
+    fun `modelHintsを省略するとnullになる`() {
+        val prompt =
+            RenderedPrompt(
+                messages = listOf(RenderedMessage(MessageRole.USER, "hello")),
+                outputFormat = OutputFormat.TEXT,
+                tokenEstimate = TokenCount(2),
+                renderHash = "abc123",
+            )
+
+        prompt.modelHints shouldBe null
+    }
+
+    @Test
+    fun `modelHintsを明示すると保持する`() {
+        val prompt =
+            RenderedPrompt(
+                messages = listOf(RenderedMessage(MessageRole.USER, "hello")),
+                outputFormat = OutputFormat.TEXT,
+                tokenEstimate = TokenCount(2),
+                renderHash = "abc123",
+                modelHints = ModelHints(temperature = 0.7),
+            )
+
+        prompt.modelHints shouldBe ModelHints(temperature = 0.7)
+    }
 }

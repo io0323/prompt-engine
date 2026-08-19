@@ -10,6 +10,7 @@ import promptengine.domain.parsing.OutputFormatter
 import promptengine.domain.parsing.OutputSchema
 import promptengine.domain.parsing.ParsedOutput
 import promptengine.domain.render.MessageRole
+import promptengine.domain.render.ModelHints
 import promptengine.domain.render.OutputFormat
 import promptengine.domain.render.RenderFailedException
 import promptengine.domain.shared.SensitiveValue
@@ -354,6 +355,25 @@ class RenderEngineImplTest {
             ).renderHash
 
         withInstruction shouldNotBe withoutInstruction
+    }
+
+    @Test
+    fun `modelHintsは結果のRenderedPromptにそのまま乗るがrenderHashには影響しない`() {
+        val compiled = compiledPrompt(TextNode("hi"))
+
+        val withoutHints = engine.render(compiled, BindingSet.empty(), ContextBindingSet.empty(), OutputFormat.TEXT)
+        val withHints =
+            engine.render(
+                compiled,
+                BindingSet.empty(),
+                ContextBindingSet.empty(),
+                OutputFormat.TEXT,
+                modelHints = ModelHints(temperature = 0.5),
+            )
+
+        withHints.modelHints shouldBe ModelHints(temperature = 0.5)
+        withoutHints.modelHints shouldBe null
+        withHints.renderHash shouldBe withoutHints.renderHash
     }
 
     @Test

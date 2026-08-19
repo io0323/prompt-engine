@@ -333,7 +333,7 @@ Resolver Chain: `Explicit Parameter → Static → User → Workflow → Environ
 
 - Template EngineはPlugin（既定: PE標準エンジン `pe-tmpl/1`）。
 - 決定性: 同一（AST, Bindings, ModelProfile, EngineVersion）→ バイト同一出力。乱数・現在時刻はContext経由でのみ注入可。
-- 出力は `RenderedPrompt { messages: [{role, content}], outputFormat, tokenEstimate, renderHash }`。roleは system/user/assistant/tool の抽象role（`BlockNode`が持つDSL上のrole、system/user/assistantの3値とは別レイヤーの型。Provider方言はAPAPが吸収）。`modelHints`はM1では持たない（APAP連携が具体化するP7以降で追加を検討する、ADR-0013決定6）。
+- 出力は `RenderedPrompt { messages: [{role, content}], outputFormat, tokenEstimate, renderHash, modelHints }`。roleは system/user/assistant/tool の抽象role（`BlockNode`が持つDSL上のrole、system/user/assistantの3値とは別レイヤーの型。Provider方言はAPAPが吸収）。`modelHints`はM1では持たなかったが（APAP連携が具体化するP7以降で追加を検討するとしていた、ADR-0013決定6）、M2-4b（Benchmark、ADR-0035決定5）でDeterminism計測に`temperature`の実行時受け渡しが必要になったため追加した：`ModelHints { temperature: Double? }`。`renderHash`の算出には一切関与しない（Render出力バイトに影響しない実行時パラメータのため）。実行時に実際に使われた`temperature`は`execution_logs.temperature`/`PromptExecuted`のpayloadへ記録する（§12・§14参照）。
   `renderHash`の正規化規則・`BlockNode`→`messages`変換規則・非決定性要因の構造的排除方針はADR-0013を参照。
   `OutputFormatter.instruction(outputSchema)`によるフォーマット指示文の`messages`への注入経路
   （既存system messageへの追記／無ければ新規system message追加、その後renderHash算出）はP7で
@@ -1457,6 +1457,7 @@ entity benchmarks {
   * dataset_id : UUID <<FK>>
   * n_repetitions : INT
   * status : VARCHAR  ' Pending/Running/Cancelling/Completed/Cancelled/Failed
+  temperature : DOUBLE PRECISION  ' 未指定はプロバイダ既定値。Determinism要求時はnull/0.0のみ許可（ADR-0035フェーズ(c)）
   * created_at
   started_at / completed_at / cancelled_at : TIMESTAMPTZ
 }
@@ -1506,6 +1507,7 @@ entity execution_logs {
   * input_tokens / output_tokens : INT
   * cost : DECIMAL
   * status : VARCHAR
+  temperature : DOUBLE PRECISION  ' M2-4bで追加（V19、ADR-0035）。RenderedPrompt.modelHints由来、renderHashには含まない実行時パラメータ
   * executed_at
   * event_id : UUID <<UNIQUE>>  ' 購読側冪等キー（P10b/V13、ADR-0025決定8）
 }
@@ -1995,7 +1997,7 @@ Template/Fragmentの`validation`とはマージせず、Prompt自身の宣言の
 | 12 | Experiment Strategy | TrafficSplitStrategy | 重み付ランダム+sticky | 多腕バンディット |
 | 13 | Tokenizer | TokenizerPlugin | 汎用近似Tokenizer | モデル別正確Tokenizer |
 | 14 | Event Bus | EventBusAdapter | 標準Broker Adapter | 他Broker実装 |
-| 15 | Benchmark Scoring Rule | BenchmarkScoringRule | 正規化完全一致 | 構造的一致（JSONキー単位）、意味的類似（埋め込み距離） |
+| 15 | Benchmark Scoring Rule | BenchmarkScoringRule | Accuracy/Consistency=正規化完全一致、Determinism=バイト完全一致（ADR-0035） | 構造的一致（JSONキー単位）、意味的類似（埋め込み距離） |
 
 Plugin規約: (1) Domain型のみに依存（Infrastructure直接参照禁止）、(2) ステートレス推奨（状態はPluginConfig/外部ストア）、(3) 実行時間上限（既定: Rule系100ms/呼出、超過はタイムアウト打切り+WARNING）、(4) 宣言的権限（Secretアクセス等はmanifestで要求し管理者承認）。
 

@@ -41,6 +41,7 @@ class RenderingStage(private val renderEngine: RenderEngine) : PipelineStage {
                 contextBindings,
                 outputFormat,
                 context.request.outputSchema,
+                context.request.modelHints,
             )
         return context.copy(rendered = rendered)
     }

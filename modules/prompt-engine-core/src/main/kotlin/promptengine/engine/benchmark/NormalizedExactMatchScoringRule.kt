@@ -3,13 +3,11 @@ package promptengine.engine.benchmark
 import promptengine.domain.benchmark.BenchmarkScoringRule
 import java.math.BigDecimal
 import java.math.RoundingMode
-import java.text.Normalizer
-import java.util.Locale
 
 /**
  * Accuracyの既定実装（正規化完全一致、設計書§16-15、ADR-0035決定4）。
  *
- * 正規化規則（[normalize]、この順で適用する）:
+ * 正規化規則（[normalizeForComparison]、この順で適用する。[ConsistencyScoringRule]と共有する）:
  * 1. Unicode正規化形**NFC**を適用する（合成済み文字と分解済み文字の表記ゆれを吸収する。
  *    [promptengine.engine.render.RenderHashCalculator]が採用しているのと同じ形で、
  *    このリポジトリ内での正規化方針を統一する）。
@@ -35,13 +33,10 @@ class NormalizedExactMatchScoringRule : BenchmarkScoringRule {
         expectedOutput: String?,
     ): BigDecimal? {
         if (expectedOutput == null || actualOutputs.isEmpty()) return null
-        val normalizedExpected = normalize(expectedOutput)
-        val matchCount = actualOutputs.count { normalize(it) == normalizedExpected }
+        val normalizedExpected = normalizeForComparison(expectedOutput)
+        val matchCount = actualOutputs.count { normalizeForComparison(it) == normalizedExpected }
         return BigDecimal(matchCount).divide(BigDecimal(actualOutputs.size), SCALE, RoundingMode.HALF_UP)
     }
-
-    private fun normalize(text: String): String =
-        Normalizer.normalize(text, Normalizer.Form.NFC).trim().lowercase(Locale.ROOT)
 
     companion object {
         const val METRIC_TYPE = "Accuracy"

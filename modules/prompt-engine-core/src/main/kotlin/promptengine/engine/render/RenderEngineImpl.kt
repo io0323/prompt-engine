@@ -5,6 +5,7 @@ import promptengine.domain.context.ContextBindingSet
 import promptengine.domain.parsing.OutputFormatter
 import promptengine.domain.parsing.OutputSchema
 import promptengine.domain.render.MessageRole
+import promptengine.domain.render.ModelHints
 import promptengine.domain.render.OutputFormat
 import promptengine.domain.render.RenderEngine
 import promptengine.domain.render.RenderFailedException
@@ -28,12 +29,14 @@ class RenderEngineImpl(
     private val tokenizerPlugin: TokenizerPlugin,
     private val outputFormatters: Map<OutputFormat, OutputFormatter>,
 ) : RenderEngine {
+    @Suppress("LongParameterList")
     override fun render(
         compiled: CompiledPrompt,
         variableBindings: BindingSet,
         contextBindings: ContextBindingSet,
         outputFormat: OutputFormat,
         outputSchema: OutputSchema?,
+        modelHints: ModelHints?,
     ): RenderedPrompt {
         val expanded = templateEngine.expand(compiled.body, variableBindings, contextBindings)
 
@@ -42,7 +45,13 @@ class RenderEngineImpl(
                 ?: throw RenderFailedException("no OutputFormatter registered for outputFormat=$outputFormat")
         val messages = injectInstruction(expanded, formatter.instruction(outputSchema))
 
-        return RenderHashCalculator.build(messages, outputFormat, templateEngine.id(), tokenizerPlugin)
+        return RenderHashCalculator.build(
+            messages,
+            outputFormat,
+            templateEngine.id(),
+            tokenizerPlugin,
+            modelHints = modelHints,
+        )
     }
 
     /**

@@ -1,5 +1,6 @@
 package promptengine.engine.render
 
+import promptengine.domain.render.ModelHints
 import promptengine.domain.render.OutputFormat
 import promptengine.domain.render.RenderedMessage
 import promptengine.domain.render.RenderedPrompt
@@ -37,18 +38,24 @@ internal object RenderHashCalculator {
     /**
      * [messages]（未正規化でよい）を正規化した上で、[tokenizerPlugin]による`tokenEstimate`と
      * それに一致する`renderHash`を算出し、[RenderedPrompt]として返す。
+     *
+     * [modelHints]は結果の[RenderedPrompt.modelHints]へそのまま渡すのみで、[compute]の
+     * ハッシュ入力には含めない（ADR-0035決定5。`temperature`はRender出力バイトに影響しない
+     * 実行時パラメータのため）。
      */
+    @Suppress("LongParameterList")
     fun build(
         messages: List<RenderedMessage>,
         outputFormat: OutputFormat,
         engineId: String,
         tokenizerPlugin: TokenizerPlugin,
         engineVersion: String = ENGINE_VERSION,
+        modelHints: ModelHints? = null,
     ): RenderedPrompt {
         val normalized = messages.map { RenderedMessage(it.role, normalize(it.content)) }
         val tokenEstimate = tokenizerPlugin.estimate(normalized.joinToString(separator = "") { it.content })
         val renderHash = compute(normalized, outputFormat, engineId, engineVersion)
-        return RenderedPrompt(normalized, outputFormat, tokenEstimate, renderHash)
+        return RenderedPrompt(normalized, outputFormat, tokenEstimate, renderHash, modelHints)
     }
 
     /**

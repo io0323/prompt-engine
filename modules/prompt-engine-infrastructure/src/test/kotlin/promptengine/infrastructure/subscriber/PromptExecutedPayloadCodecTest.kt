@@ -144,4 +144,27 @@ class PromptExecutedPayloadCodecTest {
         codec.decode(envelope(payload = promptExecutedPayload(status = "FAILED"))).status shouldBe
             ExecutionStatus.FAILED
     }
+
+    // ---- temperature（ADR-0035決定5、M2-4bフェーズ(c)） ----
+
+    @Test
+    fun `temperatureを含むpayloadは値を復元する`() {
+        val summary = codec.decode(envelope(payload = promptExecutedPayload(temperature = 0.7)))
+
+        summary.temperature shouldBe 0.7
+    }
+
+    @Test
+    fun `temperatureが0_0でも復元する`() {
+        val summary = codec.decode(envelope(payload = promptExecutedPayload(temperature = 0.0)))
+
+        summary.temperature shouldBe 0.0
+    }
+
+    @Test
+    fun `temperatureを含まない既存イベントのpayloadでも壊れずnullを返す`() {
+        val summary = codec.decode(envelope(payload = promptExecutedPayload(temperature = null)))
+
+        summary.temperature shouldBe null
+    }
 }

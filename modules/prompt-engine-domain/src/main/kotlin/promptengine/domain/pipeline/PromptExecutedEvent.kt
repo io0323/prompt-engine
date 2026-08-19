@@ -48,6 +48,11 @@ data class PromptExecutedEvent(
      * [variantId]はM2-4a（ADR-0034決定4）で追加。Experiment経由の実行（`PipelineContext.
      * experimentVariantId`が非null）のみ非NULL。通常経路の実行は`null`のまま
      * （`evaluation_records.variant_id`/`execution_logs.variant_id`の由来）。
+     *
+     * [temperature]はM2-4bフェーズ(c)で追加（ADR-0035決定5）。`RenderedPrompt.modelHints`
+     * （`renderHash`には含まない実行時パラメータ）が非nullの場合のみ非NULL。`renderHash`から
+     * 除外している以上、実行記録側（本イベント）に残さないと、その実行が実際にどの
+     * `temperature`で行われたかを事後検証できなくなる（Benchmark Determinismの検証に必須）。
      */
     data class Payload(
         val promptKey: String,
@@ -59,5 +64,6 @@ data class PromptExecutedEvent(
         val costPerToken: BigDecimal,
         val status: ExecutionStatus,
         val variantId: UUID? = null,
+        val temperature: Double? = null,
     )
 }

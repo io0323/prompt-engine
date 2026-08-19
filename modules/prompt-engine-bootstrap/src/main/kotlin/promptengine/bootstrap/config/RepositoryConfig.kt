@@ -29,6 +29,8 @@ import promptengine.infrastructure.persistence.JdbcTemplateRepository
 /**
  * Repository系のDI配線（P9c、[TransactionConfig]・[AuditEventConfig]のKDoc参照。
  * detekt TooManyFunctions閾値対策で[PersistenceConfig.kt][promptengine.bootstrap.config]を分割）。
+ * Benchmark/GoldenDataset関連（ADR-0035）は[BenchmarkRepositoryConfig]に分離した
+ * （同じくTooManyFunctions対策）。
  */
 @Configuration
 class RepositoryConfig {

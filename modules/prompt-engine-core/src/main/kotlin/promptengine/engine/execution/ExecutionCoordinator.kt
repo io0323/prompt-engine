@@ -136,7 +136,13 @@ class ExecutionCoordinator(
                 RenderedMessage(MessageRole.ASSISTANT, failedResponse.content.expose()) +
                 RenderedMessage(MessageRole.USER, repairInstruction)
 
-        return RenderHashCalculator.build(messages, original.outputFormat, REPAIR_ENGINE_ID, tokenizerPlugin)
+        return RenderHashCalculator.build(
+            messages,
+            original.outputFormat,
+            REPAIR_ENGINE_ID,
+            tokenizerPlugin,
+            modelHints = original.modelHints,
+        )
     }
 
     companion object {

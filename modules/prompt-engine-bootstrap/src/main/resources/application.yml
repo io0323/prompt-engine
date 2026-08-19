@@ -85,6 +85,14 @@ promptengine:
   cache:
     ttl-seconds: ${PE_CACHE_TTL_SECONDS:30}
     redis-uri: ${PE_CACHE_REDIS_URI:redis://localhost:6379}
+  # Benchmark実行ワーカーのポーリング設定（productionプロファイルのみ有効、ADR-0035決定3）。
+  # poll-interval-msはOutboxRelayより長め（項目1件の実行が数秒〜数十秒かかるため）。
+  benchmark:
+    worker:
+      poll-interval-ms: ${PE_BENCHMARK_WORKER_POLL_INTERVAL_MS:2000}
+      batch-size: ${PE_BENCHMARK_WORKER_BATCH_SIZE:20}
+      claim-timeout-seconds: ${PE_BENCHMARK_WORKER_CLAIM_TIMEOUT_SECONDS:60}
+      execution-timeout-ms: ${PE_BENCHMARK_WORKER_EXECUTION_TIMEOUT_MS:30000}
 
 springdoc:
   api-docs:

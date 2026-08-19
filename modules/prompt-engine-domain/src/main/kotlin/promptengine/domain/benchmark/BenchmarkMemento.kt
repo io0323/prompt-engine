@@ -14,4 +14,5 @@ data class BenchmarkMemento(
     val metrics: Set<BenchmarkMetricType>,
     val nRepetitions: Int,
     val status: BenchmarkStatus,
+    val temperature: Double?,
 )

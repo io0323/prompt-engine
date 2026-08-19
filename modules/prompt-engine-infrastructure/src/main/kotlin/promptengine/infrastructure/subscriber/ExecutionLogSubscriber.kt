@@ -54,6 +54,7 @@ class ExecutionLogSubscriber(
                 status = execution.status,
                 executedAt = execution.occurredAt,
                 variantId = execution.variantId,
+                temperature = execution.temperature,
             ),
         )
     }

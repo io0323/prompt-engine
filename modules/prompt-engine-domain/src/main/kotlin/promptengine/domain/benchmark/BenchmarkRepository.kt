@@ -12,5 +12,11 @@ interface BenchmarkRepository {
 
     fun findByPromptKey(promptKey: PromptKey): List<Benchmark>
 
+    /**
+     * 指定[status]のBenchmarkを検索する（フェーズ(c)の`@Scheduled`ワーカーが
+     * `Pending`/`Cancelling`をポーリングするために使う、ADR-0035決定3）。
+     */
+    fun findByStatus(status: BenchmarkStatus): List<Benchmark>
+
     fun save(benchmark: Benchmark): Benchmark
 }

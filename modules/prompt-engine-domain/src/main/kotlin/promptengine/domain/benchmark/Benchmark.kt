@@ -13,7 +13,10 @@ import java.util.UUID
  * オフライン評価であるBenchmarkには適用できない。既存の`Experiment`/`Variant`/
  * `TrafficPolicy`・`experiments`/`variants`テーブルには一切触れない）。
  *
- * 不変条件（設計書§4.3）: Target 1件以上（[create]で検証）。
+ * 不変条件（設計書§4.3）: Target 1件以上（[create]で検証）。Determinismを要求する場合、
+ * [temperature]は`null`（既定値0扱い）または`0.0`のいずれかでなければならない
+ * （ADR-0035決定5。ワーカーはDeterminism計測のTarget実行を強制的に`temperature=0`で行うため、
+ * 利用者が別の非0値を明示した場合は曖昧な結果を返さずここで拒否する）。
  *
  * プライマリコンストラクタは`internal`。新規作成は[create]、永続化層からの復元は
  * [restore]を使うこと（`Experiment`/`GoldenDataset`と同じ規約）。
@@ -27,24 +30,36 @@ data class Benchmark internal constructor(
     val metrics: Set<BenchmarkMetricType>,
     val nRepetitions: Int,
     val status: BenchmarkStatus,
+    val temperature: Double?,
 ) {
+    /**
+     * データセット件数から実行回数を見積もる（ADR-0035決定5「事前コスト見積り」、
+     * `datasetSize × targetCount × n`）。専用APIは設けず、`POST .../benchmarks`のレスポンス
+     * （フェーズ(d)）がこの値をそのまま含める。
+     */
+    fun estimatedExecutionCount(datasetSize: Int): Int = targets.size * datasetSize * nRepetitions
+
     companion object {
         private const val MIN_TARGETS = 1
         private const val MIN_REPETITIONS = 1
+        private const val DETERMINISTIC_TEMPERATURE = 0.0
 
         /** Benchmarkを新規作成する（`Pending`状態）。 */
+        @Suppress("LongParameterList")
         fun create(
             promptKey: PromptKey,
             datasetId: UUID,
             targets: List<BenchmarkTarget>,
             metrics: Set<BenchmarkMetricType>,
             nRepetitions: Int,
+            temperature: Double? = null,
         ): Benchmark {
             requireValidTargets(targets)
             require(metrics.isNotEmpty()) { "Benchmark requires at least 1 metric" }
             require(nRepetitions >= MIN_REPETITIONS) {
                 "nRepetitions must be at least $MIN_REPETITIONS: was $nRepetitions"
             }
+            requireCompatibleTemperature(metrics, temperature)
             return Benchmark(
                 benchmarkId = UUID.randomUUID(),
                 promptKey = promptKey,
@@ -53,6 +68,7 @@ data class Benchmark internal constructor(
                 metrics = metrics,
                 nRepetitions = nRepetitions,
                 status = BenchmarkStatus.Pending,
+                temperature = temperature,
             )
         }
 
@@ -62,6 +78,19 @@ data class Benchmark internal constructor(
             }
             val semVers = targets.map { it.promptVersionSemVer }
             require(semVers.size == semVers.toSet().size) { "Target versions must be unique: $semVers" }
+        }
+
+        private fun requireCompatibleTemperature(
+            metrics: Set<BenchmarkMetricType>,
+            temperature: Double?,
+        ) {
+            require(
+                BenchmarkMetricType.Determinism !in metrics ||
+                    temperature == null ||
+                    temperature == DETERMINISTIC_TEMPERATURE,
+            ) {
+                "Determinism forces temperature=$DETERMINISTIC_TEMPERATURE: was $temperature"
+            }
         }
 
         /** 永続化層からの復元専用（`Experiment.restore`と同じパターン、ADR-0034）。 */
@@ -75,6 +104,7 @@ data class Benchmark internal constructor(
                 memento.metrics,
                 memento.nRepetitions,
                 memento.status,
+                memento.temperature,
             )
     }
 

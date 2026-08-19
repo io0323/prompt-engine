@@ -23,13 +23,16 @@ interface RenderEngine {
      *
      * 同一の([compiled], [variableBindings], [contextBindings], [outputFormat], [outputSchema],
      * EngineVersion)からは常にバイト同一の[RenderedPrompt.renderHash]を返す
-     * （設計書§2.9、ADR-0013決定1）。
+     * （設計書§2.9、ADR-0013決定1）。[modelHints]は結果の[RenderedPrompt.modelHints]へ
+     * そのまま渡るのみで、renderHashの算出には一切関与しない（ADR-0035決定5）。
      */
+    @Suppress("LongParameterList")
     fun render(
         compiled: CompiledPrompt,
         variableBindings: BindingSet,
         contextBindings: ContextBindingSet,
         outputFormat: OutputFormat,
         outputSchema: OutputSchema? = null,
+        modelHints: ModelHints? = null,
     ): RenderedPrompt
 }

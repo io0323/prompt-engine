@@ -59,11 +59,13 @@ internal fun promptExecutedPayload(
     costPerToken: String = "0.0004",
     retryCount: Int = 0,
     status: String = "SUCCESS",
+    temperature: Double? = null,
 ): String =
     """
     {"promptKey":"$promptKey","semVer":{"major":$major,"minor":$minor,"patch":$patch},
      "inputTokens":$inputTokens,"outputTokens":$outputTokens,"retryCount":$retryCount,
-     "latencyMs":$latencyMs,"costPerToken":$costPerToken,"status":"$status"}
+     "latencyMs":$latencyMs,"costPerToken":$costPerToken,"status":"$status"
+     ${temperature?.let { ""","temperature":$it""" } ?: ""}}
     """.trimIndent()
 
 /** [CacheInvalidationSubscriber]向け: `PromptPublished`等の`payload`（`promptKey`+`semVer`）。 */
