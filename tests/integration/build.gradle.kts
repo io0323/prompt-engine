@@ -164,6 +164,9 @@ dependencies {
     // 使うため（ADR-0033）。
     "integrationTestImplementation"(project(":modules:prompt-engine-core"))
     "integrationTestImplementation"(project(":modules:prompt-engine-application"))
+    // ADR-0035フェーズ(c): BenchmarkWorker統合テストが実行アダプタ境界（temperature受け渡し・
+    // Cyclingシナリオによる二重実行検証）に実際のFakeExecutionAdapterを使うため。
+    "integrationTestImplementation"(project(":plugins:execution-fake"))
 
     "integrationTestImplementation"(
         platform("org.springframework.boot:spring-boot-dependencies:${libs.versions.spring.boot.get()}"),
