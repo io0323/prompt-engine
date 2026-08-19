@@ -75,6 +75,12 @@ class ProductionProfileGuardTest {
                     "--spring.datasource.url=${postgres.jdbcUrl}",
                     "--spring.datasource.username=${postgres.username}",
                     "--spring.datasource.password=${postgres.password}",
+                    // このコンテナはロール分離（Issue #85、ADR-0036）を再現しない単一ロールの
+                    // Testcontainersインスタンスのため、application.ymlのspring.flyway.user/password
+                    // 既定値（prompt_engine_migrator）を明示的に上書きする。
+                    "--spring.flyway.url=${postgres.jdbcUrl}",
+                    "--spring.flyway.user=${postgres.username}",
+                    "--spring.flyway.password=${postgres.password}",
                     "--promptengine.cache.redis-uri=redis://${redis.host}:${redis.getMappedPort(REDIS_PORT)}",
                 ).close()
             }
@@ -106,6 +112,12 @@ class ProductionProfileGuardTest {
                     "--spring.datasource.url=${postgres.jdbcUrl}",
                     "--spring.datasource.username=${postgres.username}",
                     "--spring.datasource.password=${postgres.password}",
+                    // このコンテナはロール分離（Issue #85、ADR-0036）を再現しない単一ロールの
+                    // Testcontainersインスタンスのため、application.ymlのspring.flyway.user/password
+                    // 既定値（prompt_engine_migrator）を明示的に上書きする。
+                    "--spring.flyway.url=${postgres.jdbcUrl}",
+                    "--spring.flyway.user=${postgres.username}",
+                    "--spring.flyway.password=${postgres.password}",
                     "--promptengine.cache.redis-uri=redis://${redis.host}:${redis.getMappedPort(REDIS_PORT)}",
                     "--promptengine.execution.provider=${ExecutionConfig.APAP_PROVIDER}",
                 ).close()
