@@ -222,6 +222,47 @@ Redisへ読み書きできることを検証する統合テストを`tests/integ
 0件ガード（`verifyIntegrationTestExecuted`、CI実行件数が0件では静かに成功と誤認しない仕組み）
 の対象に本テストが含まれることを確認する。
 
+### e. get/put/invalidateByPromptの障害時縮退（M2棚卸しで追加、2026-08-19）
+
+**発覚した問題**: `RedisPromptCache`の初期実装は`get`/`put`/`invalidateByPrompt`のいずれも
+例外処理を持たず、Redisへの到達不能・タイムアウトがそのまま`MergeStage`（延いては
+`PipelineOrchestrator`）まで伝播していた。結果、NFR-001（「Read系はキャッシュで縮退継続」）
+の主張とは裏腹に、**Redis障害時はPrompt取得そのものが失敗する**状態だった。M2-3以前は
+Redisへの依存が無くDBのみでPrompt取得が完結していたため、これはキャッシュ導入によって
+可用性を退行させた回帰であり、キャッシュ障害を想定したテスト（Redis起動状態のみを前提とする
+既存の統合テスト）がこの回帰を検出できていなかった。
+
+**決定**: `PromptCache`はキャッシュがバックエンド障害時に「無くても動く」ことを実装レベルで
+保証する。
+
+- `get`: 例外はキャッシュミス（`null`）として扱う。呼出元（`MergeStage`）は「キーが無い」
+  場合と「バックエンド障害」の場合を区別しない（区別してもコンパイルへのフォールバックという
+  対応は同じであるため、区別する意味がない）。
+- `put`: 例外はログ記録のうえで無視する。書き込みに失敗しても、次回以降のリクエストは
+  都度コンパイルされるだけで正しい結果自体は返せる。書き込み失敗を理由にリクエストを
+  失敗させる必要が無い。
+- `invalidateByPrompt`: 例外は`get`/`put`と異なり「古い内容が生き残り続ける」という
+  質的に異なる損害を伴うため、ログ（ERROR、`get`/`put`のWARNより高い重大度）と
+  メトリクス（[MetricsRecorder.incrementCacheDegradation]）の両方に必ず記録する。
+
+**TTLとの関係**: `invalidateByPrompt`が失敗しても、`put`時に設定した`ttl`（決定5・b、既定30秒）
+はバックエンド障害の有無と無関係に効き続ける。したがって**`ttl`が、無効化に失敗した場合に
+古い内容が生き残れる最終的な上限として機能する**（無効化が正常に届いても届かなくても、
+エントリは遅くともTTL経過時点で消える）。この関係は`put`の`ttl`を無効化の成否と無関係に
+一定値として設定し続ける実装に限り成立する。`RedisPromptCache`はこの前提を満たす
+（`ttl`は呼出元の`MergeStage`が固定値として渡すのみで、`invalidateByPrompt`の成否を
+参照する分岐を持たない）。
+
+**検知**: `MetricsRecorder.incrementCacheDegradation(operation: CacheOperation)`
+（`GET`/`PUT`/`INVALIDATE`の3値）を新設し、`cache_degradation_total`（`operation`タグ、
+既存のラベル許容リストに追加）として計装する。運用上、この値が0でない状態が続く場合は
+Redis側の障害を疑う監視対象になる。
+
+**検証**: `RedisPromptCacheDegradationIntegrationTest`（`tests/integration`）がTestcontainersの
+Redisコンテナを実際に停止し、(a) `MergeStage`経由のPrompt取得が例外を投げず成功すること、
+(b) `get`/`put`/`invalidateByPrompt`のいずれも例外を投げず`cache_degradation_total`を
+記録することを固定する。
+
 ## 影響範囲
 
 - `prompt-engine-domain`: `promptengine.domain.template.TemplateDomainEvent`（4イベント）・
