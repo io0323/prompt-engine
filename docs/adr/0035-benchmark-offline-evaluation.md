@@ -300,11 +300,61 @@ CREATE TABLE benchmark_item_results (
 ## 影響
 
 - `docs/PromptEngine_設計書.md` §12（`experiments.type`コメント修正、新規ER追加）・§16
-  （拡張点表への行追加）を本ADRと同時に更新する。§2.9（`modelHints`の記述）・§13.1
-  （エンドポイント表）はフェーズ(c)/(d)で該当コードと同時に更新する。
+  （拡張点表への行追加）を本ADRと同時に更新する。§2.9（`modelHints`の記述、フェーズ(c)で
+  更新済み）・§13.1（エンドポイント表）はフェーズ(c)/(d)で該当コードと同時に更新する。
 - `ExperimentType` enumへの変更は無し（`BENCHMARK`を追加しない）。
 - 既存の`EvaluationRule`/`EvaluationEngine`/`EvaluationStage`/`evaluation_records`テーブルへの
   変更は無し。Benchmarkの結果は`benchmark_item_results`に独立して記録する。
+
+## フェーズ(c)実装時の追記
+
+決定3・決定5で「後で確定する」としていた事項を、実装時点で以下の通り確定した
+（`docs/prompts/m2-4b-c.md`）。
+
+- **`benchmark_item_results`**: テーブル定義節のDDLをそのまま`V18__benchmark_item_results.sql`
+  として作成した（変更無し）。
+- **`temperature`の実行記録**: 「`execution_logs`または`PromptExecuted`のpayload」の
+  いずれかではなく**両方**とした。`PromptExecutedEvent.Payload.temperature`
+  （`RenderedPrompt.modelHints?.temperature`から`EvaluationStage`が転記、`variantId`と
+  同じ経路）→`PromptExecutionSummary.temperature`（`PromptExecutedPayloadCodec`が復元）→
+  `ExecutionLogEntry.temperature`→`execution_logs.temperature`列
+  （`V19__temperature.sql`、nullable）まで一貫して伝搬させる。イベントpayloadだけに
+  留めず`execution_logs`列にも持たせるのは、`variantId`が既に同じ二重保持（イベント
+  payload＋`execution_logs.variant_id`列）をしており、Benchmark結果の事後検証
+  （どの実行がどの`temperature`だったか）に`execution_logs`への直接SQLクエリが必要になる
+  ため。
+- **`benchmarks.temperature`**: ADR本文のテーブル定義節には無かった列を`V19__temperature.sql`で
+  追加した（nullable、既定`null`＝プロバイダ既定値）。Benchmark作成時に利用者が指定する
+  生成パラメータで、Determinism要求時はワーカーが強制的に`temperature=0`で実行する
+  （`Benchmark.create`が、Determinism要求時に`null`/`0.0`以外の値を渡すとバリデーション
+  エラーとする）。
+- **`RenderedPrompt.modelHints`**: `ModelHints(val temperature: Double? = null)`
+  （`promptengine.domain.render`）。`PipelineRequest.modelHints`→
+  `RenderingStage`→`RenderEngine.render(..., modelHints)`→`RenderHashCalculator.build(...,
+  modelHints)`の経路でそのまま渡すのみで、`renderHash`の算出（`compute`）には一切
+  関与しない。`ExecutionCoordinator`の解析修復ラウンド（`buildRepairPrompt`）も
+  元の`modelHints`を引き継ぐ（実装当初この伝搬が漏れていたため、修復ラウンドの
+  再実行で意図しない`temperature`になる回帰を防ぐテストを追加した）。
+- **`PipelineRunner`（新設のdomain Interface）**: Benchmarkワーカー
+  （`prompt-engine-infrastructure`）がPipeline実行を呼ぶ必要があるが、
+  `prompt-engine-infrastructure`は`prompt-engine-domain`のみに依存し
+  `prompt-engine-application`（`PipelineOrchestrator`の所属先）に依存できない
+  （CLAUDE.mdモジュール依存規約）。`promptengine.domain.pipeline.PipelineRunner`
+  （`run(request, mode, traceId): PipelineContext`）を新設し、`PipelineOrchestrator`が
+  これを実装することで依存を逆転させた。ADR-0035策定時点では非同期ワーカーの実装場所
+  （`prompt-engine-core`か`prompt-engine-infrastructure`か）を明記していなかったが、
+  実装時に「フェンシング喪失のWARNログ（SLF4J、`prompt-engine-application`では禁止）を
+  ワーカー自身が出す」要件と「Claim/フェンシングSQLを直接扱う」要件の両方を満たすため
+  `prompt-engine-infrastructure`（`promptengine.infrastructure.benchmark.BenchmarkWorker`）
+  に確定した。
+- **`JdbcBenchmarkRepository`の`targets`/`metrics`永続化方式の訂正**: フェーズ(b)の
+  `replaceTargets`/`replaceMetrics`（`save`のたびに無条件でDELETE→再INSERT、
+  `replaceVariants`を踏襲）は、`benchmark_item_results.target_id`が`benchmark_targets`を
+  FK参照するようになった結果、2回目以降の`save`呼出（`start()`/`cancel()`等の状態遷移後の
+  保存）がFK制約違反で失敗するようになった（統合テストで発覚）。`Benchmark`のドメインAPI
+  （`start`/`requestCancellation`/`cancel`/`complete`/`fail`）はいずれも`targets`/`metrics`を
+  変更しないため、そもそもDELETEは不要だったと判断し、`insertTargetsIfAbsent`/
+  `insertMetricsIfAbsent`（`ON CONFLICT DO NOTHING`の冪等INSERTのみ）に置き換えた。
 
 ## 却下した代替案
 
