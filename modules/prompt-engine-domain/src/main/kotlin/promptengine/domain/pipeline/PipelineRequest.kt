@@ -5,6 +5,7 @@ import promptengine.domain.optimization.ModelProfile
 import promptengine.domain.parsing.OutputSchema
 import promptengine.domain.prompt.PromptKey
 import promptengine.domain.prompt.VersionRef
+import promptengine.domain.render.ModelHints
 import promptengine.domain.render.OutputFormat
 import promptengine.domain.shared.PromptRequest
 import promptengine.domain.shared.TokenCount
@@ -22,6 +23,10 @@ import promptengine.domain.shared.TokenCount
  * は[versionRef]による通常解決（ADR-0024の状態ゲートを含む）を行わずこの値をそのまま使う
  * （Experiment経由の実行専用、ADR-0034決定2）。この場合[versionRef]は無視される
  * （監査・ログ用途に呼出元が任意の値を設定してよいが、Pipelineは参照しない）。
+ *
+ * [modelHints]はStage 8（Rendering）が[RenderedPrompt][promptengine.domain.render.RenderedPrompt]
+ * へそのまま渡す（ADR-0035決定5）。Benchmark（Consistency/Determinism計測）が
+ * `temperature`を明示制御するために導入した。
  */
 data class PipelineRequest(
     val promptKey: PromptKey,
@@ -33,4 +38,5 @@ data class PipelineRequest(
     val outputSchema: OutputSchema? = null,
     val executionPolicy: ExecutionPolicy? = null,
     val preResolvedVersion: ExperimentResolvedVersion? = null,
+    val modelHints: ModelHints? = null,
 )
