@@ -2,6 +2,7 @@ package promptengine.infrastructure.observability
 
 import io.micrometer.core.instrument.MeterRegistry
 import promptengine.domain.execution.ExecutionErrorType
+import promptengine.domain.observability.CacheOperation
 import promptengine.domain.observability.MetricsRecorder
 import promptengine.domain.observability.Outcome
 import promptengine.domain.observability.TokenDirection
@@ -17,6 +18,7 @@ private const val TAG_RULE_ID = "ruleId"
 private const val TAG_SEVERITY = "severity"
 private const val TAG_DIRECTION = "direction"
 private const val TAG_ERROR_TYPE = "errorType"
+private const val TAG_OPERATION = "operation"
 private const val ERROR_TYPE_NONE = "NONE"
 
 /**
@@ -24,8 +26,9 @@ private const val ERROR_TYPE_NONE = "NONE"
  *
  * ラベルは[promptengine.domain.observability.MetricsRecorder]のKDoc通り、`stage`（Pipeline構成が
  * 固定する12種）・`mode`（3種）・`outcome`（2種）・`ruleId`（導入Pluginの数だけの固定集合）・
- * `severity`（3種）・`direction`（2種）・`errorType`（[ExecutionErrorType]の8種+`NONE`）のみを
- * 使う。`promptKey`/`version`/`traceId`をタグに使うメソッドは[MetricsRecorder]自体に存在しない
+ * `severity`（3種）・`direction`（2種）・`errorType`（[ExecutionErrorType]の8種+`NONE`）・
+ * `operation`（[CacheOperation]の3種）のみを使う。`promptKey`/`version`/`traceId`をタグに使う
+ * メソッドは[MetricsRecorder]自体に存在しない
  * ため、この実装がそれらを追加で付与することもない（[MicrometerMetricsRecorderCardinalityTest]
  * が実際に記録された全メトリクスのタグキーを許可リストと突き合わせて回帰を検知する）。
  */
@@ -86,6 +89,10 @@ class MicrometerMetricsRecorder(
         ).increment()
     }
 
+    override fun incrementCacheDegradation(operation: CacheOperation) {
+        registry.counter(CACHE_DEGRADATION_TOTAL_METRIC, TAG_OPERATION, operation.name).increment()
+    }
+
     private companion object {
         const val STAGE_DURATION_METRIC = "pipeline_stage_duration_seconds"
         const val RENDER_DURATION_METRIC = "pipeline_render_duration_seconds"
@@ -94,5 +101,6 @@ class MicrometerMetricsRecorder(
         const val TOKEN_USAGE_TOTAL_METRIC = "token_usage_total"
         const val COST_TOTAL_METRIC = "cost_total"
         const val EXECUTION_ATTEMPTS_TOTAL_METRIC = "execution_attempts_total"
+        const val CACHE_DEGRADATION_TOTAL_METRIC = "cache_degradation_total"
     }
 }

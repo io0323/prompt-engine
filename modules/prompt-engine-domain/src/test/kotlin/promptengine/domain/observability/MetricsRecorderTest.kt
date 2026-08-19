@@ -13,4 +13,10 @@ class MetricsRecorderTest {
     fun `TokenDirectionはINPUTとOUTPUTの2種`() {
         TokenDirection.entries.toSet() shouldBe setOf(TokenDirection.INPUT, TokenDirection.OUTPUT)
     }
+
+    @Test
+    fun `CacheOperationはGET_PUT_INVALIDATEの3種`() {
+        CacheOperation.entries.toSet() shouldBe
+            setOf(CacheOperation.GET, CacheOperation.PUT, CacheOperation.INVALIDATE)
+    }
 }

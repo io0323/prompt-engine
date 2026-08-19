@@ -5,6 +5,7 @@ import io.kotest.matchers.shouldBe
 import io.lettuce.core.RedisClient
 import io.lettuce.core.api.StatefulRedisConnection
 import io.lettuce.core.api.sync.RedisCommands
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
@@ -44,6 +45,7 @@ import promptengine.domain.variable.VariableDefinition
 import promptengine.domain.variable.VariableSource
 import promptengine.domain.variable.VariableType
 import promptengine.infrastructure.cache.RedisPromptCache
+import promptengine.infrastructure.observability.MicrometerMetricsRecorder
 import java.time.Duration
 
 /**
@@ -72,10 +74,15 @@ class RedisPromptCacheIntegrationTest {
         redisClient = RedisClient.create("redis://${redis.host}:${redis.getMappedPort(REDIS_PORT)}")
         connection = redisClient.connect()
         commands = connection.sync()
-        cache = RedisPromptCache(commands, jacksonObjectMapper())
+        cache = RedisPromptCache(commands, jacksonObjectMapper(), MicrometerMetricsRecorder(SimpleMeterRegistry()))
 
         secondConnection = redisClient.connect()
-        secondInstanceCache = RedisPromptCache(secondConnection.sync(), jacksonObjectMapper())
+        secondInstanceCache =
+            RedisPromptCache(
+                secondConnection.sync(),
+                jacksonObjectMapper(),
+                MicrometerMetricsRecorder(SimpleMeterRegistry()),
+            )
     }
 
     @AfterAll

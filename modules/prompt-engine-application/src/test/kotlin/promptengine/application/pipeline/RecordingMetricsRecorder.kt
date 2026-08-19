@@ -1,6 +1,7 @@
 package promptengine.application.pipeline
 
 import promptengine.domain.execution.ExecutionErrorType
+import promptengine.domain.observability.CacheOperation
 import promptengine.domain.observability.MetricsRecorder
 import promptengine.domain.observability.Outcome
 import promptengine.domain.observability.TokenDirection
@@ -30,6 +31,7 @@ class RecordingMetricsRecorder : MetricsRecorder {
     val tokenUsages = mutableListOf<TokenUsageCall>()
     val costs = mutableListOf<BigDecimal>()
     val executionAttempts = mutableListOf<ExecutionAttemptCall>()
+    val cacheDegradations = mutableListOf<CacheOperation>()
 
     override fun recordStageDuration(
         stage: String,
@@ -74,5 +76,9 @@ class RecordingMetricsRecorder : MetricsRecorder {
         errorType: ExecutionErrorType?,
     ) {
         executionAttempts += ExecutionAttemptCall(outcome, errorType)
+    }
+
+    override fun incrementCacheDegradation(operation: CacheOperation) {
+        cacheDegradations += operation
     }
 }

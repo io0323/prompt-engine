@@ -63,6 +63,15 @@ interface MetricsRecorder {
         outcome: Outcome,
         errorType: ExecutionErrorType?,
     )
+
+    /**
+     * `PromptCache`（設計書§16拡張ポイント#9）の操作が失敗し縮退した回数を[operation]別に
+     * 加算する（NFR-001、ADR-0033追加決定e）。`RedisPromptCache`はRedis接続断・タイムアウト等の
+     * 例外を`get`はキャッシュミス、`put`/`invalidateByPrompt`は握りつぶして処理継続する
+     * （可用性を優先するdegrade-on-failure契約）が、その発生自体は運用上検知できる必要がある
+     * ため、例外を握りつぶす直前に必ずこのメソッドを呼ぶ。
+     */
+    fun incrementCacheDegradation(operation: CacheOperation)
 }
 
 /** [MetricsRecorder]の各カウンタ/Timerに付与する結果ラベル。 */
@@ -70,3 +79,6 @@ enum class Outcome { SUCCESS, FAILURE }
 
 /** [MetricsRecorder.recordTokenUsage]のトークン方向ラベル。 */
 enum class TokenDirection { INPUT, OUTPUT }
+
+/** [MetricsRecorder.incrementCacheDegradation]の操作種別ラベル。 */
+enum class CacheOperation { GET, PUT, INVALIDATE }
