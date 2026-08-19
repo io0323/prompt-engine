@@ -28,10 +28,10 @@ class JdbcExecutionLogRepository(
                 """
                 INSERT INTO execution_logs
                     (execution_id, version_id, variant_id, caller_system, trace_id, latency_ms,
-                     input_tokens, output_tokens, cost, status, executed_at, event_id)
+                     input_tokens, output_tokens, cost, status, executed_at, event_id, temperature)
                 VALUES
                     (:executionId, :versionId, :variantId, :callerSystem, :traceId, :latencyMs,
-                     :inputTokens, :outputTokens, :cost, :status, :executedAt, :eventId)
+                     :inputTokens, :outputTokens, :cost, :status, :executedAt, :eventId, :temperature)
                 ON CONFLICT (event_id) DO NOTHING
                 """.trimIndent(),
                 MapSqlParameterSource()
@@ -46,7 +46,8 @@ class JdbcExecutionLogRepository(
                     .addValue("cost", entry.cost.value)
                     .addValue("status", entry.status.name)
                     .addValue("executedAt", Timestamp.from(entry.executedAt))
-                    .addValue("eventId", entry.eventId),
+                    .addValue("eventId", entry.eventId)
+                    .addValue("temperature", entry.temperature),
             )
         return updated == 1
     }

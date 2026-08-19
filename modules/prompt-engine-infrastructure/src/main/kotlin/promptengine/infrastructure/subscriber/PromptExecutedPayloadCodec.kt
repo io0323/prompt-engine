@@ -52,6 +52,7 @@ class PromptExecutedPayloadCodec(
             traceId = envelope.traceId,
             occurredAt = envelope.occurredAt,
             variantId = optionalUuid(node, "variantId"),
+            temperature = optionalDouble(node, "temperature"),
         )
     }
 
@@ -68,6 +69,15 @@ class PromptExecutedPayloadCodec(
             runCatching { UUID.fromString(it) }.getOrNull()
                 ?: throw MalformedPromptExecutedPayloadException("field '$field' is not a valid UUID: '$it'")
         }
+
+    /**
+     * `temperature`（ADR-0035決定5、M2-4bフェーズ(c))も[optionalUuid]と同じ理由で欠落を許容する
+     * （`RenderedPrompt.modelHints`が`null`の実行では常に欠落する）。
+     */
+    private fun optionalDouble(
+        node: JsonNode,
+        field: String,
+    ): Double? = node.get(field)?.takeIf { it.isNumber }?.asDouble()
 
     private fun readSemVer(node: JsonNode): SemVer {
         val semVerNode =

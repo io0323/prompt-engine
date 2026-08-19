@@ -18,7 +18,15 @@ import java.util.UUID
  * `benchmark_metrics`、ADR-0035）。
  *
  * `benchmarks`に`row_version`列が無いため、`Experiment`と同様に同時更新は考慮しない。
- * `targets`/`metrics`は保存のたびにDELETE→再INSERTする（`replaceVariants`と同じ方式）。
+ *
+ * `targets`/`metrics`はDELETE→再INSERT（`replaceVariants`と同じ方式）ではなく、
+ * `ON CONFLICT DO NOTHING`の冪等INSERTのみで持つ（[insertTargetsIfAbsent]/
+ * [insertMetricsIfAbsent]）。`Benchmark`のドメインAPI（`start`/`requestCancellation`/
+ * `cancel`/`complete`/`fail`）はいずれも`targets`/`metrics`を変更しないため、DELETEは
+ * 元々不要だった。加えてフェーズ(c)で`benchmark_item_results.target_id`が
+ * `benchmark_targets`をFK参照するようになったため、状態遷移のたびに`save`を呼ぶワーカーが
+ * 無条件DELETEを実行すると、既に作成済みの`benchmark_item_results`行がある場合に
+ * 外部キー制約違反で失敗する（フェーズ(c)実装時に統合テストで発覚）。
  *
  * `started_at`/`completed_at`/`cancelled_at`は`Experiment.started_at`（作成時に無条件で
  * `now()`）とは異なり、実際に該当する状態へ遷移した時点でのみ設定する（`Pending`は
@@ -54,18 +62,29 @@ class JdbcBenchmarkRepository(
         } ?: emptyList()
 
     @OptIn(PersistenceApi::class)
+    override fun findByStatus(status: BenchmarkStatus): List<Benchmark> =
+        transactionTemplate.execute {
+            val ids =
+                jdbcTemplate.query(
+                    "SELECT benchmark_id FROM benchmarks WHERE status = :status ORDER BY created_at",
+                    MapSqlParameterSource("status", status.toDbValue()),
+                ) { rs, _ -> rs.getObject("benchmark_id", UUID::class.java) }
+            ids.mapNotNull { findRow(it) }.map { restore(it) }
+        } ?: emptyList()
+
+    @OptIn(PersistenceApi::class)
     override fun save(benchmark: Benchmark): Benchmark =
         transactionTemplate.execute {
             upsertBenchmark(benchmark)
-            replaceTargets(benchmark.benchmarkId, benchmark.targets)
-            replaceMetrics(benchmark.benchmarkId, benchmark.metrics)
+            insertTargetsIfAbsent(benchmark.benchmarkId, benchmark.targets)
+            insertMetricsIfAbsent(benchmark.benchmarkId, benchmark.metrics)
             benchmark
         } ?: error("save transaction returned null")
 
     private fun findRow(benchmarkId: UUID): BenchmarkRow? =
         jdbcTemplate.query(
             """
-            SELECT b.benchmark_id, p.prompt_key, b.dataset_id, b.n_repetitions, b.status
+            SELECT b.benchmark_id, p.prompt_key, b.dataset_id, b.n_repetitions, b.status, b.temperature
             FROM benchmarks b
             JOIN prompts p ON p.prompt_id = b.prompt_id
             WHERE b.benchmark_id = :benchmarkId
@@ -78,6 +97,7 @@ class JdbcBenchmarkRepository(
                 datasetId = rs.getObject("dataset_id", UUID::class.java),
                 nRepetitions = rs.getInt("n_repetitions"),
                 status = rs.getString("status"),
+                temperature = rs.getObject("temperature") as Double?,
             )
         }.singleOrNull()
 
@@ -89,9 +109,10 @@ class JdbcBenchmarkRepository(
                 promptKey = PromptKey(row.promptKey),
                 datasetId = row.datasetId,
                 targets = loadTargets(row.benchmarkId),
-                metrics = loadMetrics(row.benchmarkId),
+                metrics = jdbcTemplate.loadBenchmarkMetrics(row.benchmarkId),
                 nRepetitions = row.nRepetitions,
                 status = benchmarkStatusFromDbValue(row.status),
+                temperature = row.temperature,
             ),
         )
 
@@ -112,18 +133,12 @@ class JdbcBenchmarkRepository(
             )
         }
 
-    private fun loadMetrics(benchmarkId: UUID): Set<BenchmarkMetricType> =
-        jdbcTemplate.query(
-            "SELECT metric_type FROM benchmark_metrics WHERE benchmark_id = :benchmarkId",
-            MapSqlParameterSource("benchmarkId", benchmarkId),
-        ) { rs, _ -> BenchmarkMetricType.valueOf(rs.getString("metric_type")) }.toSet()
-
     private fun upsertBenchmark(benchmark: Benchmark) {
         val promptId = jdbcTemplate.resolveBenchmarkPromptId(benchmark.promptKey)
         jdbcTemplate.update(
             """
-            INSERT INTO benchmarks (benchmark_id, prompt_id, dataset_id, n_repetitions, status)
-            VALUES (:benchmarkId, :promptId, :datasetId, :nRepetitions, :status)
+            INSERT INTO benchmarks (benchmark_id, prompt_id, dataset_id, n_repetitions, status, temperature)
+            VALUES (:benchmarkId, :promptId, :datasetId, :nRepetitions, :status, :temperature)
             ON CONFLICT (benchmark_id) DO UPDATE SET
                 status = EXCLUDED.status,
                 started_at = CASE
@@ -144,18 +159,15 @@ class JdbcBenchmarkRepository(
                 .addValue("promptId", promptId)
                 .addValue("datasetId", benchmark.datasetId)
                 .addValue("nRepetitions", benchmark.nRepetitions)
-                .addValue("status", benchmark.status.toDbValue()),
+                .addValue("status", benchmark.status.toDbValue())
+                .addValue("temperature", benchmark.temperature),
         )
     }
 
-    private fun replaceTargets(
+    private fun insertTargetsIfAbsent(
         benchmarkId: UUID,
         targets: List<BenchmarkTarget>,
     ) {
-        jdbcTemplate.update(
-            "DELETE FROM benchmark_targets WHERE benchmark_id = :benchmarkId",
-            MapSqlParameterSource("benchmarkId", benchmarkId),
-        )
         if (targets.isEmpty()) return
 
         val promptKey = jdbcTemplate.findPromptKeyForBenchmark(benchmarkId)
@@ -175,19 +187,16 @@ class JdbcBenchmarkRepository(
             """
             INSERT INTO benchmark_targets (target_id, benchmark_id, version_id)
             VALUES (:targetId, :benchmarkId, :versionId)
+            ON CONFLICT (target_id) DO NOTHING
             """.trimIndent(),
             batchParams,
         )
     }
 
-    private fun replaceMetrics(
+    private fun insertMetricsIfAbsent(
         benchmarkId: UUID,
         metrics: Set<BenchmarkMetricType>,
     ) {
-        jdbcTemplate.update(
-            "DELETE FROM benchmark_metrics WHERE benchmark_id = :benchmarkId",
-            MapSqlParameterSource("benchmarkId", benchmarkId),
-        )
         if (metrics.isEmpty()) return
 
         val batchParams =
@@ -197,7 +206,11 @@ class JdbcBenchmarkRepository(
                     .addValue("metricType", metric.name)
             }.toTypedArray()
         jdbcTemplate.batchUpdate(
-            "INSERT INTO benchmark_metrics (benchmark_id, metric_type) VALUES (:benchmarkId, :metricType)",
+            """
+            INSERT INTO benchmark_metrics (benchmark_id, metric_type)
+            VALUES (:benchmarkId, :metricType)
+            ON CONFLICT (benchmark_id, metric_type) DO NOTHING
+            """.trimIndent(),
             batchParams,
         )
     }
@@ -208,6 +221,7 @@ class JdbcBenchmarkRepository(
         val datasetId: UUID,
         val nRepetitions: Int,
         val status: String,
+        val temperature: Double?,
     )
 }
 
@@ -219,7 +233,7 @@ private fun NamedParameterJdbcTemplate.resolveBenchmarkPromptId(promptKey: Promp
     ) ?: error("Prompt not found for '${promptKey.value}'")
 
 /**
- * [JdbcBenchmarkRepository.replaceTargets]は`upsertBenchmark`の後に呼ばれるため、
+ * [JdbcBenchmarkRepository.insertTargetsIfAbsent]は`upsertBenchmark`の後に呼ばれるため、
  * `benchmarks`行から`prompt_key`を引き直せる（`findPromptKeyForExperiment`と同じ理由）。
  */
 private fun NamedParameterJdbcTemplate.findPromptKeyForBenchmark(benchmarkId: UUID): PromptKey =
@@ -232,6 +246,16 @@ private fun NamedParameterJdbcTemplate.findPromptKeyForBenchmark(benchmarkId: UU
         MapSqlParameterSource("benchmarkId", benchmarkId),
         String::class.java,
     )?.let { PromptKey(it) } ?: error("Benchmark not found: '$benchmarkId'")
+
+/**
+ * detektのTooManyFunctions閾値対策で[JdbcBenchmarkRepository]のメンバー関数から抽出した
+ * （`resolveBenchmarkPromptId`/`findPromptKeyForBenchmark`と同じ理由）。
+ */
+private fun NamedParameterJdbcTemplate.loadBenchmarkMetrics(benchmarkId: UUID): Set<BenchmarkMetricType> =
+    query(
+        "SELECT metric_type FROM benchmark_metrics WHERE benchmark_id = :benchmarkId",
+        MapSqlParameterSource("benchmarkId", benchmarkId),
+    ) { rs, _ -> BenchmarkMetricType.valueOf(rs.getString("metric_type")) }.toSet()
 
 /**
  * `internal`: `JdbcBenchmarkRepositoryDbValueTest`（同モジュール）が直接検証するため
