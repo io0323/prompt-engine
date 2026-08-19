@@ -19,14 +19,17 @@ jobs:
     services:
       postgres:
         image: postgres:16-alpine
+        # ロール分離（Issue #85、ADR-0036）: このコンテナのブートストラップロール（実質
+        # superuser）はprompt_engine_migratorとする。アプリ実行時ロールprompt_engine（restricted）
+        # はFlyway migration V20が冪等に作成するため、ここでの追加設定は不要（compose.yamlと同じ構成）。
         env:
           POSTGRES_DB: prompt_engine
-          POSTGRES_USER: prompt_engine
-          POSTGRES_PASSWORD: prompt_engine
+          POSTGRES_USER: prompt_engine_migrator
+          POSTGRES_PASSWORD: prompt_engine_migrator
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U prompt_engine -d prompt_engine"
+          --health-cmd "pg_isready -U prompt_engine_migrator -d prompt_engine"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
@@ -38,8 +41,9 @@ jobs:
       - name: Check for Gradle wrapper
         id: gradlew
         run: echo "exists=$( [ -f ./gradlew ] && echo true || echo false )" >> "$GITHUB_OUTPUT"
-      # `application.yml`のdatasourceデフォルト（localhost:5432, prompt_engine/prompt_engine/prompt_engine）が
-      # 上のpostgresサービスコンテナの設定と一致するため、env override不要でそのまま起動できる。
+      # `application.yml`のdatasource/flywayデフォルト（アプリ=prompt_engine、Flyway=
+      # prompt_engine_migrator）が上のpostgresサービスコンテナの構成と一致するため、
+      # env override不要でそのまま起動できる。
       - name: springdocからapi-docsを再生成しapi/openapi.yamlとの差分を検証
         if: steps.gradlew.outputs.exists == 'true'
         run: |
