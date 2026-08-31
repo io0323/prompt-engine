@@ -5,6 +5,7 @@ import org.springframework.context.annotation.Configuration
 import promptengine.application.query.AuditLogsHandler
 import promptengine.application.query.DependenciesHandler
 import promptengine.application.query.DiffHandler
+import promptengine.application.query.GetAssetImpactHandler
 import promptengine.application.query.GetPromptHandler
 import promptengine.application.query.GetVersionHandler
 import promptengine.application.query.MetricsHandler
@@ -41,6 +42,10 @@ class QueryHandlersConfig {
     @Bean
     fun dependenciesHandler(dependencyRepository: DependencyRepository): DependenciesHandler =
         DependenciesHandler(dependencyRepository)
+
+    @Bean
+    fun getAssetImpactHandler(dependencyRepository: DependencyRepository): GetAssetImpactHandler =
+        GetAssetImpactHandler(dependencyRepository)
 
     @Bean
     fun metricsHandler(metricsRepository: MetricsRepository): MetricsHandler = MetricsHandler(metricsRepository)

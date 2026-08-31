@@ -1,10 +1,12 @@
 package promptengine.application.view
 
+import promptengine.application.query.AssetImpactQuery
 import promptengine.application.query.AuditLogsHandler
 import promptengine.application.query.DependenciesHandler
 import promptengine.application.query.DependenciesQuery
 import promptengine.application.query.DiffHandler
 import promptengine.application.query.DiffQuery
+import promptengine.application.query.GetAssetImpactHandler
 import promptengine.application.query.GetVersionHandler
 import promptengine.application.query.GetVersionQuery
 import promptengine.application.query.MetricsHandler
@@ -114,6 +116,13 @@ fun MetricsHandler.handleView(query: MetricsQuery): MetricsSummaryView = handle(
 /** `GET /prompts`（検索）。[SearchPromptsHandler.handle]の結果をViewへ変換する。 */
 fun SearchPromptsHandler.handleView(query: SearchPromptsQuery): PageView<PromptSummaryView> =
     handle(query).toView { it.toView() }
+
+/**
+ * `GET /templates/{namespace}/{name}/impact` および `GET /fragments/{namespace}/{name}/impact`（UC-06）。
+ * [GetAssetImpactHandler.handle]の戻り値（`List<PromptKey>`）をプリミティブな文字列リストへ変換する。
+ * `prompt-engine-interface`はdomain型（`PromptKey`）を直接参照できないため（[DependencyMetricsAuditViews.kt]のKDoc参照）。
+ */
+fun GetAssetImpactHandler.handleView(query: AssetImpactQuery): List<String> = handle(query).map { it.value }
 
 /** `GET /audit-logs`。プリミティブ引数から`AuditQuery`を組み立て、[AuditLogsHandler.handle]の結果をViewへ変換する。 */
 fun AuditLogsHandler.handleView(
